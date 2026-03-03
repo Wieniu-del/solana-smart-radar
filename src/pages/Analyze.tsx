@@ -5,37 +5,102 @@ import ScoreDisplay from "@/components/ScoreDisplay";
 import ActivityChart from "@/components/ActivityChart";
 import TransactionList from "@/components/TransactionList";
 import PatternAnalysis from "@/components/PatternAnalysis";
+import TokenHoldings from "@/components/TokenHoldings";
+import TradeHistory from "@/components/TradeHistory";
+import ScoreBreakdown from "@/components/ScoreBreakdown";
 import { WalletData, mockWalletData } from "@/types/wallet";
 import { useSearchHistory } from "@/hooks/useSearchHistory";
-import { Search, Clock, X } from "lucide-react";
+import { analyzeWallet, WalletAnalysis, getHeliusApiKey, HeliusTokenBalance, ParsedTrade } from "@/services/helius";
+import { calculateSmartScore, getScoreStatus, SmartScoreBreakdown } from "@/services/walletScoring";
+import { Search, Clock, X, Wifi, WifiOff } from "lucide-react";
+import { toast } from "sonner";
 
 const Analyze = () => {
   const [walletData, setWalletData] = useState<WalletData | null>(null);
+  const [tokens, setTokens] = useState<HeliusTokenBalance[]>([]);
+  const [trades, setTrades] = useState<ParsedTrade[]>([]);
+  const [scoreBreakdown, setScoreBreakdown] = useState<SmartScoreBreakdown | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLive, setIsLive] = useState(false);
   const { history, addEntry, removeEntry, clearHistory } = useSearchHistory();
 
   const handleSearch = async (address: string) => {
     setIsLoading(true);
-    try {
-      const response = await fetch(`/api/wallet/${encodeURIComponent(address)}`);
-      if (!response.ok) throw new Error("Backend unavailable");
-      const data = await response.json();
-      setWalletData(data);
-      addEntry({ address: data.address, smartScore: data.smartScore, status: data.status });
-    } catch {
-      const data = { ...mockWalletData, address };
-      setWalletData(data);
-      addEntry({ address: data.address, smartScore: data.smartScore, status: data.status });
-    } finally {
-      setIsLoading(false);
+    setIsLive(false);
+
+    const hasApiKey = !!getHeliusApiKey();
+
+    if (hasApiKey) {
+      try {
+        const analysis: WalletAnalysis = await analyzeWallet(address);
+        const breakdown = calculateSmartScore(analysis);
+        const status = getScoreStatus(breakdown.total);
+
+        const data: WalletData = {
+          address: analysis.address,
+          smartScore: breakdown.total,
+          status,
+          transactionCount24h: analysis.tx24h,
+          totalTransactions: analysis.txCount,
+          lastActivityAge: analysis.lastActivity
+            ? formatTimeAgo(analysis.lastActivity)
+            : "Brak danych",
+          hourlyActivity: analysis.hourlyActivity,
+          recentTransactions: analysis.transactions.slice(0, 10).map((tx) => ({
+            signature: tx.signature.slice(0, 4) + "..." + tx.signature.slice(-4),
+            blockTime: tx.timestamp,
+            status: "finalized",
+            fee: tx.fee,
+          })),
+        };
+
+        setWalletData(data);
+        setTokens(analysis.tokens);
+        setTrades(analysis.trades);
+        setScoreBreakdown(breakdown);
+        setIsLive(true);
+        addEntry({ address: data.address, smartScore: data.smartScore, status: data.status });
+        toast.success("Dane pobrane z Solana blockchain!");
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Nieznany błąd";
+        toast.error(`Błąd Helius API: ${msg}`);
+        // Fallback to mock
+        fallbackMock(address);
+      }
+    } else {
+      toast.info("Brak klucza API — używam danych demo. Dodaj klucz w Ustawieniach.");
+      fallbackMock(address);
     }
+
+    setIsLoading(false);
+  };
+
+  const fallbackMock = (address: string) => {
+    const data = { ...mockWalletData, address };
+    setWalletData(data);
+    setTokens([]);
+    setTrades([]);
+    setScoreBreakdown(null);
+    addEntry({ address: data.address, smartScore: data.smartScore, status: data.status });
   };
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-bold mb-1">Analiza Portfela</h1>
-        <p className="text-sm text-muted-foreground">Wklej adres Solana i uzyskaj pełną analizę aktywności</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold mb-1">Analiza Portfela</h1>
+          <p className="text-sm text-muted-foreground">Wklej adres Solana i uzyskaj pełną analizę aktywności</p>
+        </div>
+        {walletData && (
+          <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono border ${
+            isLive
+              ? "text-primary border-primary/30 bg-primary/10"
+              : "text-neon-amber border-neon-amber/30 bg-neon-amber/10"
+          }`}>
+            {isLive ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
+            {isLive ? "LIVE blockchain" : "Demo data"}
+          </div>
+        )}
       </div>
 
       <WalletSearch onSearch={handleSearch} isLoading={isLoading} />
@@ -48,13 +113,17 @@ const Analyze = () => {
             </span>
           </div>
           <StatCards data={walletData} />
+
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-1">
+            <div className="lg:col-span-1 space-y-6">
               <ScoreDisplay data={walletData} />
+              {scoreBreakdown && <ScoreBreakdown breakdown={scoreBreakdown} />}
             </div>
             <div className="lg:col-span-2 space-y-6">
               <ActivityChart hourlyActivity={walletData.hourlyActivity} />
               <PatternAnalysis data={walletData} />
+              {tokens.length > 0 && <TokenHoldings tokens={tokens} />}
+              {trades.length > 0 && <TradeHistory trades={trades} />}
               <TransactionList transactions={walletData.recentTransactions} />
             </div>
           </div>
@@ -68,9 +137,13 @@ const Analyze = () => {
             <p className="text-muted-foreground text-sm">
               Wklej adres portfela Solana, aby rozpocząć analizę
             </p>
+            {!getHeliusApiKey() && (
+              <p className="text-neon-amber text-xs mt-2">
+                ⚠️ Brak klucza Helius API — przejdź do Ustawień, aby połączyć się z Solana
+              </p>
+            )}
           </div>
 
-          {/* Search history */}
           {history.length > 0 && (
             <div className="neon-card rounded-xl p-6">
               <div className="flex items-center justify-between mb-4">
@@ -111,5 +184,13 @@ const Analyze = () => {
     </div>
   );
 };
+
+function formatTimeAgo(timestamp: number): string {
+  const seconds = Math.floor(Date.now() / 1000 - timestamp);
+  if (seconds < 60) return `${seconds} sekund temu`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} minut temu`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)} godzin temu`;
+  return `${Math.floor(seconds / 86400)} dni temu`;
+}
 
 export default Analyze;
