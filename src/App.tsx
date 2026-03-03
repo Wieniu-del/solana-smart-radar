@@ -11,6 +11,7 @@ import Analyze from "./pages/Analyze";
 import Ranking from "./pages/Ranking";
 import Activity24h from "./pages/Activity24h";
 import Alerts from "./pages/Alerts";
+import Compare from "./pages/Compare";
 import SettingsPage from "./pages/SettingsPage";
 import NotFound from "./pages/NotFound";
 
@@ -35,6 +36,7 @@ const App = () => (
                     <Route path="/ranking" element={<Ranking />} />
                     <Route path="/activity" element={<Activity24h />} />
                     <Route path="/alerts" element={<Alerts />} />
+                    <Route path="/compare" element={<Compare />} />
                     <Route path="/settings" element={<SettingsPage />} />
                     <Route path="*" element={<NotFound />} />
                   </Routes>

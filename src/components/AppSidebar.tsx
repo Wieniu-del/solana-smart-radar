@@ -1,4 +1,4 @@
-import { BarChart3, Search, Trophy, Activity, Bell, Settings, Brain } from "lucide-react";
+import { BarChart3, Search, Trophy, Activity, Bell, Settings, Brain, ArrowLeftRight } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
 import {
@@ -19,6 +19,7 @@ const mainItems = [
   { title: "Analiza Portfela", url: "/analyze", icon: Search },
   { title: "Ranking Smart Wallets", url: "/ranking", icon: Trophy },
   { title: "Aktywność 24h", url: "/activity", icon: Activity },
+  { title: "Porównywarka", url: "/compare", icon: ArrowLeftRight },
 ];
 
 const systemItems = [
