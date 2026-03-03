@@ -1,24 +1,39 @@
 import { useEffect, useState } from "react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { getHeliusApiKey } from "@/services/helius";
+import { Wifi, WifiOff, Loader2 } from "lucide-react";
 
 const TopBar = () => {
-  const [apiStatus, setApiStatus] = useState<"online" | "offline" | "checking">("checking");
+  const [chainStatus, setChainStatus] = useState<"online" | "offline" | "checking">("checking");
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [latency, setLatency] = useState<number | null>(null);
 
   useEffect(() => {
-    // Check API health
-    const checkHealth = async () => {
+    const checkChain = async () => {
+      const key = getHeliusApiKey();
+      if (!key) {
+        setChainStatus("offline");
+        setLatency(null);
+        return;
+      }
+      const start = performance.now();
       try {
-        const res = await fetch("/api/health", { signal: AbortSignal.timeout(3000) });
-        setApiStatus(res.ok ? "online" : "offline");
+        const res = await fetch(`https://mainnet.helius-rpc.com/?api-key=${key}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getHealth" }),
+          signal: AbortSignal.timeout(5000),
+        });
+        setLatency(Math.round(performance.now() - start));
+        setChainStatus(res.ok ? "online" : "offline");
       } catch {
-        setApiStatus("offline");
+        setChainStatus("offline");
+        setLatency(null);
       }
     };
-    checkHealth();
-    const healthInterval = setInterval(checkHealth, 30000);
 
-    // Update clock
+    checkChain();
+    const healthInterval = setInterval(checkChain, 30000);
     const clockInterval = setInterval(() => setCurrentTime(new Date()), 1000);
 
     return () => {
@@ -38,21 +53,31 @@ const TopBar = () => {
       </div>
 
       <div className="flex items-center gap-4">
-        {/* API Status */}
+        {/* Blockchain Status */}
         <div className="flex items-center gap-2 text-xs font-mono">
+          {chainStatus === "checking" ? (
+            <Loader2 className="h-3 w-3 text-neon-amber animate-spin" />
+          ) : chainStatus === "online" ? (
+            <Wifi className="h-3 w-3 text-primary" />
+          ) : (
+            <WifiOff className="h-3 w-3 text-destructive" />
+          )}
           <div className={`w-2 h-2 rounded-full ${
-            apiStatus === "online" ? "bg-primary pulse-neon" :
-            apiStatus === "offline" ? "bg-destructive" :
+            chainStatus === "online" ? "bg-primary pulse-neon" :
+            chainStatus === "offline" ? "bg-destructive" :
             "bg-neon-amber animate-pulse"
           }`} />
           <span className="text-muted-foreground hidden sm:inline">
-            API {apiStatus === "online" ? "Online" : apiStatus === "offline" ? "Offline" : "..."}
+            {chainStatus === "online"
+              ? `Solana ${latency ? `(${latency}ms)` : ""}`
+              : chainStatus === "offline"
+              ? "Offline"
+              : "..."}
           </span>
         </div>
 
         {/* Network */}
         <div className="flex items-center gap-2 text-xs font-mono">
-          <div className="w-2 h-2 rounded-full bg-primary pulse-neon" />
           <span className="text-muted-foreground hidden sm:inline">Mainnet</span>
         </div>
 
