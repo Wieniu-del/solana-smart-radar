@@ -16,6 +16,54 @@ export interface Transaction {
   fee: number;
 }
 
+// Generate random wallet data for mock purposes
+function randomInt(min: number, max: number) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function randomStatus(score: number): WalletData["status"] {
+  if (score > 70) return "High Activity";
+  if (score > 40) return "Active";
+  if (score > 20) return "Moderate";
+  return "Dormant";
+}
+
+function randomHourlyActivity(): number[] {
+  return Array.from({ length: 24 }, () => randomInt(0, 20));
+}
+
+function randomAddress(): string {
+  const chars = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+  return Array.from({ length: 44 }, () => chars[randomInt(0, chars.length - 1)]).join("");
+}
+
+function shortSig(): string {
+  const chars = "0123456789abcdef";
+  const a = Array.from({ length: 4 }, () => chars[randomInt(0, 15)]).join("");
+  const b = Array.from({ length: 4 }, () => chars[randomInt(0, 15)]).join("");
+  return `${a}...${b}`;
+}
+
+export function generateMockWallet(addressOverride?: string): WalletData {
+  const score = randomInt(5, 95);
+  const tx24h = score > 60 ? randomInt(15, 80) : randomInt(0, 15);
+  return {
+    address: addressOverride || randomAddress(),
+    smartScore: score,
+    status: randomStatus(score),
+    transactionCount24h: tx24h,
+    totalTransactions: randomInt(100, 5000),
+    lastActivityAge: score > 50 ? `${randomInt(1, 59)} minutes ago` : `${randomInt(2, 48)} hours ago`,
+    hourlyActivity: randomHourlyActivity(),
+    recentTransactions: Array.from({ length: 5 }, (_, i) => ({
+      signature: shortSig(),
+      blockTime: Date.now() / 1000 - (i + 1) * randomInt(300, 3600),
+      status: "finalized",
+      fee: [5000, 10000, 15000][randomInt(0, 2)],
+    })),
+  };
+}
+
 // Mock data for development
 export const mockWalletData: WalletData = {
   address: "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
@@ -33,3 +81,6 @@ export const mockWalletData: WalletData = {
     { signature: "9wQz...bY3s", blockTime: Date.now() / 1000 - 8100, status: "finalized", fee: 15000 },
   ],
 };
+
+// Generate mock top wallets for ranking/dashboard
+export const mockTopWallets: WalletData[] = Array.from({ length: 20 }, () => generateMockWallet());
