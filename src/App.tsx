@@ -14,6 +14,7 @@ import Alerts from "./pages/Alerts";
 import Compare from "./pages/Compare";
 import SettingsPage from "./pages/SettingsPage";
 import NotFound from "./pages/NotFound";
+import AutoTrading from "./pages/AutoTrading";
 
 const queryClient = new QueryClient();
 
@@ -37,6 +38,7 @@ const App = () => (
                     <Route path="/activity" element={<Activity24h />} />
                     <Route path="/alerts" element={<Alerts />} />
                     <Route path="/compare" element={<Compare />} />
+                    <Route path="/trading" element={<AutoTrading />} />
                     <Route path="/settings" element={<SettingsPage />} />
                     <Route path="*" element={<NotFound />} />
                   </Routes>
