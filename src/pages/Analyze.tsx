@@ -12,6 +12,8 @@ import { WalletData, mockWalletData } from "@/types/wallet";
 import { useSearchHistory } from "@/hooks/useSearchHistory";
 import { analyzeWallet, WalletAnalysis, getHeliusApiKey, HeliusTokenBalance, ParsedTrade } from "@/services/helius";
 import { calculateSmartScore, getScoreStatus, SmartScoreBreakdown } from "@/services/walletScoring";
+import { analyzeAllTokens } from "@/services/tokenSecurity";
+import { generateSignals, getStrategies, saveSignals } from "@/services/tradingEngine";
 import BlockchainStatus from "@/components/BlockchainStatus";
 import TokenSecurityAnalysis from "@/components/TokenSecurityAnalysis";
 import { Search, Clock, X, Wifi, WifiOff } from "lucide-react";
@@ -63,6 +65,19 @@ const Analyze = () => {
         setIsLive(true);
         addEntry({ address: data.address, smartScore: data.smartScore, status: data.status });
         toast.success("Dane pobrane z Solana blockchain!");
+
+        // Generate trading signals
+        try {
+          const strategies = await getStrategies();
+          const secReports = analyzeAllTokens(analysis.tokens);
+          const signals = generateSignals(analysis, strategies, secReports);
+          if (signals.length > 0) {
+            await saveSignals(signals);
+            toast.info(`🤖 Wygenerowano ${signals.length} sygnałów tradingowych — sprawdź Auto Trading`);
+          }
+        } catch (sigErr) {
+          console.warn("Signal generation error:", sigErr);
+        }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : "Nieznany błąd";
         toast.error(`Błąd Helius API: ${msg}`);
