@@ -12,6 +12,8 @@ import { WalletData, mockWalletData } from "@/types/wallet";
 import { useSearchHistory } from "@/hooks/useSearchHistory";
 import { analyzeWallet, WalletAnalysis, getHeliusApiKey, HeliusTokenBalance, ParsedTrade } from "@/services/helius";
 import { calculateSmartScore, getScoreStatus, SmartScoreBreakdown } from "@/services/walletScoring";
+import BlockchainStatus from "@/components/BlockchainStatus";
+import TokenSecurityAnalysis from "@/components/TokenSecurityAnalysis";
 import { Search, Clock, X, Wifi, WifiOff } from "lucide-react";
 import { toast } from "sonner";
 
@@ -103,6 +105,7 @@ const Analyze = () => {
         )}
       </div>
 
+      <BlockchainStatus />
       <WalletSearch onSearch={handleSearch} isLoading={isLoading} />
 
       {walletData && (
@@ -123,6 +126,7 @@ const Analyze = () => {
               <ActivityChart hourlyActivity={walletData.hourlyActivity} />
               <PatternAnalysis data={walletData} />
               {tokens.length > 0 && <TokenHoldings tokens={tokens} />}
+              {tokens.length > 0 && <TokenSecurityAnalysis tokens={tokens} />}
               {trades.length > 0 && <TradeHistory trades={trades} />}
               <TransactionList transactions={walletData.recentTransactions} />
             </div>
