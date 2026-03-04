@@ -213,29 +213,28 @@ const Index = () => {
         </div>
 
         {/* Top Smart Wallets */}
-        <div className="neon-card rounded-xl p-6">
-          <div className="flex items-center justify-between mb-4">
+        <div className="neon-card rounded-xl p-6 flex flex-col">
+          <div className="flex items-center justify-between mb-5">
             <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Top Smart Wallets</h3>
-            <Link to="/ranking" className="text-xs text-primary hover:underline flex items-center gap-1">
+            <Link to="/ranking" className="text-xs text-neon-red hover:underline flex items-center gap-1 font-medium">
               Ranking <ArrowUpRight className="h-3 w-3" />
             </Link>
           </div>
-          <div className="space-y-3">
+          <div className="space-y-1 flex-1">
             {topWallets.map((w, i) => (
-              <div
+              <Link
+                to={`/analyze?address=${encodeURIComponent(w.address)}`}
                 key={w.address}
-                className="flex items-center gap-3 group hover:bg-muted/30 rounded-lg px-2 py-1.5 transition-all duration-300"
+                className="flex items-center gap-3 group hover:bg-muted/30 rounded-lg px-3 py-3 transition-all duration-300"
                 style={{ animation: `fade-in-up 0.4s ease-out ${i * 0.08}s both` }}
               >
-                <span className="text-xs font-mono text-muted-foreground w-5">#{i + 1}</span>
-                <div className="flex-1 min-w-0">
-                  <Link to="/analyze" className="text-xs font-mono text-foreground hover:text-primary break-all transition-colors">
-                    {w.address}
-                  </Link>
-                </div>
+                <span className="text-xs font-mono text-muted-foreground w-6 shrink-0">#{i + 1}</span>
+                <span className="text-xs font-mono text-foreground group-hover:text-primary transition-colors truncate flex-1">
+                  {w.address.slice(0, 4)}...{w.address.slice(-4)}
+                </span>
                 <ScoreBadge score={w.smartScore} />
-                <span className="text-xs text-muted-foreground font-mono">{w.transactionCount24h} tx</span>
-              </div>
+                <span className="text-[11px] text-muted-foreground font-mono shrink-0">{w.transactionCount24h} tx</span>
+              </Link>
             ))}
           </div>
         </div>
