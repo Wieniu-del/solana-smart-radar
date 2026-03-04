@@ -238,7 +238,8 @@ export default function BotControlPanel() {
   }
 
   const hasUnsavedChanges = minScore !== savedMinScore || maxPosition !== savedMaxPosition ||
-    trailingStop !== savedTrailingStop || takeProfit !== savedTakeProfit || maxOpenPositions !== savedMaxOpenPositions;
+    trailingStop !== savedTrailingStop || takeProfit !== savedTakeProfit || maxOpenPositions !== savedMaxOpenPositions ||
+    JSON.stringify(dynamicSizing) !== JSON.stringify(savedDynamicSizing);
 
   // Stats
   const last24h = recentRuns.filter((r) => new Date(r.started_at).getTime() > Date.now() - 86400000);
