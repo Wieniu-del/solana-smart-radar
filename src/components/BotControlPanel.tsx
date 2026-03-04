@@ -77,6 +77,7 @@ export default function BotControlPanel() {
             case "max_position_sol": { const v = c.value as number || 0.1; setMaxPosition(v); setSavedMaxPosition(v); break; }
             case "trailing_stop_pct": { const v = c.value as number || 10; setTrailingStop(v); setSavedTrailingStop(v); break; }
             case "take_profit_pct": { const v = c.value as number || 50; setTakeProfit(v); setSavedTakeProfit(v); break; }
+            case "max_open_positions": { const v = c.value as number || 3; setMaxOpenPositions(v); setSavedMaxOpenPositions(v); break; }
           }
         }
       }
