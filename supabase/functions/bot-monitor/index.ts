@@ -97,6 +97,23 @@ Deno.serve(async (req) => {
       enabled: false, min_sol: 0.05, max_sol: 0.5,
     };
 
+    // 3c. Get pipeline config (user-adjustable feature toggles)
+    const { data: pipelineConfigData } = await supabase
+      .from("bot_config")
+      .select("value")
+      .eq("key", "pipeline_config")
+      .single();
+    const pipelineConfig = (pipelineConfigData?.value as any) || {};
+    const pSecurity = pipelineConfig.security_check ?? { enabled: true, min_score: 30 };
+    const pLiquidity = pipelineConfig.liquidity_check ?? { enabled: true, min_value_usd: 1000 };
+    const pWallet = pipelineConfig.wallet_analysis ?? { enabled: true, min_wallet_value_usd: 10000 };
+    const pScoring = pipelineConfig.scoring ?? { buy_threshold: minScoreThreshold, watch_threshold: 45 };
+    const pCorrelation = pipelineConfig.correlation ?? { enabled: true, min_wallets: 2, bonus_per_wallet: 8, max_bonus: 20 };
+    const pSentiment = pipelineConfig.sentiment ?? { enabled: true, block_on_avoid: true };
+    // Use pipeline scoring thresholds if set, otherwise fall back to global
+    const buyThreshold = pScoring.buy_threshold || minScoreThreshold;
+    const watchThreshold = pScoring.watch_threshold || 45;
+
     // 4. Analyze each wallet
     let totalTokensFound = 0;
     let totalSignals = 0;
