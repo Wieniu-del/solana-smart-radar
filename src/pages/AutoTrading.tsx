@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import BotControlPanel from "@/components/BotControlPanel";
 import PnLDashboard from "@/components/PnLDashboard";
+import SystemStatusPanel from "@/components/SystemStatusPanel";
 import {
   Bot, Zap, ShieldAlert, TrendingUp, TrendingDown, Clock, AlertTriangle,
   CheckCircle2, XCircle, Activity, Target, DollarSign, Play, Square,
@@ -227,6 +228,10 @@ export default function AutoTrading() {
             <BarChart3 className="h-3.5 w-3.5 mr-1" />
             PnL
           </TabsTrigger>
+          <TabsTrigger value="status">
+            <Activity className="h-3.5 w-3.5 mr-1" />
+            Status
+          </TabsTrigger>
         </TabsList>
 
         {/* ─── Bot 24/7 Control Panel ─── */}
@@ -324,6 +329,11 @@ export default function AutoTrading() {
         {/* ─── PnL Dashboard Tab ─── */}
         <TabsContent value="pnl">
           <PnLDashboard />
+        </TabsContent>
+
+        {/* ─── System Status Tab ─── */}
+        <TabsContent value="status">
+          <SystemStatusPanel />
         </TabsContent>
       </Tabs>
     </div>
