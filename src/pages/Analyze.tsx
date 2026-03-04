@@ -10,7 +10,7 @@ import TradeHistory from "@/components/TradeHistory";
 import ScoreBreakdown from "@/components/ScoreBreakdown";
 import { WalletData, mockWalletData } from "@/types/wallet";
 import { useSearchHistory } from "@/hooks/useSearchHistory";
-import { analyzeWallet, WalletAnalysis, getHeliusApiKey, HeliusTokenBalance, ParsedTrade } from "@/services/helius";
+import { analyzeWallet, WalletAnalysis, getHeliusApiKey, HeliusTokenBalance, ParsedTrade, isValidSolanaAddress } from "@/services/helius";
 import { calculateSmartScore, getScoreStatus, SmartScoreBreakdown } from "@/services/walletScoring";
 import { analyzeAllTokens } from "@/services/tokenSecurity";
 import { generateSignals, getStrategies, saveSignals } from "@/services/tradingEngine";
@@ -29,6 +29,11 @@ const Analyze = () => {
   const { history, addEntry, removeEntry, clearHistory } = useSearchHistory();
 
   const handleSearch = async (address: string) => {
+    if (!isValidSolanaAddress(address)) {
+      toast.error("Nieprawidłowy adres Solana. Sprawdź czy wkleiłeś pełny adres portfela.");
+      return;
+    }
+
     setIsLoading(true);
     setIsLive(false);
 
