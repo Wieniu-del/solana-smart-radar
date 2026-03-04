@@ -97,6 +97,23 @@ Deno.serve(async (req) => {
       enabled: false, min_sol: 0.05, max_sol: 0.5,
     };
 
+    // 3c. Get pipeline config (user-adjustable feature toggles)
+    const { data: pipelineConfigData } = await supabase
+      .from("bot_config")
+      .select("value")
+      .eq("key", "pipeline_config")
+      .single();
+    const pipelineConfig = (pipelineConfigData?.value as any) || {};
+    const pSecurity = pipelineConfig.security_check ?? { enabled: true, min_score: 30 };
+    const pLiquidity = pipelineConfig.liquidity_check ?? { enabled: true, min_value_usd: 1000 };
+    const pWallet = pipelineConfig.wallet_analysis ?? { enabled: true, min_wallet_value_usd: 10000 };
+    const pScoring = pipelineConfig.scoring ?? { buy_threshold: minScoreThreshold, watch_threshold: 45 };
+    const pCorrelation = pipelineConfig.correlation ?? { enabled: true, min_wallets: 2, bonus_per_wallet: 8, max_bonus: 20 };
+    const pSentiment = pipelineConfig.sentiment ?? { enabled: true, block_on_avoid: true };
+    // Use pipeline scoring thresholds if set, otherwise fall back to global
+    const buyThreshold = pScoring.buy_threshold || minScoreThreshold;
+    const watchThreshold = pScoring.watch_threshold || 45;
+
     // 4. Analyze each wallet
     let totalTokensFound = 0;
     let totalSignals = 0;
@@ -188,10 +205,16 @@ Deno.serve(async (req) => {
               const hasPrice = tokenInfo ? tokenInfo.priceUsd > 0 : false;
               const valueUsd = tokenInfo?.valueUsd || 0;
 
-              // Simple scoring
-              const securityScore = isSafe ? 100 : hasPrice ? 60 : 30;
-              const liquidityScore = valueUsd > 100000 ? 80 : valueUsd > 10000 ? 60 : valueUsd > 1000 ? 40 : 20;
-              const walletScore = totalValueUsd > 100000 ? 80 : totalValueUsd > 10000 ? 60 : 40;
+              // Scoring with pipeline config
+              const securityScore = pSecurity.enabled
+                ? (isSafe ? 100 : hasPrice ? 60 : 30)
+                : 70; // neutral if disabled
+              const liquidityScore = pLiquidity.enabled
+                ? (valueUsd > 100000 ? 80 : valueUsd > 10000 ? 60 : valueUsd > 1000 ? 40 : 20)
+                : 60; // neutral if disabled
+              const walletScore = pWallet.enabled
+                ? (totalValueUsd > 100000 ? 80 : totalValueUsd > 10000 ? 60 : 40)
+                : 60; // neutral if disabled
 
               const totalScore = Math.round(
                 securityScore * 0.3 + liquidityScore * 0.25 + walletScore * 0.45
@@ -199,7 +222,7 @@ Deno.serve(async (req) => {
 
               totalTokensFound++;
 
-              const decision = totalScore >= minScoreThreshold ? "BUY" : totalScore >= 45 ? "WATCH" : "SKIP";
+              const decision = totalScore >= buyThreshold ? "BUY" : totalScore >= watchThreshold ? "WATCH" : "SKIP";
 
               allCandidates.push({
                 mint,
@@ -225,55 +248,56 @@ Deno.serve(async (req) => {
     }
 
     // 4b. Smart Money Correlation — bonus if 2+ wallets bought same token
-    const mintWalletCount: Record<string, Set<string>> = {};
-    for (const c of allCandidates) {
-      if (!mintWalletCount[c.mint]) mintWalletCount[c.mint] = new Set();
-      mintWalletCount[c.mint].add(c.sourceWallet);
-    }
-    for (const c of allCandidates) {
-      const walletsBuying = mintWalletCount[c.mint]?.size || 1;
-      if (walletsBuying >= 2) {
-        const correlationBonus = Math.min(walletsBuying * 8, 20); // max +20 pts
-        c.totalScore = Math.min(100, c.totalScore + correlationBonus);
-        c.correlationBonus = correlationBonus;
-        c.correlationWallets = walletsBuying;
-        // Re-evaluate decision with new score
-        c.decision = c.totalScore >= minScoreThreshold ? "BUY" : c.totalScore >= 45 ? "WATCH" : "SKIP";
+    if (pCorrelation.enabled) {
+      const mintWalletCount: Record<string, Set<string>> = {};
+      for (const c of allCandidates) {
+        if (!mintWalletCount[c.mint]) mintWalletCount[c.mint] = new Set();
+        mintWalletCount[c.mint].add(c.sourceWallet);
+      }
+      for (const c of allCandidates) {
+        const walletsBuying = mintWalletCount[c.mint]?.size || 1;
+        if (walletsBuying >= (pCorrelation.min_wallets || 2)) {
+          const correlationBonus = Math.min(walletsBuying * (pCorrelation.bonus_per_wallet || 8), pCorrelation.max_bonus || 20);
+          c.totalScore = Math.min(100, c.totalScore + correlationBonus);
+          c.correlationBonus = correlationBonus;
+          c.correlationWallets = walletsBuying;
+          c.decision = c.totalScore >= buyThreshold ? "BUY" : c.totalScore >= watchThreshold ? "WATCH" : "SKIP";
+        }
       }
     }
     // Recount buy signals after correlation
     totalBuySignals = allCandidates.filter((c) => c.decision === "BUY").length;
 
-    // 4c. AI Sentiment analysis for BUY candidates
-    const buySignals = allCandidates.filter((c) => c.decision === "BUY");
-    for (const candidate of buySignals) {
-      try {
-        const sentimentRes = await fetch(`${supabaseUrl}/functions/v1/token-sentiment`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${supabaseKey}`,
-          },
-          body: JSON.stringify({ tokenSymbol: candidate.symbol, tokenMint: candidate.mint }),
-        });
-        if (sentimentRes.ok) {
-          const sentimentData = await sentimentRes.json();
-          if (sentimentData.success && sentimentData.analysis) {
-            candidate.sentiment = sentimentData.analysis;
-            const sentScore = sentimentData.analysis.sentiment_score || 0;
-            // Adjust total score based on sentiment (-10 to +10)
-            const sentimentAdjust = Math.round(sentScore / 10);
-            candidate.totalScore = Math.max(0, Math.min(100, candidate.totalScore + sentimentAdjust));
-            candidate.sentimentAdjust = sentimentAdjust;
-            // If strongly bearish, downgrade to WATCH
-            if (sentimentData.analysis.recommendation === "AVOID" || sentScore < -50) {
-              candidate.decision = "WATCH";
-              candidate.totalScore = Math.min(candidate.totalScore, 60);
+    // 4c. AI Sentiment analysis for BUY candidates (if enabled)
+    if (pSentiment.enabled) {
+      const buySignals = allCandidates.filter((c) => c.decision === "BUY");
+      for (const candidate of buySignals) {
+        try {
+          const sentimentRes = await fetch(`${supabaseUrl}/functions/v1/token-sentiment`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${supabaseKey}`,
+            },
+            body: JSON.stringify({ tokenSymbol: candidate.symbol, tokenMint: candidate.mint }),
+          });
+          if (sentimentRes.ok) {
+            const sentimentData = await sentimentRes.json();
+            if (sentimentData.success && sentimentData.analysis) {
+              candidate.sentiment = sentimentData.analysis;
+              const sentScore = sentimentData.analysis.sentiment_score || 0;
+              const sentimentAdjust = Math.round(sentScore / 10);
+              candidate.totalScore = Math.max(0, Math.min(100, candidate.totalScore + sentimentAdjust));
+              candidate.sentimentAdjust = sentimentAdjust;
+              if (pSentiment.block_on_avoid && (sentimentData.analysis.recommendation === "AVOID" || sentScore < -50)) {
+                candidate.decision = "WATCH";
+                candidate.totalScore = Math.min(candidate.totalScore, 60);
+              }
             }
           }
+        } catch (sentErr) {
+          console.error(`Sentiment error for ${candidate.symbol}:`, sentErr);
         }
-      } catch (sentErr) {
-        console.error(`Sentiment error for ${candidate.symbol}:`, sentErr);
       }
     }
 
