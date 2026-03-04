@@ -317,7 +317,7 @@ const Activity24h = () => {
               label2: `${token.change >= 0 ? "+" : ""}${token.change}%`,
               label3: `${formatCompact(token.tx24h)} TX`,
               radius,
-              color: CATEGORY_COLORS[token.category],
+              color: getBubbleColor(token.change),
             };
           })}
         />
