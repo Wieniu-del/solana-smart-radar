@@ -1,4 +1,5 @@
-import { BarChart3, Search, Trophy, Activity, Bell, Settings, Brain, ArrowLeftRight, Bot, HandCoins, Newspaper, Wallet } from "lucide-react";
+import { BarChart3, Search, Trophy, Activity, Bell, Settings, Brain, ArrowLeftRight, Bot, HandCoins, Newspaper, Wallet, LogOut } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
 import {
@@ -36,6 +37,7 @@ const systemItems = [
 
 export function AppSidebar() {
   const { state } = useSidebar();
+  const { signOut } = useAuth();
   const collapsed = state === "collapsed";
   const location = useLocation();
   const isActive = (path: string) => location.pathname === path;
@@ -116,6 +118,14 @@ export function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton onClick={() => signOut()} className="hover:bg-destructive/10 hover:text-destructive">
+              <LogOut className="mr-2 h-4 w-4" />
+              {!collapsed && <span>Wyloguj się</span>}
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
         {!collapsed && (
           <div className="p-3 text-[10px] text-muted-foreground font-mono">
             v0.2.0 · Faza 2
