@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 
 const TopBar = () => {
+  const { user, signOut } = useAuth();
   const [chainStatus, setChainStatus] = useState<"online" | "offline" | "checking">("checking");
   const [currentTime, setCurrentTime] = useState(new Date());
   const [latency, setLatency] = useState<number | null>(null);
