@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { getHeliusApiKey } from "@/services/helius";
 import { Wifi, WifiOff, Loader2 } from "lucide-react";
+import NotificationCenter from "@/components/NotificationCenter";
 
 const TopBar = () => {
   const [chainStatus, setChainStatus] = useState<"online" | "offline" | "checking">("checking");
@@ -52,7 +53,8 @@ const TopBar = () => {
         </span>
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
+        <NotificationCenter />
         {/* Blockchain Status */}
         <div className="flex items-center gap-2 text-xs font-mono">
           {chainStatus === "checking" ? (
