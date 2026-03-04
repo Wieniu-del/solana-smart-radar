@@ -222,7 +222,7 @@ Deno.serve(async (req) => {
 
               totalTokensFound++;
 
-              const decision = totalScore >= minScoreThreshold ? "BUY" : totalScore >= 45 ? "WATCH" : "SKIP";
+              const decision = totalScore >= buyThreshold ? "BUY" : totalScore >= watchThreshold ? "WATCH" : "SKIP";
 
               allCandidates.push({
                 mint,
