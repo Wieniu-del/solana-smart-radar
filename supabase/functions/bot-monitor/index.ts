@@ -457,6 +457,17 @@ Deno.serve(async (req) => {
                   message: `Kupiono ${candidate.symbol} za ${positionSol} SOL. Trailing SL: ${trailingStopPct}%, TP: ${takeProfitPct}%. TX: ${swapData.txSignature?.slice(0, 12)}...`,
                   details: { tx: swapData.txSignature, token: candidate.symbol, amount_sol: positionSol, mint: candidate.mint, trailing_stop_pct: trailingStopPct, take_profit_pct: takeProfitPct },
                 });
+
+                // Update signal status to executed
+                const matchingSignal = insertedSignals?.find((s: any) => s.token_symbol === candidate.symbol);
+                if (matchingSignal) {
+                  await supabase.from("trading_signals").update({
+                    status: "executed",
+                    executed_at: new Date().toISOString(),
+                    tx_signature: swapData.txSignature || null,
+                  }).eq("id", matchingSignal.id);
+                }
+
                 executed++;
               } else {
                 await supabase.from("notifications").insert({
@@ -475,7 +486,6 @@ Deno.serve(async (req) => {
               });
             }
           }
-        }
         } // close else for position limit check
 
         // After processing buys, also check open positions (trailing stop / TP)
