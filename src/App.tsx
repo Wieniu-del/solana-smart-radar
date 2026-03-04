@@ -17,6 +17,7 @@ import NotFound from "./pages/NotFound";
 import AutoTrading from "./pages/AutoTrading";
 import ManualTrading from "./pages/ManualTrading";
 import NewsScanner from "./pages/NewsScanner";
+import MyWallet from "./pages/MyWallet";
 
 const queryClient = new QueryClient();
 
@@ -35,6 +36,7 @@ const App = () => (
                 <div className="max-w-6xl mx-auto">
                   <Routes>
                     <Route path="/" element={<Index />} />
+                    <Route path="/wallet" element={<MyWallet />} />
                     <Route path="/analyze" element={<Analyze />} />
                     <Route path="/ranking" element={<Ranking />} />
                     <Route path="/activity" element={<Activity24h />} />
