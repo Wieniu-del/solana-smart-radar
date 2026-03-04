@@ -369,6 +369,19 @@ export default function BotControlPanel() {
             </div>
             <div className="border-t border-border pt-3">
               <p className="text-xs font-medium text-foreground mb-2 flex items-center gap-1.5">
+                <Target className="h-3.5 w-3.5 text-primary" />
+                Limity pozycji
+              </p>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Max otwartych pozycji</label>
+                <Input type="number" min={1} max={20} step={1} value={maxOpenPositions} onChange={(e) => setMaxOpenPositions(Number(e.target.value))} />
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-1.5">
+                Bot czeka z nowymi zakupami dopóki nie zamknie istniejących pozycji. Teraz: <span className="text-foreground font-medium">{openPositions.length}/{maxOpenPositions}</span>
+              </p>
+            </div>
+            <div className="border-t border-border pt-3">
+              <p className="text-xs font-medium text-foreground mb-2 flex items-center gap-1.5">
                 <Shield className="h-3.5 w-3.5 text-primary" />
                 Trailing Stop-Loss & Take-Profit
               </p>
@@ -388,7 +401,7 @@ export default function BotControlPanel() {
             </div>
             {hasUnsavedChanges && <p className="text-[10px] text-neon-amber">⚠ Niezapisane zmiany</p>}
             <div className="text-[10px] text-muted-foreground bg-muted/30 rounded p-2 space-y-0.5">
-              <div>Score: <span className="text-foreground font-medium">{savedMinScore}</span> | Pozycja: <span className="text-foreground font-medium">{savedMaxPosition} SOL</span></div>
+              <div>Score: <span className="text-foreground font-medium">{savedMinScore}</span> | Pozycja: <span className="text-foreground font-medium">{savedMaxPosition} SOL</span> | Max pozycji: <span className="text-foreground font-medium">{savedMaxOpenPositions}</span></div>
               <div>Trailing SL: <span className="text-foreground font-medium">{savedTrailingStop}%</span> | TP: <span className="text-foreground font-medium">{savedTakeProfit}%</span></div>
             </div>
             <Button onClick={saveSettings} disabled={saving} className="w-full" size="sm">
