@@ -52,9 +52,38 @@ function requireKey(): string {
   return key;
 }
 
-// Validate Solana address (Base58, 32-44 chars)
+// Validate Solana address — regex + Base58 decode to 32 bytes
 export function isValidSolanaAddress(address: string): boolean {
-  return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address);
+  if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)) return false;
+  try {
+    const decoded = decodeBase58(address);
+    return decoded.length === 32;
+  } catch {
+    return false;
+  }
+}
+
+function decodeBase58(str: string): Uint8Array {
+  const ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+  const bytes: number[] = [];
+  for (const c of str) {
+    let carry = ALPHABET.indexOf(c);
+    if (carry < 0) throw new Error("Invalid base58 character");
+    for (let i = 0; i < bytes.length; i++) {
+      carry += bytes[i] * 58;
+      bytes[i] = carry & 0xff;
+      carry >>= 8;
+    }
+    while (carry > 0) {
+      bytes.push(carry & 0xff);
+      carry >>= 8;
+    }
+  }
+  for (const c of str) {
+    if (c !== "1") break;
+    bytes.push(0);
+  }
+  return new Uint8Array(bytes.reverse());
 }
 
 // ─── Wallet Transactions ───
@@ -82,10 +111,16 @@ export interface HeliusTransaction {
 }
 
 export async function getTransactionHistory(address: string, limit = 50): Promise<HeliusTransaction[]> {
+  if (!isValidSolanaAddress(address)) {
+    throw new Error("Nieprawidłowy adres Solana — upewnij się, że wklejasz pełny adres portfela (32-44 znaki Base58).");
+  }
   const key = requireKey();
   const res = await fetch(`${HELIUS_BASE}/addresses/${address}/transactions?api-key=${key}&limit=${limit}`);
   if (!res.ok) {
     const text = await res.text();
+    if (res.status === 400 || text.includes("invalid address")) {
+      throw new Error("Podany adres portfela jest nieprawidłowy. Sprawdź, czy wkleiłeś pełny adres Solana.");
+    }
     throw new Error(`Helius API error (${res.status}): ${text}`);
   }
   return res.json();
@@ -105,6 +140,9 @@ export interface HeliusTokenBalance {
 }
 
 export async function getTokenBalances(address: string): Promise<HeliusTokenBalance[]> {
+  if (!isValidSolanaAddress(address)) {
+    throw new Error("Nieprawidłowy adres Solana.");
+  }
   const key = requireKey();
   const res = await fetch(`${HELIUS_RPC}/?api-key=${key}`, {
     method: "POST",
@@ -124,6 +162,9 @@ export async function getTokenBalances(address: string): Promise<HeliusTokenBala
     throw new Error(`Helius RPC error (${res.status}): ${text}`);
   }
   const json = await res.json();
+  if (json.error) {
+    throw new Error(`Nieprawidłowy adres portfela: ${json.error.message || "Weryfikacja adresu nie powiodła się"}`);
+  }
   const items = json.result?.items || [];
   const nativeBalance = json.result?.nativeBalance;
 
