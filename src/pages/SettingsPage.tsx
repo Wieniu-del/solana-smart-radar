@@ -252,9 +252,11 @@ const SettingsPage = () => {
           <input
             type="password"
             value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
+            onChange={(e) => setApiKey(e.target.value.slice(0, 128))}
             placeholder="Wklej klucz API Helius..."
             className="flex-1 bg-muted border border-border rounded-lg px-4 py-2.5 text-sm font-mono text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+            autoComplete="off"
+            spellCheck={false}
           />
           <button
             onClick={handleSaveKey}

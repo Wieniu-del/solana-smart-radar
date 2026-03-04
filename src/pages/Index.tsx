@@ -1,14 +1,75 @@
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { BarChart3, Search, TrendingUp, Activity, Zap, Clock, ArrowUpRight, Brain } from "lucide-react";
+import { BarChart3, Search, TrendingUp, Activity, Zap, Clock, ArrowUpRight, Brain, Trophy, DollarSign, Target, PieChart } from "lucide-react";
 import { mockTopWallets, generateMockWallet } from "@/types/wallet";
 import { useSearchHistory } from "@/hooks/useSearchHistory";
+import { supabase } from "@/integrations/supabase/client";
 import {
-  AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip,
+  AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip, BarChart, Bar
 } from "recharts";
 
 const Index = () => {
   const { history } = useSearchHistory();
+  const [tradingStats, setTradingStats] = useState({
+    totalTrades: 0,
+    successfulTrades: 0,
+    totalPnlSol: 0,
+    winRate: 0,
+    bestTrade: null as any,
+    recentExecutions: [] as any[],
+    signalsByDay: [] as { day: string; count: number }[],
+  });
+
+  useEffect(() => {
+    loadTradingStats();
+  }, []);
+
+  const loadTradingStats = async () => {
+    try {
+      const [execRes, sigRes] = await Promise.all([
+        supabase.from("trade_executions").select("*").order("created_at", { ascending: false }).limit(100),
+        supabase.from("trading_signals").select("*").order("created_at", { ascending: false }).limit(200),
+      ]);
+
+      const executions = execRes.data || [];
+      const signals = sigRes.data || [];
+
+      const successful = executions.filter(e => e.status === "success");
+      const totalPnl = executions.reduce((sum, e) => {
+        if (e.action === "SELL" && e.status === "success") return sum + e.amount_sol;
+        if (e.action === "BUY" && e.status === "success") return sum - e.amount_sol;
+        return sum;
+      }, 0);
+
+      const best = successful.sort((a, b) => b.amount_sol - a.amount_sol)[0] || null;
+
+      // Signals by day (last 7 days)
+      const dayMap = new Map<string, number>();
+      const now = new Date();
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(now);
+        d.setDate(d.getDate() - i);
+        dayMap.set(d.toLocaleDateString("pl-PL", { weekday: "short" }), 0);
+      }
+      for (const sig of signals) {
+        const d = new Date(sig.created_at);
+        const key = d.toLocaleDateString("pl-PL", { weekday: "short" });
+        if (dayMap.has(key)) dayMap.set(key, (dayMap.get(key) || 0) + 1);
+      }
+
+      setTradingStats({
+        totalTrades: executions.length,
+        successfulTrades: successful.length,
+        totalPnlSol: totalPnl,
+        winRate: executions.length > 0 ? (successful.length / executions.length) * 100 : 0,
+        bestTrade: best,
+        recentExecutions: executions.slice(0, 5),
+        signalsByDay: Array.from(dayMap, ([day, count]) => ({ day, count })),
+      });
+    } catch (e) {
+      console.warn("Failed to load trading stats:", e);
+    }
+  };
 
   // Mock network stats
   const networkStats = useMemo(() => ({
@@ -97,6 +158,82 @@ const Index = () => {
             ))}
           </div>
         </div>
+      </div>
+
+      {/* ═══ MOJE WYNIKI ═══ */}
+      <div className="neon-card rounded-xl p-6">
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-2">
+            <Trophy className="h-5 w-5 text-neon-amber" />
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Moje wyniki tradingowe</h3>
+          </div>
+          <Link to="/trading" className="text-xs text-primary hover:underline flex items-center gap-1">
+            Auto Trading <ArrowUpRight className="h-3 w-3" />
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <div className="bg-muted/30 rounded-lg p-3 text-center">
+            <Target className="h-4 w-4 text-primary mx-auto mb-1" />
+            <p className="text-lg font-bold font-mono text-foreground">{tradingStats.totalTrades}</p>
+            <p className="text-[10px] text-muted-foreground">Transakcji</p>
+          </div>
+          <div className="bg-muted/30 rounded-lg p-3 text-center">
+            <Activity className="h-4 w-4 text-primary mx-auto mb-1" />
+            <p className="text-lg font-bold font-mono text-foreground">{tradingStats.winRate.toFixed(1)}%</p>
+            <p className="text-[10px] text-muted-foreground">Win Rate</p>
+          </div>
+          <div className="bg-muted/30 rounded-lg p-3 text-center">
+            <DollarSign className="h-4 w-4 text-neon-amber mx-auto mb-1" />
+            <p className={`text-lg font-bold font-mono ${tradingStats.totalPnlSol >= 0 ? "text-primary" : "text-destructive"}`}>
+              {tradingStats.totalPnlSol >= 0 ? "+" : ""}{tradingStats.totalPnlSol.toFixed(3)} SOL
+            </p>
+            <p className="text-[10px] text-muted-foreground">P&L</p>
+          </div>
+          <div className="bg-muted/30 rounded-lg p-3 text-center">
+            <PieChart className="h-4 w-4 text-secondary mx-auto mb-1" />
+            <p className="text-lg font-bold font-mono text-foreground">{tradingStats.successfulTrades}</p>
+            <p className="text-[10px] text-muted-foreground">Udane</p>
+          </div>
+        </div>
+
+        {/* Signals chart */}
+        {tradingStats.signalsByDay.length > 0 && (
+          <div className="mb-4">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-2">Sygnały (ostatnie 7 dni)</p>
+            <ResponsiveContainer width="100%" height={80}>
+              <BarChart data={tradingStats.signalsByDay}>
+                <Bar dataKey="count" fill="hsl(155, 100%, 50%)" radius={[4, 4, 0, 0]} />
+                <XAxis dataKey="day" tick={{ fontSize: 9, fill: "hsl(220,10%,55%)" }} axisLine={false} tickLine={false} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+
+        {/* Recent executions */}
+        {tradingStats.recentExecutions.length > 0 ? (
+          <div className="space-y-2">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Ostatnie transakcje</p>
+            {tradingStats.recentExecutions.map((ex) => (
+              <div key={ex.id} className="flex items-center gap-3 bg-muted/20 rounded-lg px-3 py-2">
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${ex.action === "BUY" ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive"}`}>
+                  {ex.action}
+                </span>
+                <span className="text-xs font-mono text-foreground flex-1 truncate">
+                  {ex.token_symbol || ex.token_mint?.slice(0, 8)}
+                </span>
+                <span className="text-xs font-mono text-muted-foreground">{ex.amount_sol} SOL</span>
+                <span className={`text-[10px] ${ex.status === "success" ? "text-primary" : "text-destructive"}`}>
+                  {ex.status === "success" ? "✓" : "✗"}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-4">
+            <p className="text-xs text-muted-foreground">Brak transakcji — uruchom bota w <Link to="/trading" className="text-primary hover:underline">Auto Trading</Link></p>
+          </div>
+        )}
       </div>
 
       {/* Bottom Grid */}
