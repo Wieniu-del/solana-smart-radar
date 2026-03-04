@@ -244,9 +244,45 @@ Deno.serve(async (req) => {
     // Recount buy signals after correlation
     totalBuySignals = allCandidates.filter((c) => c.decision === "BUY").length;
 
-    // 5. Save BUY signals to trading_signals
+    // 4c. AI Sentiment analysis for BUY candidates
     const buySignals = allCandidates.filter((c) => c.decision === "BUY");
-    if (buySignals.length > 0) {
+    for (const candidate of buySignals) {
+      try {
+        const sentimentRes = await fetch(`${supabaseUrl}/functions/v1/token-sentiment`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${supabaseKey}`,
+          },
+          body: JSON.stringify({ tokenSymbol: candidate.symbol, tokenMint: candidate.mint }),
+        });
+        if (sentimentRes.ok) {
+          const sentimentData = await sentimentRes.json();
+          if (sentimentData.success && sentimentData.analysis) {
+            candidate.sentiment = sentimentData.analysis;
+            const sentScore = sentimentData.analysis.sentiment_score || 0;
+            // Adjust total score based on sentiment (-10 to +10)
+            const sentimentAdjust = Math.round(sentScore / 10);
+            candidate.totalScore = Math.max(0, Math.min(100, candidate.totalScore + sentimentAdjust));
+            candidate.sentimentAdjust = sentimentAdjust;
+            // If strongly bearish, downgrade to WATCH
+            if (sentimentData.analysis.recommendation === "AVOID" || sentScore < -50) {
+              candidate.decision = "WATCH";
+              candidate.totalScore = Math.min(candidate.totalScore, 60);
+            }
+          }
+        }
+      } catch (sentErr) {
+        console.error(`Sentiment error for ${candidate.symbol}:`, sentErr);
+      }
+    }
+
+    // Recount after sentiment adjustment
+    totalBuySignals = allCandidates.filter((c) => c.decision === "BUY").length;
+
+    // 5. Save BUY signals to trading_signals
+    const finalBuySignals = allCandidates.filter((c) => c.decision === "BUY");
+    if (finalBuySignals.length > 0) {
       const signals = buySignals.map((c) => ({
         wallet_address: c.sourceWallet,
         token_mint: c.mint,
