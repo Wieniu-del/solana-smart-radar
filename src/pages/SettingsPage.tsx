@@ -113,7 +113,7 @@ const SettingsPage = () => {
       const pubkey = resp.publicKey.toString();
       setSolanaWallet(pubkey);
       localStorage.setItem("connected_wallet", pubkey);
-      toast.success(`Portfel podłączony: ${pubkey.slice(0, 6)}...${pubkey.slice(-4)}`);
+      toast.success(`Portfel podłączony: ${pubkey}`);
     } catch (err: any) {
       if (err.code === 4001) {
         toast.error("Połączenie odrzucone przez użytkownika");
