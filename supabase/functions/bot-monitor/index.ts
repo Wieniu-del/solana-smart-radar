@@ -205,10 +205,16 @@ Deno.serve(async (req) => {
               const hasPrice = tokenInfo ? tokenInfo.priceUsd > 0 : false;
               const valueUsd = tokenInfo?.valueUsd || 0;
 
-              // Simple scoring
-              const securityScore = isSafe ? 100 : hasPrice ? 60 : 30;
-              const liquidityScore = valueUsd > 100000 ? 80 : valueUsd > 10000 ? 60 : valueUsd > 1000 ? 40 : 20;
-              const walletScore = totalValueUsd > 100000 ? 80 : totalValueUsd > 10000 ? 60 : 40;
+              // Scoring with pipeline config
+              const securityScore = pSecurity.enabled
+                ? (isSafe ? 100 : hasPrice ? 60 : 30)
+                : 70; // neutral if disabled
+              const liquidityScore = pLiquidity.enabled
+                ? (valueUsd > 100000 ? 80 : valueUsd > 10000 ? 60 : valueUsd > 1000 ? 40 : 20)
+                : 60; // neutral if disabled
+              const walletScore = pWallet.enabled
+                ? (totalValueUsd > 100000 ? 80 : totalValueUsd > 10000 ? 60 : 40)
+                : 60; // neutral if disabled
 
               const totalScore = Math.round(
                 securityScore * 0.3 + liquidityScore * 0.25 + walletScore * 0.45
