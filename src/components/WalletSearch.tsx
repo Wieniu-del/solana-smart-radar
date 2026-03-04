@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { Search, Loader2 } from "lucide-react";
+import { Search, Loader2, ShieldAlert } from "lucide-react";
+import { sanitizeSolanaAddress } from "@/lib/sanitize";
+import { toast } from "sonner";
 
 interface WalletSearchProps {
   onSearch: (address: string) => void;
@@ -11,9 +13,12 @@ const WalletSearch = ({ onSearch, isLoading }: WalletSearchProps) => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (address.trim()) {
-      onSearch(address.trim());
+    const clean = sanitizeSolanaAddress(address);
+    if (!clean) {
+      toast.error("Nieprawidłowy adres Solana — wklej pełny adres Base58 (32-44 znaki)");
+      return;
     }
+    onSearch(clean);
   };
 
   return (
