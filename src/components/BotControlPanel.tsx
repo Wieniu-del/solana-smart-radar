@@ -367,10 +367,16 @@ export default function BotControlPanel() {
         {/* Tracked Wallets */}
         <Card className="border-border bg-card">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Activity className="h-4 w-4 text-primary" />
-              Śledzone portfele ({trackedWallets.length})
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Activity className="h-4 w-4 text-primary" />
+                Śledzone portfele ({trackedWallets.length})
+              </CardTitle>
+              <Button size="sm" variant="outline" onClick={discoverWallets} disabled={discovering}>
+                {discovering ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Search className="h-3.5 w-3.5 mr-1" />}
+                <span className="text-[10px]">Auto-discovery</span>
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex gap-2">
@@ -378,9 +384,33 @@ export default function BotControlPanel() {
                 onKeyDown={(e) => e.key === "Enter" && addWallet()} className="text-xs font-mono" />
               <Button size="sm" onClick={addWallet} disabled={saving}><Plus className="h-4 w-4" /></Button>
             </div>
+
+            {/* Discovered wallets */}
+            {discoveredWallets.length > 0 && (
+              <div className="border border-primary/20 rounded-lg p-2 space-y-1.5">
+                <p className="text-[10px] font-medium text-primary flex items-center gap-1">
+                  <Sparkles className="h-3 w-3" />
+                  Odkryte portfele ({discoveredWallets.length})
+                </p>
+                {discoveredWallets.map((w: any) => (
+                  <div key={w.address} className="flex items-center justify-between bg-primary/5 rounded px-2 py-1.5">
+                    <div className="flex-1 min-w-0">
+                      <span className="text-[10px] font-mono text-foreground block truncate">{w.address}</span>
+                      <span className="text-[9px] text-muted-foreground">
+                        {w.swaps} swapów · {w.tokenDiversity} tokenów · {w.solBalance} SOL
+                      </span>
+                    </div>
+                    <Button size="sm" variant="outline" className="h-6 text-[10px] ml-2 shrink-0" onClick={() => addDiscoveredWallet(w.address)} disabled={saving}>
+                      <Plus className="h-3 w-3 mr-0.5" /> Dodaj
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
               {trackedWallets.length === 0 ? (
-                <p className="text-xs text-muted-foreground text-center py-4">Brak śledzonych portfeli. Dodaj adres smart money.</p>
+                <p className="text-xs text-muted-foreground text-center py-4">Brak śledzonych portfeli. Użyj Auto-discovery lub dodaj ręcznie.</p>
               ) : (
                 trackedWallets.map((w) => (
                   <div key={w} className="flex items-center justify-between bg-muted/30 rounded px-2.5 py-1.5">
