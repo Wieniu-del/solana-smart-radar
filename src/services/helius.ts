@@ -72,6 +72,8 @@ export function setHeliusApiKey(key: string) {
   }
 
   localStorage.setItem("helius_api_key", clean);
+  _cachedKey = clean;
+  window.dispatchEvent(new Event("helius-key-updated"));
 }
 
 export async function validateHeliusKey(key: string): Promise<boolean> {

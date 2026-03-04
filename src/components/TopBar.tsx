@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { getHeliusApiKey } from "@/services/helius";
 import { Wifi, WifiOff, Loader2 } from "lucide-react";
@@ -9,39 +9,46 @@ const TopBar = () => {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [latency, setLatency] = useState<number | null>(null);
 
-  useEffect(() => {
-    const checkChain = async () => {
-      const key = getHeliusApiKey();
-      if (!key) {
-        setChainStatus("offline");
-        setLatency(null);
-        return;
-      }
-      const start = performance.now();
-      try {
-        const res = await fetch(`https://mainnet.helius-rpc.com/?api-key=${key}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getHealth" }),
-          signal: AbortSignal.timeout(5000),
-        });
-        setLatency(Math.round(performance.now() - start));
-        setChainStatus(res.ok ? "online" : "offline");
-      } catch {
-        setChainStatus("offline");
-        setLatency(null);
-      }
-    };
+  const checkChain = useCallback(async () => {
+    const key = getHeliusApiKey();
+    if (!key) {
+      setChainStatus("offline");
+      setLatency(null);
+      return;
+    }
+    const start = performance.now();
+    try {
+      const res = await fetch(`https://mainnet.helius-rpc.com/?api-key=${key}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getHealth" }),
+        signal: AbortSignal.timeout(5000),
+      });
+      setLatency(Math.round(performance.now() - start));
+      setChainStatus(res.ok ? "online" : "offline");
+    } catch {
+      setChainStatus("offline");
+      setLatency(null);
+    }
+  }, []);
 
+  useEffect(() => {
     checkChain();
     const healthInterval = setInterval(checkChain, 30000);
     const clockInterval = setInterval(() => setCurrentTime(new Date()), 1000);
 
+    // Re-check when Helius key is updated (from init or settings)
+    const onKeyUpdate = () => { checkChain(); };
+    window.addEventListener("helius-key-updated", onKeyUpdate);
+    window.addEventListener("storage", onKeyUpdate);
+
     return () => {
       clearInterval(healthInterval);
       clearInterval(clockInterval);
+      window.removeEventListener("helius-key-updated", onKeyUpdate);
+      window.removeEventListener("storage", onKeyUpdate);
     };
-  }, []);
+  }, [checkChain]);
 
   return (
     <header className="h-12 flex items-center justify-between border-b border-border px-4 bg-card/50 backdrop-blur-sm">

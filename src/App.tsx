@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -18,10 +19,17 @@ import AutoTrading from "./pages/AutoTrading";
 import ManualTrading from "./pages/ManualTrading";
 import NewsScanner from "./pages/NewsScanner";
 import MyWallet from "./pages/MyWallet";
+import { initHeliusApiKey } from "@/services/helius";
 
 const queryClient = new QueryClient();
 
-const App = () => (
+const App = () => {
+  // Auto-fetch Helius API key from Cloud on startup
+  useEffect(() => {
+    initHeliusApiKey();
+  }, []);
+
+  return (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Toaster />
