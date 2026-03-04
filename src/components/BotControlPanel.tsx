@@ -239,6 +239,42 @@ export default function BotControlPanel() {
     } finally { setSaving(false); }
   }
 
+  async function discoverWallets() {
+    setDiscovering(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("wallet-discovery", { body: {} });
+      if (error) throw error;
+      if (data?.candidates?.length > 0) {
+        setDiscoveredWallets(data.candidates);
+        toast({
+          title: `🔍 Odkryto ${data.candidates.length} portfeli`,
+          description: `Przeanalizowano ${data.total_analyzed} portfeli, znaleziono ${data.discovered} kandydatów`,
+        });
+      } else {
+        toast({ title: "Brak nowych portfeli", description: "Nie znaleziono aktywnych portfeli spełniających kryteria" });
+      }
+    } catch (e: any) {
+      toast({ title: "Błąd discovery", description: e.message, variant: "destructive" });
+    } finally { setDiscovering(false); }
+  }
+
+  async function addDiscoveredWallet(addr: string) {
+    if (trackedWallets.includes(addr)) {
+      toast({ title: "Już śledzony" });
+      return;
+    }
+    setSaving(true);
+    try {
+      const updated = [...trackedWallets, addr];
+      await updateConfig("tracked_wallets", updated);
+      setTrackedWallets(updated);
+      setDiscoveredWallets((prev) => prev.filter((w) => w.address !== addr));
+      toast({ title: "✅ Portfel dodany do śledzenia" });
+    } catch (e: any) {
+      toast({ title: "Błąd", description: e.message, variant: "destructive" });
+    } finally { setSaving(false); }
+  }
+
   const hasUnsavedChanges = minScore !== savedMinScore || maxPosition !== savedMaxPosition ||
     trailingStop !== savedTrailingStop || takeProfit !== savedTakeProfit || maxOpenPositions !== savedMaxOpenPositions ||
     JSON.stringify(dynamicSizing) !== JSON.stringify(savedDynamicSizing);
