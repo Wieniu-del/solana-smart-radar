@@ -408,10 +408,42 @@ export default function BotControlPanel() {
                 SL podąża za ceną — jeśli cena wzrośnie o 30% i spadnie {trailingStop}% od szczytu, pozycja zostanie zamknięta z zyskiem.
               </p>
             </div>
+            {/* Dynamic Sizing */}
+            <div className="border-t border-border pt-3">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-medium text-foreground flex items-center gap-1.5">
+                  <TrendingUp className="h-3.5 w-3.5 text-primary" />
+                  Dynamiczny sizing pozycji
+                </p>
+                <Switch
+                  checked={dynamicSizing.enabled}
+                  onCheckedChange={(checked) => setDynamicSizing({ ...dynamicSizing, enabled: checked })}
+                />
+              </div>
+              {dynamicSizing.enabled && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">Min SOL (score 70)</label>
+                    <Input type="number" min={0.01} step={0.01} value={dynamicSizing.min_sol}
+                      onChange={(e) => setDynamicSizing({ ...dynamicSizing, min_sol: Number(e.target.value) })} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">Max SOL (score 100)</label>
+                    <Input type="number" min={0.01} step={0.01} value={dynamicSizing.max_sol}
+                      onChange={(e) => setDynamicSizing({ ...dynamicSizing, max_sol: Number(e.target.value) })} />
+                  </div>
+                </div>
+              )}
+              <p className="text-[10px] text-muted-foreground mt-1.5">
+                {dynamicSizing.enabled
+                  ? `Wyższy confidence = większa pozycja: ${dynamicSizing.min_sol}–${dynamicSizing.max_sol} SOL`
+                  : "Wyłączony — stała wielkość pozycji"}
+              </p>
+            </div>
             {hasUnsavedChanges && <p className="text-[10px] text-neon-amber">⚠ Niezapisane zmiany</p>}
             <div className="text-[10px] text-muted-foreground bg-muted/30 rounded p-2 space-y-0.5">
               <div>Score: <span className="text-foreground font-medium">{savedMinScore}</span> | Pozycja: <span className="text-foreground font-medium">{savedMaxPosition} SOL</span> | Max pozycji: <span className="text-foreground font-medium">{savedMaxOpenPositions}</span></div>
-              <div>Trailing SL: <span className="text-foreground font-medium">{savedTrailingStop}%</span> | TP: <span className="text-foreground font-medium">{savedTakeProfit}%</span></div>
+              <div>Trailing SL: <span className="text-foreground font-medium">{savedTrailingStop}%</span> | TP: <span className="text-foreground font-medium">{savedTakeProfit}%</span> | Sizing: <span className="text-foreground font-medium">{savedDynamicSizing.enabled ? `${savedDynamicSizing.min_sol}–${savedDynamicSizing.max_sol} SOL` : "stały"}</span></div>
             </div>
             <Button onClick={saveSettings} disabled={saving} className="w-full" size="sm">
               {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
