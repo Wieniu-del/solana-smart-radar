@@ -371,7 +371,7 @@ Deno.serve(async (req) => {
           const slotsAvailable = maxOpenPositions - (currentOpen || 0);
           let executed = 0;
 
-          for (const candidate of buySignals) {
+          for (const candidate of finalBuySignals) {
             if (executed >= slotsAvailable) {
               console.log(`Max positions reached (${maxOpenPositions}), queuing remaining signals`);
               break;
