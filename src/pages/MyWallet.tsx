@@ -9,7 +9,7 @@ import {
   TrendingUp, TrendingDown, ExternalLink, Copy, Image, AlertTriangle
 } from "lucide-react";
 import {
-  getHeliusApiKey, getTokenBalances, getTransactionHistory, parseTradesFromHistory,
+  getHeliusApiKey, initHeliusApiKey, getTokenBalances, getTransactionHistory, parseTradesFromHistory,
   type HeliusTokenBalance, type HeliusTransaction, type ParsedTrade
 } from "@/services/helius";
 import { analyzeTokenSecurity, getRiskColor, getRiskLabel, type TokenSecurityReport } from "@/services/tokenSecurity";
@@ -54,8 +54,9 @@ export default function MyWallet() {
   }, [walletAddress]);
 
   async function loadWalletData(address: string) {
-    if (!getHeliusApiKey()) {
-      toast.error("Dodaj klucz Helius API w Ustawieniach");
+    const key = getHeliusApiKey() || await initHeliusApiKey();
+    if (!key) {
+      toast.error("Brak klucza Helius API — sprawdź Ustawienia");
       return;
     }
     if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)) {
@@ -68,7 +69,7 @@ export default function MyWallet() {
     setWalletAddress(address);
     try {
       const { supabase } = await import("@/integrations/supabase/client");
-      await supabase.from("bot_config").upsert({ key: "connected_wallet", value: JSON.stringify(address) }, { onConflict: "key" });
+      await supabase.from("bot_config").upsert({ key: "connected_wallet", value: address }, { onConflict: "key" });
     } catch { /* non-critical */ }
 
     setLoading(true);

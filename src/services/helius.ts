@@ -22,10 +22,12 @@ export function getHeliusApiKey(): string | null {
  * Auto-fetch Helius API key from Cloud secrets and store locally.
  * Called once on app startup.
  */
-export async function initHeliusApiKey(): Promise<string | null> {
-  // Already have key
-  const existing = getHeliusApiKey();
-  if (existing) return existing;
+export async function initHeliusApiKey(forceRefresh = false): Promise<string | null> {
+  // Already have key (unless forced refresh)
+  if (!forceRefresh) {
+    const existing = getHeliusApiKey();
+    if (existing) return existing;
+  }
 
   // Prevent duplicate fetches
   if (_fetchingKey) return _fetchingKey;
@@ -34,7 +36,7 @@ export async function initHeliusApiKey(): Promise<string | null> {
     try {
       const { data, error } = await supabase.functions.invoke("get-helius-key");
       if (error || !data?.key) return null;
-      const key = data.key as string;
+      const key = (data.key as string).trim();
       localStorage.setItem("helius_api_key", key);
       _cachedKey = key;
       // Notify other components (TopBar, BlockchainStatus)
@@ -160,12 +162,26 @@ export async function getTransactionHistory(address: string, limit = 50): Promis
   if (!isValidSolanaAddress(address)) {
     throw new Error("Nieprawidłowy adres Solana — upewnij się, że wklejasz pełny adres portfela (32-44 znaki Base58).");
   }
-  const key = requireKey();
-  const res = await fetch(`${HELIUS_BASE}/addresses/${address}/transactions?api-key=${key}&limit=${limit}`);
+
+  let key = requireKey();
+  let res = await fetch(`${HELIUS_BASE}/addresses/${address}/transactions?api-key=${key}&limit=${limit}`);
+
+  // Auto-recover from stale/invalid local key
+  if (res.status === 401) {
+    const refreshed = await initHeliusApiKey(true);
+    if (refreshed) {
+      key = refreshed;
+      res = await fetch(`${HELIUS_BASE}/addresses/${address}/transactions?api-key=${key}&limit=${limit}`);
+    }
+  }
+
   if (!res.ok) {
     const text = await res.text();
     if (res.status === 400 || text.includes("invalid address")) {
       throw new Error("Podany adres portfela jest nieprawidłowy. Sprawdź, czy wkleiłeś pełny adres Solana.");
+    }
+    if (res.status === 401) {
+      throw new Error("Błąd autoryzacji Helius (401). Klucz API został odświeżony — spróbuj ponownie za kilka sekund.");
     }
     throw new Error(`Helius API error (${res.status}): ${text}`);
   }
@@ -189,8 +205,9 @@ export async function getTokenBalances(address: string): Promise<HeliusTokenBala
   if (!isValidSolanaAddress(address)) {
     throw new Error("Nieprawidłowy adres Solana.");
   }
-  const key = requireKey();
-  const res = await fetch(`${HELIUS_RPC}/?api-key=${key}`, {
+
+  let key = requireKey();
+  let res = await fetch(`${HELIUS_RPC}/?api-key=${key}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -203,8 +220,33 @@ export async function getTokenBalances(address: string): Promise<HeliusTokenBala
       },
     }),
   });
+
+  // Auto-recover from stale/invalid local key
+  if (res.status === 401) {
+    const refreshed = await initHeliusApiKey(true);
+    if (refreshed) {
+      key = refreshed;
+      res = await fetch(`${HELIUS_RPC}/?api-key=${key}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "getAssetsByOwner",
+          params: {
+            ownerAddress: address,
+            displayOptions: { showFungible: true, showNativeBalance: true },
+          },
+        }),
+      });
+    }
+  }
+
   if (!res.ok) {
     const text = await res.text();
+    if (res.status === 401) {
+      throw new Error("Błąd autoryzacji Helius (401). Klucz API został odświeżony — spróbuj ponownie za kilka sekund.");
+    }
     throw new Error(`Helius RPC error (${res.status}): ${text}`);
   }
   const json = await res.json();
