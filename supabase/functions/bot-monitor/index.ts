@@ -312,7 +312,7 @@ Deno.serve(async (req) => {
             .select("value")
             .eq("key", "max_position_sol")
             .single();
-          const positionSol = (posConfig?.value as number) || 0.1;
+          const basePositionSol = (posConfig?.value as number) || 0.1;
 
           // Get trailing stop settings
           const { data: tsConfig } = await supabase
