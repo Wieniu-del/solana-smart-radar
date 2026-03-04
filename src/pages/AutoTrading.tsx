@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import BotControlPanel from "@/components/BotControlPanel";
 import PnLDashboard from "@/components/PnLDashboard";
+import SystemStatusPanel from "@/components/SystemStatusPanel";
 import {
   Bot, Zap, ShieldAlert, TrendingUp, TrendingDown, Clock, AlertTriangle,
   CheckCircle2, XCircle, Activity, Target, DollarSign, Play, Square,
