@@ -87,6 +87,16 @@ Deno.serve(async (req) => {
       .single();
     const minScoreThreshold = (thresholdConfig?.value as number) || 70;
 
+    // 3b. Get dynamic sizing config
+    const { data: dynSizingConfig } = await supabase
+      .from("bot_config")
+      .select("value")
+      .eq("key", "dynamic_sizing")
+      .single();
+    const dynamicSizing = (dynSizingConfig?.value as { enabled: boolean; min_sol: number; max_sol: number }) || {
+      enabled: false, min_sol: 0.05, max_sol: 0.5,
+    };
+
     // 4. Analyze each wallet
     let totalTokensFound = 0;
     let totalSignals = 0;
