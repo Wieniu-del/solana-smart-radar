@@ -55,6 +55,8 @@ export default function BotControlPanel() {
   const [savedMaxPosition, setSavedMaxPosition] = useState(0.1);
   const [savedTrailingStop, setSavedTrailingStop] = useState(10);
   const [savedTakeProfit, setSavedTakeProfit] = useState(50);
+  const [maxOpenPositions, setMaxOpenPositions] = useState(3);
+  const [savedMaxOpenPositions, setSavedMaxOpenPositions] = useState(3);
   const [recentRuns, setRecentRuns] = useState<BotRun[]>([]);
   const [openPositions, setOpenPositions] = useState<OpenPosition[]>([]);
   const [closedPositions, setClosedPositions] = useState<OpenPosition[]>([]);
@@ -75,6 +77,7 @@ export default function BotControlPanel() {
             case "max_position_sol": { const v = c.value as number || 0.1; setMaxPosition(v); setSavedMaxPosition(v); break; }
             case "trailing_stop_pct": { const v = c.value as number || 10; setTrailingStop(v); setSavedTrailingStop(v); break; }
             case "take_profit_pct": { const v = c.value as number || 50; setTakeProfit(v); setSavedTakeProfit(v); break; }
+            case "max_open_positions": { const v = c.value as number || 3; setMaxOpenPositions(v); setSavedMaxOpenPositions(v); break; }
           }
         }
       }
@@ -183,11 +186,13 @@ export default function BotControlPanel() {
         updateConfig("max_position_sol", maxPosition),
         updateConfig("trailing_stop_pct", trailingStop),
         updateConfig("take_profit_pct", takeProfit),
+        updateConfig("max_open_positions", maxOpenPositions),
       ]);
       setSavedMinScore(minScore);
       setSavedMaxPosition(maxPosition);
       setSavedTrailingStop(trailingStop);
       setSavedTakeProfit(takeProfit);
+      setSavedMaxOpenPositions(maxOpenPositions);
       toast({ title: "✅ Ustawienia zapisane" });
     } catch (e: any) {
       toast({ title: "Błąd", description: e.message, variant: "destructive" });
@@ -225,7 +230,7 @@ export default function BotControlPanel() {
   }
 
   const hasUnsavedChanges = minScore !== savedMinScore || maxPosition !== savedMaxPosition ||
-    trailingStop !== savedTrailingStop || takeProfit !== savedTakeProfit;
+    trailingStop !== savedTrailingStop || takeProfit !== savedTakeProfit || maxOpenPositions !== savedMaxOpenPositions;
 
   // Stats
   const last24h = recentRuns.filter((r) => new Date(r.started_at).getTime() > Date.now() - 86400000);
@@ -364,6 +369,19 @@ export default function BotControlPanel() {
             </div>
             <div className="border-t border-border pt-3">
               <p className="text-xs font-medium text-foreground mb-2 flex items-center gap-1.5">
+                <Target className="h-3.5 w-3.5 text-primary" />
+                Limity pozycji
+              </p>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Max otwartych pozycji</label>
+                <Input type="number" min={1} max={20} step={1} value={maxOpenPositions} onChange={(e) => setMaxOpenPositions(Number(e.target.value))} />
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-1.5">
+                Bot czeka z nowymi zakupami dopóki nie zamknie istniejących pozycji. Teraz: <span className="text-foreground font-medium">{openPositions.length}/{maxOpenPositions}</span>
+              </p>
+            </div>
+            <div className="border-t border-border pt-3">
+              <p className="text-xs font-medium text-foreground mb-2 flex items-center gap-1.5">
                 <Shield className="h-3.5 w-3.5 text-primary" />
                 Trailing Stop-Loss & Take-Profit
               </p>
@@ -383,7 +401,7 @@ export default function BotControlPanel() {
             </div>
             {hasUnsavedChanges && <p className="text-[10px] text-neon-amber">⚠ Niezapisane zmiany</p>}
             <div className="text-[10px] text-muted-foreground bg-muted/30 rounded p-2 space-y-0.5">
-              <div>Score: <span className="text-foreground font-medium">{savedMinScore}</span> | Pozycja: <span className="text-foreground font-medium">{savedMaxPosition} SOL</span></div>
+              <div>Score: <span className="text-foreground font-medium">{savedMinScore}</span> | Pozycja: <span className="text-foreground font-medium">{savedMaxPosition} SOL</span> | Max pozycji: <span className="text-foreground font-medium">{savedMaxOpenPositions}</span></div>
               <div>Trailing SL: <span className="text-foreground font-medium">{savedTrailingStop}%</span> | TP: <span className="text-foreground font-medium">{savedTakeProfit}%</span></div>
             </div>
             <Button onClick={saveSettings} disabled={saving} className="w-full" size="sm">
