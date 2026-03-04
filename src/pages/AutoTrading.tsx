@@ -228,6 +228,10 @@ export default function AutoTrading() {
             <BarChart3 className="h-3.5 w-3.5 mr-1" />
             PnL
           </TabsTrigger>
+          <TabsTrigger value="status">
+            <Activity className="h-3.5 w-3.5 mr-1" />
+            Status
+          </TabsTrigger>
         </TabsList>
 
         {/* ─── Bot 24/7 Control Panel ─── */}
