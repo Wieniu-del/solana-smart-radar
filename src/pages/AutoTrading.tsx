@@ -466,6 +466,20 @@ function SignalCard({
                   <Zap className="h-3 w-3" />
                   Pewność: {signal.confidence}%
                 </span>
+                {signal.conditions?.correlation_wallets > 1 && (
+                  <span className="flex items-center gap-1 text-primary">
+                    <Users className="h-3 w-3" />
+                    Konsensus: {signal.conditions.correlation_wallets} portfeli (+{signal.conditions.correlation_bonus}pts)
+                  </span>
+                )}
+                {signal.conditions?.sentiment && signal.conditions.sentiment !== "unknown" && (
+                  <span className={`flex items-center gap-1 ${
+                    signal.conditions.sentiment === "bullish" ? "text-primary" :
+                    signal.conditions.sentiment === "bearish" ? "text-destructive" : "text-muted-foreground"
+                  }`}>
+                    🧠 {signal.conditions.sentiment} ({signal.conditions.sentiment_score > 0 ? "+" : ""}{signal.conditions.sentiment_score})
+                  </span>
+                )}
               </div>
               <p className="text-[10px] text-muted-foreground mt-1 font-mono truncate max-w-xs">
                 {signal.wallet_address}

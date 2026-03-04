@@ -11,3 +11,12 @@ verify_jwt = false
 
 [functions.position-monitor]
 verify_jwt = false
+
+[functions.wallet-discovery]
+verify_jwt = false
+
+[functions.token-sentiment]
+verify_jwt = false
+
+[functions.get-helius-key]
+verify_jwt = false
