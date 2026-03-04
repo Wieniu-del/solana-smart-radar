@@ -77,31 +77,45 @@ export default function AutoTrading() {
     }
 
     // Try localStorage first, then fall back to bot_config in DB
-    let trackedWallets: string[] = (() => {
-      try { return JSON.parse(localStorage.getItem("tracked_wallets") || "[]"); } catch { return []; }
-    })();
+    let trackedWallets: string[] = [];
+    try {
+      const stored = localStorage.getItem("tracked_wallets");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          trackedWallets = parsed;
+        }
+      }
+    } catch { /* ignore parse errors */ }
 
-    // If localStorage is empty, fetch from bot_config table
+    // If localStorage is empty, always fetch from bot_config table
     if (trackedWallets.length === 0) {
       try {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from("bot_config")
           .select("value")
           .eq("key", "tracked_wallets")
           .single();
-        const dbWallets = (data?.value as string[]) || [];
-        if (dbWallets.length > 0) {
-          trackedWallets = dbWallets;
-          // Sync to localStorage for future use
-          localStorage.setItem("tracked_wallets", JSON.stringify(dbWallets));
+        console.log("[Bot] DB tracked_wallets:", data?.value, "error:", error);
+        if (data?.value) {
+          const val = data.value;
+          const dbWallets = Array.isArray(val) ? val.filter((w): w is string => typeof w === "string") : [];
+          if (dbWallets.length > 0) {
+            trackedWallets = dbWallets;
+            localStorage.setItem("tracked_wallets", JSON.stringify(dbWallets));
+          }
         }
-      } catch { /* ignore */ }
+      } catch (e) {
+        console.error("[Bot] Failed to fetch wallets from DB:", e);
+      }
     }
 
     if (trackedWallets.length === 0) {
       toast({ title: "Brak portfeli", description: "Dodaj śledzone portfele w Ustawieniach lub w panelu bota", variant: "destructive" });
       return;
     }
+    
+    console.log("[Bot] Using", trackedWallets.length, "tracked wallets");
 
     setScanning(true);
     try {
