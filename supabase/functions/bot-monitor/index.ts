@@ -333,7 +333,7 @@ Deno.serve(async (req) => {
         status: "pending",
       }));
 
-      const { data: insertedSignals } = await supabase.from("trading_signals").insert(signals).select("id, token_symbol, confidence");
+      const { data: insertedSignals } = await supabase.from("trading_signals").insert(signals).select("id, token_symbol, token_mint, confidence");
       totalSignals = signals.length;
 
       // Send notifications for each signal
@@ -400,7 +400,7 @@ Deno.serve(async (req) => {
               console.log(`Max positions reached (${maxOpenPositions}), queuing remaining signals`);
               break;
             }
-            if (candidate.totalScore > 80) {
+
             // Dynamic sizing: scale position by confidence score
             let positionSol = basePositionSol;
             if (dynamicSizing.enabled) {
@@ -457,6 +457,17 @@ Deno.serve(async (req) => {
                   message: `Kupiono ${candidate.symbol} za ${positionSol} SOL. Trailing SL: ${trailingStopPct}%, TP: ${takeProfitPct}%. TX: ${swapData.txSignature?.slice(0, 12)}...`,
                   details: { tx: swapData.txSignature, token: candidate.symbol, amount_sol: positionSol, mint: candidate.mint, trailing_stop_pct: trailingStopPct, take_profit_pct: takeProfitPct },
                 });
+
+                // Update signal status to executed
+                const matchingSignal = insertedSignals?.find((s: any) => s.token_symbol === candidate.symbol);
+                if (matchingSignal) {
+                  await supabase.from("trading_signals").update({
+                    status: "executed",
+                    executed_at: new Date().toISOString(),
+                    tx_signature: swapData.txSignature || null,
+                  }).eq("id", matchingSignal.id);
+                }
+
                 executed++;
               } else {
                 await supabase.from("notifications").insert({
@@ -475,7 +486,6 @@ Deno.serve(async (req) => {
               });
             }
           }
-        }
         } // close else for position limit check
 
         // After processing buys, also check open positions (trailing stop / TP)
