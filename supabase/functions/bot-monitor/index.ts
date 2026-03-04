@@ -400,7 +400,7 @@ Deno.serve(async (req) => {
               console.log(`Max positions reached (${maxOpenPositions}), queuing remaining signals`);
               break;
             }
-            if (candidate.totalScore > 80) {
+
             // Dynamic sizing: scale position by confidence score
             let positionSol = basePositionSol;
             if (dynamicSizing.enabled) {
