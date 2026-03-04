@@ -32,6 +32,7 @@ export default function AutoTrading() {
   const [scanning, setScanning] = useState(false);
   const [pipelineResults, setPipelineResults] = useState<PipelineResult[]>([]);
   const { toast } = useToast();
+  const lastNoWalletToastAtRef = useRef(0);
 
   useEffect(() => {
     loadData();
