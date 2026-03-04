@@ -258,30 +258,54 @@ Deno.serve(async (req) => {
         .single();
 
       if (autoExecConfig?.value === true) {
-        const { data: posConfig } = await supabase
+        // Check max open positions limit
+        const { data: maxPosConfig } = await supabase
           .from("bot_config")
           .select("value")
-          .eq("key", "max_position_sol")
+          .eq("key", "max_open_positions")
           .single();
-        const positionSol = (posConfig?.value as number) || 0.1;
+        const maxOpenPositions = (maxPosConfig?.value as number) || 3;
 
-        // Get trailing stop settings
-        const { data: tsConfig } = await supabase
-          .from("bot_config")
-          .select("value")
-          .eq("key", "trailing_stop_pct")
-          .single();
-        const trailingStopPct = (tsConfig?.value as number) || 10;
+        const { count: currentOpen } = await supabase
+          .from("open_positions")
+          .select("*", { count: "exact", head: true })
+          .eq("status", "open");
 
-        const { data: tpConfig } = await supabase
-          .from("bot_config")
-          .select("value")
-          .eq("key", "take_profit_pct")
-          .single();
-        const takeProfitPct = (tpConfig?.value as number) || 50;
+        if ((currentOpen || 0) >= maxOpenPositions) {
+          console.log(`Skipping auto-execute: ${currentOpen}/${maxOpenPositions} positions open`);
+          // Still save signals as pending, just don't execute
+        } else {
+          const { data: posConfig } = await supabase
+            .from("bot_config")
+            .select("value")
+            .eq("key", "max_position_sol")
+            .single();
+          const positionSol = (posConfig?.value as number) || 0.1;
 
-        for (const candidate of buySignals) {
-          if (candidate.totalScore > 80) {
+          // Get trailing stop settings
+          const { data: tsConfig } = await supabase
+            .from("bot_config")
+            .select("value")
+            .eq("key", "trailing_stop_pct")
+            .single();
+          const trailingStopPct = (tsConfig?.value as number) || 10;
+
+          const { data: tpConfig } = await supabase
+            .from("bot_config")
+            .select("value")
+            .eq("key", "take_profit_pct")
+            .single();
+          const takeProfitPct = (tpConfig?.value as number) || 50;
+
+          const slotsAvailable = maxOpenPositions - (currentOpen || 0);
+          let executed = 0;
+
+          for (const candidate of buySignals) {
+            if (executed >= slotsAvailable) {
+              console.log(`Max positions reached (${maxOpenPositions}), queuing remaining signals`);
+              break;
+            }
+            if (candidate.totalScore > 80) {
             try {
               const swapRes = await fetch(`${supabaseUrl}/functions/v1/execute-swap`, {
                 method: "POST",
