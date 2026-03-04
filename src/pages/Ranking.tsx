@@ -85,7 +85,7 @@ const Ranking = () => {
                   <td className="px-4 py-3 text-xs text-muted-foreground font-mono">{i + 1}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <Link to="/analyze" className="text-xs font-mono text-foreground hover:text-primary transition-colors break-all">
+                      <Link to={`/analyze?address=${encodeURIComponent(w.address)}`} className="text-xs font-mono text-foreground hover:text-primary transition-colors break-all">
                         {w.address}
                       </Link>
                       <button

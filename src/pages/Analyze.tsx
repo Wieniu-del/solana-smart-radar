@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import WalletSearch from "@/components/WalletSearch";
 import StatCards from "@/components/StatCards";
 import ScoreDisplay from "@/components/ScoreDisplay";
@@ -20,6 +21,7 @@ import { Search, Clock, X, Wifi, WifiOff } from "lucide-react";
 import { toast } from "sonner";
 
 const Analyze = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [walletData, setWalletData] = useState<WalletData | null>(null);
   const [tokens, setTokens] = useState<HeliusTokenBalance[]>([]);
   const [trades, setTrades] = useState<ParsedTrade[]>([]);
@@ -27,6 +29,17 @@ const Analyze = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isLive, setIsLive] = useState(false);
   const { history, addEntry, removeEntry, clearHistory } = useSearchHistory();
+  const [autoSearchDone, setAutoSearchDone] = useState(false);
+
+  useEffect(() => {
+    const addressParam = searchParams.get("address");
+    if (addressParam && !autoSearchDone) {
+      setAutoSearchDone(true);
+      searchParams.delete("address");
+      setSearchParams(searchParams, { replace: true });
+      handleSearch(addressParam);
+    }
+  }, [searchParams, autoSearchDone]);
 
   const handleSearch = async (address: string) => {
     if (!isValidSolanaAddress(address)) {
