@@ -60,6 +60,14 @@ export default function MyWallet() {
       return;
     }
 
+    // Persist address to localStorage + DB
+    localStorage.setItem("connected_wallet", address);
+    setWalletAddress(address);
+    try {
+      const { supabase } = await import("@/integrations/supabase/client");
+      await supabase.from("bot_config").upsert({ key: "connected_wallet", value: JSON.stringify(address) }, { onConflict: "key" });
+    } catch { /* non-critical */ }
+
     setLoading(true);
     try {
       const [tokenData, txData] = await Promise.all([
