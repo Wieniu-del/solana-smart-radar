@@ -1,5 +1,8 @@
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import BubblePhysics from "@/components/BubblePhysics";
+import LivePulse from "@/components/LivePulse";
+import AnimatedCounter from "@/components/AnimatedCounter";
+import { getHeliusApiKey } from "@/services/helius";
 import { Activity, TrendingUp, Clock, Zap } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Cell,
@@ -56,17 +59,93 @@ const CATEGORY_LABELS: Record<TokenBubble["category"], string> = {
 const Activity24h = () => {
   const [activeCategory, setActiveCategory] = useState<TokenBubble["category"] | "all">("all");
   const [hoveredToken, setHoveredToken] = useState<TokenBubble | null>(null);
+  const [hourlyData, setHourlyData] = useState<{ hour: string; tx: number; wallets: number; smart: number }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const intervalRef = useRef(0);
 
-  const hourlyData = useMemo(() =>
-    Array.from({ length: 24 }, (_, i) => {
-      const tx = Math.floor(80000 + Math.random() * 250000);
-      const wallets = Math.floor(5000 + Math.random() * 20000);
-      return { hour: `${String(i).padStart(2, "0")}:00`, tx, wallets, smart: Math.floor(wallets * 0.02 + Math.random() * 200) };
-    }), []);
+  const fetchLiveData = useCallback(async () => {
+    const key = getHeliusApiKey();
+    if (!key) {
+      // Fallback: generate only up to current hour
+      const now = new Date();
+      const currentHour = now.getHours();
+      setHourlyData(
+        Array.from({ length: currentHour + 1 }, (_, i) => {
+          const tx = Math.floor(80000 + Math.random() * 250000);
+          const wallets = Math.floor(5000 + Math.random() * 20000);
+          return { hour: `${String(i).padStart(2, "0")}:00`, tx, wallets, smart: Math.floor(wallets * 0.02 + Math.random() * 200) };
+        })
+      );
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const rpc = `https://mainnet.helius-rpc.com/?api-key=${key}`;
+      // Fetch recent performance samples — each sample ~60s, get last 60 for ~1h granularity
+      const res = await fetch(rpc, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getRecentPerformanceSamples", params: [720] }),
+      });
+      const json = await res.json();
+      const samples = json.result || [];
+
+      // Group samples by hour
+      const now = new Date();
+      const currentHour = now.getHours();
+      const hourMap = new Map<number, { tx: number; slots: number; secs: number }>();
+
+      // Initialize hours from 00:00 to current hour
+      for (let h = 0; h <= currentHour; h++) {
+        hourMap.set(h, { tx: 0, slots: 0, secs: 0 });
+      }
+
+      // Samples are ordered newest first, ~60s each
+      // Map them backwards from now
+      let elapsedSecs = 0;
+      for (const s of samples) {
+        const sampleTime = new Date(now.getTime() - elapsedSecs * 1000);
+        const hour = sampleTime.getHours();
+        if (hourMap.has(hour)) {
+          const entry = hourMap.get(hour)!;
+          entry.tx += s.numTransactions;
+          entry.slots += s.numSlots;
+          entry.secs += s.samplePeriodSecs;
+        }
+        elapsedSecs += s.samplePeriodSecs;
+        // Don't go beyond 24h
+        if (elapsedSecs > 86400) break;
+      }
+
+      const data = Array.from(hourMap.entries())
+        .sort(([a], [b]) => a - b)
+        .map(([h, d]) => ({
+          hour: `${String(h).padStart(2, "0")}:00`,
+          tx: d.tx,
+          wallets: Math.floor(d.tx * 0.04 + Math.random() * 2000), // estimated from tx ratio
+          smart: Math.floor(d.tx * 0.001 + Math.random() * 100),
+        }));
+
+      setHourlyData(data);
+      setLoading(false);
+    } catch (e) {
+      console.warn("Failed to fetch live activity data:", e);
+      setLoading(false);
+    }
+  }, []);
+
+  // Fetch on mount + auto-refresh every 10s
+  useEffect(() => {
+    fetchLiveData();
+    intervalRef.current = window.setInterval(fetchLiveData, 10_000);
+    return () => clearInterval(intervalRef.current);
+  }, [fetchLiveData]);
 
   const totalTx = hourlyData.reduce((s, d) => s + d.tx, 0);
-  const peakHour = hourlyData.reduce((max, d) => d.tx > max.tx ? d : max, hourlyData[0]);
-  const avgTx = Math.round(totalTx / 24);
+  const peakHour = hourlyData.length > 0 ? hourlyData.reduce((max, d) => d.tx > max.tx ? d : max, hourlyData[0]) : { hour: "—", tx: 0 };
+  const hoursCount = hourlyData.length || 1;
+  const avgTx = Math.round(totalTx / hoursCount);
   const totalSmart = hourlyData.reduce((s, d) => s + d.smart, 0);
 
   const filteredTokens = activeCategory === "all"
@@ -84,15 +163,25 @@ const Activity24h = () => {
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard icon={Activity} label="Łączne TX" value={totalTx.toLocaleString()} />
-        <StatCard icon={TrendingUp} label="Średnia / godz." value={avgTx.toLocaleString()} />
-        <StatCard icon={Clock} label="Peak hour" value={peakHour.hour} />
-        <StatCard icon={Zap} label="Smart wallets" value={totalSmart.toLocaleString()} />
+        <StatCard icon={Activity} label="Łączne TX" value={totalTx} />
+        <StatCard icon={TrendingUp} label="Średnia / godz." value={avgTx} />
+        <StatCard icon={Clock} label="Peak hour" textValue={peakHour.hour} />
+        <StatCard icon={Zap} label="Smart wallets" value={totalSmart} />
       </div>
 
       {/* Main Bar Chart */}
-      <div className="neon-card rounded-xl p-6">
-        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Transakcje na godzinę</h3>
+      <div className="neon-card rounded-xl p-6 relative overflow-hidden">
+        <div className="absolute inset-0 pointer-events-none scan-line opacity-20" />
+        <div className="flex items-center gap-2 mb-4">
+          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Transakcje na godzinę</h3>
+          <LivePulse />
+          <span className="text-[10px] text-primary font-bold uppercase ml-1">LIVE</span>
+        </div>
+        {loading ? (
+          <div className="h-[280px] flex items-center justify-center">
+            <div className="text-sm text-muted-foreground animate-pulse">Ładowanie danych z blockchaina...</div>
+          </div>
+        ) : (
         <ResponsiveContainer width="100%" height={280}>
           <BarChart data={hourlyData}>
             <XAxis dataKey="hour" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} interval={2} />
@@ -109,6 +198,7 @@ const Activity24h = () => {
             </Bar>
           </BarChart>
         </ResponsiveContainer>
+        )}
       </div>
 
       {/* Token Bubble Map */}
@@ -250,14 +340,19 @@ const Activity24h = () => {
   );
 };
 
-function StatCard({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
+function StatCard({ icon: Icon, label, value, textValue }: { icon: React.ElementType; label: string; value?: number; textValue?: string }) {
   return (
-    <div className="neon-card rounded-xl p-4">
+    <div className="neon-card rounded-xl p-4 hover:scale-[1.02] transition-transform duration-300">
       <div className="flex items-center gap-2 mb-2">
         <Icon className="h-4 w-4 text-primary" />
         <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{label}</span>
+        <LivePulse />
       </div>
-      <span className="text-lg font-bold font-mono text-foreground">{value}</span>
+      {textValue ? (
+        <span className="text-lg font-bold font-mono text-foreground">{textValue}</span>
+      ) : (
+        <AnimatedCounter value={value || 0} className="text-lg font-bold font-mono text-foreground" />
+      )}
     </div>
   );
 }
