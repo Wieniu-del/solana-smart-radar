@@ -80,6 +80,10 @@ export default function BotControlPanel() {
             case "trailing_stop_pct": { const v = c.value as number || 10; setTrailingStop(v); setSavedTrailingStop(v); break; }
             case "take_profit_pct": { const v = c.value as number || 50; setTakeProfit(v); setSavedTakeProfit(v); break; }
             case "max_open_positions": { const v = c.value as number || 3; setMaxOpenPositions(v); setSavedMaxOpenPositions(v); break; }
+            case "dynamic_sizing": {
+              const v = c.value as any || { enabled: false, min_sol: 0.05, max_sol: 0.5 };
+              setDynamicSizing(v); setSavedDynamicSizing(v); break;
+            }
           }
         }
       }
@@ -189,12 +193,14 @@ export default function BotControlPanel() {
         updateConfig("trailing_stop_pct", trailingStop),
         updateConfig("take_profit_pct", takeProfit),
         updateConfig("max_open_positions", maxOpenPositions),
+        updateConfig("dynamic_sizing", dynamicSizing),
       ]);
       setSavedMinScore(minScore);
       setSavedMaxPosition(maxPosition);
       setSavedTrailingStop(trailingStop);
       setSavedTakeProfit(takeProfit);
       setSavedMaxOpenPositions(maxOpenPositions);
+      setSavedDynamicSizing({ ...dynamicSizing });
       toast({ title: "✅ Ustawienia zapisane" });
     } catch (e: any) {
       toast({ title: "Błąd", description: e.message, variant: "destructive" });
