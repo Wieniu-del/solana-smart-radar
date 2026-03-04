@@ -1,8 +1,10 @@
 import { useEffect, useState, useCallback } from "react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { getHeliusApiKey } from "@/services/helius";
-import { Wifi, WifiOff, Loader2 } from "lucide-react";
+import { Wifi, WifiOff, Loader2, LogOut, User } from "lucide-react";
 import NotificationCenter from "@/components/NotificationCenter";
+import { useAuth } from "@/hooks/useAuth";
+import { Button } from "@/components/ui/button";
 
 const TopBar = () => {
   const [chainStatus, setChainStatus] = useState<"online" | "offline" | "checking">("checking");
