@@ -7,7 +7,31 @@ export function getHeliusApiKey(): string | null {
 }
 
 export function setHeliusApiKey(key: string) {
-  localStorage.setItem("helius_api_key", key);
+  // Sanitize: extract only the API key if user pasted full URL
+  let clean = key.trim();
+  const match = clean.match(/api-key=([a-f0-9-]+)/i);
+  if (match) {
+    clean = match[1];
+  }
+  // Remove any extra params that might have been pasted
+  clean = clean.replace(/[^a-f0-9-]/gi, "");
+  localStorage.setItem("helius_api_key", clean);
+}
+
+export async function validateHeliusKey(key: string): Promise<boolean> {
+  try {
+    const res = await fetch(`https://mainnet.helius-rpc.com/?api-key=${key}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getBlockHeight" }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return false;
+    const json = await res.json();
+    return !!json.result;
+  } catch {
+    return false;
+  }
 }
 
 function requireKey(): string {

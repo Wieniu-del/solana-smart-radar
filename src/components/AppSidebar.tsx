@@ -1,4 +1,4 @@
-import { BarChart3, Search, Trophy, Activity, Bell, Settings, Brain, ArrowLeftRight, Bot } from "lucide-react";
+import { BarChart3, Search, Trophy, Activity, Bell, Settings, Brain, ArrowLeftRight, Bot, HandCoins, Newspaper } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
 import {
@@ -20,7 +20,12 @@ const mainItems = [
   { title: "Ranking Smart Wallets", url: "/ranking", icon: Trophy },
   { title: "Aktywność 24h", url: "/activity", icon: Activity },
   { title: "Porównywarka", url: "/compare", icon: ArrowLeftRight },
+];
+
+const tradingItems = [
   { title: "Auto Trading", url: "/trading", icon: Bot },
+  { title: "Handel Ręczny", url: "/manual-trading", icon: HandCoins },
+  { title: "Skaner Wiadomości", url: "/news", icon: Newspaper },
 ];
 
 const systemItems = [
@@ -70,6 +75,26 @@ export function AppSidebar() {
 
         <SidebarGroup>
           <SidebarGroupLabel className="text-muted-foreground text-[10px] tracking-widest">
+            TRADING
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {tradingItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton asChild isActive={isActive(item.url)}>
+                    <NavLink to={item.url} end className="hover:bg-muted/50" activeClassName="bg-muted text-primary font-medium">
+                      <item.icon className="mr-2 h-4 w-4" />
+                      {!collapsed && <span>{item.title}</span>}
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel className="text-muted-foreground text-[10px] tracking-widest">
             SYSTEM
           </SidebarGroupLabel>
           <SidebarGroupContent>
@@ -92,7 +117,7 @@ export function AppSidebar() {
       <SidebarFooter>
         {!collapsed && (
           <div className="p-3 text-[10px] text-muted-foreground font-mono">
-            v0.1.0 · Faza 1
+            v0.2.0 · Faza 2
           </div>
         )}
       </SidebarFooter>
