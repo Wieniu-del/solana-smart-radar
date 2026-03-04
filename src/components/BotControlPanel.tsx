@@ -186,11 +186,13 @@ export default function BotControlPanel() {
         updateConfig("max_position_sol", maxPosition),
         updateConfig("trailing_stop_pct", trailingStop),
         updateConfig("take_profit_pct", takeProfit),
+        updateConfig("max_open_positions", maxOpenPositions),
       ]);
       setSavedMinScore(minScore);
       setSavedMaxPosition(maxPosition);
       setSavedTrailingStop(trailingStop);
       setSavedTakeProfit(takeProfit);
+      setSavedMaxOpenPositions(maxOpenPositions);
       toast({ title: "✅ Ustawienia zapisane" });
     } catch (e: any) {
       toast({ title: "Błąd", description: e.message, variant: "destructive" });
