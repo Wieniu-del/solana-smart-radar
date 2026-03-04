@@ -230,7 +230,7 @@ export default function BotControlPanel() {
   }
 
   const hasUnsavedChanges = minScore !== savedMinScore || maxPosition !== savedMaxPosition ||
-    trailingStop !== savedTrailingStop || takeProfit !== savedTakeProfit;
+    trailingStop !== savedTrailingStop || takeProfit !== savedTakeProfit || maxOpenPositions !== savedMaxOpenPositions;
 
   // Stats
   const last24h = recentRuns.filter((r) => new Date(r.started_at).getTime() > Date.now() - 86400000);
