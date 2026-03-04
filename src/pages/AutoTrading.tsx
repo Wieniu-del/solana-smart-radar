@@ -229,6 +229,10 @@ export default function AutoTrading() {
             <BarChart3 className="h-3.5 w-3.5 mr-1" />
             PnL
           </TabsTrigger>
+          <TabsTrigger value="pipeline-config">
+            <Filter className="h-3.5 w-3.5 mr-1" />
+            Pipeline
+          </TabsTrigger>
           <TabsTrigger value="status">
             <Activity className="h-3.5 w-3.5 mr-1" />
             Status
@@ -238,6 +242,11 @@ export default function AutoTrading() {
         {/* ─── Bot 24/7 Control Panel ─── */}
         <TabsContent value="bot247">
           <BotControlPanel />
+        </TabsContent>
+
+        {/* ─── Pipeline Config Tab ─── */}
+        <TabsContent value="pipeline-config">
+          <PipelineConfigPanel />
         </TabsContent>
 
         {/* ─── Pipeline Results Tab ─── */}
