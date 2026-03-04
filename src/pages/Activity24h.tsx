@@ -62,6 +62,29 @@ const Activity24h = () => {
   const [hourlyData, setHourlyData] = useState<{ hour: string; tx: number; wallets: number; smart: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const intervalRef = useRef(0);
+  const [liveTokens, setLiveTokens] = useState<TokenBubble[]>(MOCK_TOKENS);
+  const tokenTickRef = useRef(0);
+
+  // Simulate real-time token fluctuations every 3s
+  useEffect(() => {
+    const tick = () => {
+      setLiveTokens(prev => prev.map(t => {
+        const delta = (Math.random() - 0.48) * 0.06; // slight upward bias
+        const txJitter = Math.floor(t.tx24h * (0.97 + Math.random() * 0.06));
+        const volJitter = Math.floor(t.volume24h * (0.97 + Math.random() * 0.06));
+        const walletJitter = Math.floor(t.wallets * (0.98 + Math.random() * 0.04));
+        return {
+          ...t,
+          tx24h: txJitter,
+          volume24h: volJitter,
+          wallets: walletJitter,
+          change: Math.round((t.change + delta) * 100) / 100,
+        };
+      }));
+    };
+    tokenTickRef.current = window.setInterval(tick, 3000);
+    return () => clearInterval(tokenTickRef.current);
+  }, []);
 
   const fetchLiveData = useCallback(async () => {
     const key = getHeliusApiKey();
@@ -149,10 +172,20 @@ const Activity24h = () => {
   const totalSmart = hourlyData.reduce((s, d) => s + d.smart, 0);
 
   const filteredTokens = activeCategory === "all"
-    ? MOCK_TOKENS
-    : MOCK_TOKENS.filter(t => t.category === activeCategory);
+    ? liveTokens
+    : liveTokens.filter(t => t.category === activeCategory);
 
-  const maxTx = Math.max(...MOCK_TOKENS.map(t => t.tx24h));
+  const maxTx = Math.max(...liveTokens.map(t => t.tx24h));
+
+  // Keep hoveredToken data fresh
+  useEffect(() => {
+    if (hoveredToken) {
+      const fresh = liveTokens.find(t => t.symbol === hoveredToken.symbol);
+      if (fresh && (fresh.tx24h !== hoveredToken.tx24h || fresh.change !== hoveredToken.change)) {
+        setHoveredToken(fresh);
+      }
+    }
+  }, [liveTokens, hoveredToken]);
 
   return (
     <div className="space-y-6">
