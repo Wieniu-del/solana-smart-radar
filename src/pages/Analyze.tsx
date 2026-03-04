@@ -31,6 +31,16 @@ const Analyze = () => {
   const { history, addEntry, removeEntry, clearHistory } = useSearchHistory();
   const [autoSearchDone, setAutoSearchDone] = useState(false);
 
+  useEffect(() => {
+    const addressParam = searchParams.get("address");
+    if (addressParam && !autoSearchDone) {
+      setAutoSearchDone(true);
+      searchParams.delete("address");
+      setSearchParams(searchParams, { replace: true });
+      handleSearch(addressParam);
+    }
+  }, [searchParams, autoSearchDone]);
+
   const handleSearch = async (address: string) => {
     if (!isValidSolanaAddress(address)) {
       toast.error("Nieprawidłowy adres Solana. Sprawdź czy wkleiłeś pełny adres portfela.");
