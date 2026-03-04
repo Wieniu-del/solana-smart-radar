@@ -162,12 +162,26 @@ export async function getTransactionHistory(address: string, limit = 50): Promis
   if (!isValidSolanaAddress(address)) {
     throw new Error("Nieprawidłowy adres Solana — upewnij się, że wklejasz pełny adres portfela (32-44 znaki Base58).");
   }
-  const key = requireKey();
-  const res = await fetch(`${HELIUS_BASE}/addresses/${address}/transactions?api-key=${key}&limit=${limit}`);
+
+  let key = requireKey();
+  let res = await fetch(`${HELIUS_BASE}/addresses/${address}/transactions?api-key=${key}&limit=${limit}`);
+
+  // Auto-recover from stale/invalid local key
+  if (res.status === 401) {
+    const refreshed = await initHeliusApiKey(true);
+    if (refreshed) {
+      key = refreshed;
+      res = await fetch(`${HELIUS_BASE}/addresses/${address}/transactions?api-key=${key}&limit=${limit}`);
+    }
+  }
+
   if (!res.ok) {
     const text = await res.text();
     if (res.status === 400 || text.includes("invalid address")) {
       throw new Error("Podany adres portfela jest nieprawidłowy. Sprawdź, czy wkleiłeś pełny adres Solana.");
+    }
+    if (res.status === 401) {
+      throw new Error("Błąd autoryzacji Helius (401). Klucz API został odświeżony — spróbuj ponownie za kilka sekund.");
     }
     throw new Error(`Helius API error (${res.status}): ${text}`);
   }
