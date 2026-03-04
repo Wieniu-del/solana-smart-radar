@@ -172,10 +172,20 @@ const Activity24h = () => {
   const totalSmart = hourlyData.reduce((s, d) => s + d.smart, 0);
 
   const filteredTokens = activeCategory === "all"
-    ? MOCK_TOKENS
-    : MOCK_TOKENS.filter(t => t.category === activeCategory);
+    ? liveTokens
+    : liveTokens.filter(t => t.category === activeCategory);
 
-  const maxTx = Math.max(...MOCK_TOKENS.map(t => t.tx24h));
+  const maxTx = Math.max(...liveTokens.map(t => t.tx24h));
+
+  // Keep hoveredToken data fresh
+  useEffect(() => {
+    if (hoveredToken) {
+      const fresh = liveTokens.find(t => t.symbol === hoveredToken.symbol);
+      if (fresh && (fresh.tx24h !== hoveredToken.tx24h || fresh.change !== hoveredToken.change)) {
+        setHoveredToken(fresh);
+      }
+    }
+  }, [liveTokens, hoveredToken]);
 
   return (
     <div className="space-y-6">
