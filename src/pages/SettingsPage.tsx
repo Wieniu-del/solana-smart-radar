@@ -272,6 +272,21 @@ const SettingsPage = () => {
             💡 Możesz wkleić sam klucz, pełny URL z api-key= lub format KLUCZ=wartość — aplikacja sama wyciągnie prawidłowy klucz.
           </p>
         </div>
+        {getHeliusApiKey() && (
+          <button
+            onClick={() => {
+              localStorage.removeItem("helius_api_key");
+              setApiKey("");
+              window.dispatchEvent(new Event("helius-key-updated"));
+              toast.success("Cache klucza API wyczyszczony — klucz zostanie pobrany automatycznie przy następnym użyciu");
+              setTimeout(() => window.location.reload(), 500);
+            }}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-destructive/30 text-destructive text-sm hover:bg-destructive/10 transition-colors"
+          >
+            <Trash2 className="h-4 w-4" />
+            Wyczyść cache klucza API
+          </button>
+        )}
       </div>
 
       {/* Tracked Wallets */}
