@@ -274,17 +274,23 @@ const SettingsPage = () => {
         </div>
         {getHeliusApiKey() && (
           <button
-            onClick={() => {
+            onClick={async () => {
               localStorage.removeItem("helius_api_key");
               setApiKey("");
               window.dispatchEvent(new Event("helius-key-updated"));
-              toast.success("Cache klucza API wyczyszczony — klucz zostanie pobrany automatycznie przy następnym użyciu");
-              setTimeout(() => window.location.reload(), 500);
+              toast.info("Czyszczenie cache i pobieranie nowego klucza...");
+              const freshKey = await initHeliusApiKey(true);
+              if (freshKey) {
+                setApiKey(freshKey);
+                toast.success("Nowy klucz API pobrany i zapisany pomyślnie!");
+              } else {
+                toast.error("Nie udało się pobrać klucza z backendu — wklej go ręcznie");
+              }
             }}
             className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-destructive/30 text-destructive text-sm hover:bg-destructive/10 transition-colors"
           >
             <Trash2 className="h-4 w-4" />
-            Wyczyść cache klucza API
+            Wyczyść i pobierz nowy klucz API
           </button>
         )}
       </div>
