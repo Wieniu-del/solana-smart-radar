@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -73,12 +74,30 @@ export default function AutoTrading() {
       return;
     }
 
-    const trackedWallets: string[] = (() => {
+    // Try localStorage first, then fall back to bot_config in DB
+    let trackedWallets: string[] = (() => {
       try { return JSON.parse(localStorage.getItem("tracked_wallets") || "[]"); } catch { return []; }
     })();
 
+    // If localStorage is empty, fetch from bot_config table
     if (trackedWallets.length === 0) {
-      toast({ title: "Brak portfeli", description: "Dodaj śledzone portfele w Ustawieniach", variant: "destructive" });
+      try {
+        const { data } = await supabase
+          .from("bot_config")
+          .select("value")
+          .eq("key", "tracked_wallets")
+          .single();
+        const dbWallets = (data?.value as string[]) || [];
+        if (dbWallets.length > 0) {
+          trackedWallets = dbWallets;
+          // Sync to localStorage for future use
+          localStorage.setItem("tracked_wallets", JSON.stringify(dbWallets));
+        }
+      } catch { /* ignore */ }
+    }
+
+    if (trackedWallets.length === 0) {
+      toast({ title: "Brak portfeli", description: "Dodaj śledzone portfele w Ustawieniach lub w panelu bota", variant: "destructive" });
       return;
     }
 
