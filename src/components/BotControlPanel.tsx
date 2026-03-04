@@ -9,7 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   Power, Plus, Trash2, RefreshCw, Clock, CheckCircle2, XCircle,
   AlertTriangle, Activity, Loader2, Wifi, WifiOff, Settings2,
-  Shield, TrendingUp, TrendingDown, Target
+  Shield, TrendingUp, TrendingDown, Target, Search, Sparkles, Brain
 } from "lucide-react";
 
 interface BotRun {
