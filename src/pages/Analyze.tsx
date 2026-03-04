@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import WalletSearch from "@/components/WalletSearch";
 import StatCards from "@/components/StatCards";
 import ScoreDisplay from "@/components/ScoreDisplay";
