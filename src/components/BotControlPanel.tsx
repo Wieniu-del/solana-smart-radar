@@ -64,6 +64,8 @@ export default function BotControlPanel() {
   const [closedPositions, setClosedPositions] = useState<OpenPosition[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [discovering, setDiscovering] = useState(false);
+  const [discoveredWallets, setDiscoveredWallets] = useState<any[]>([]);
   const { toast } = useToast();
 
   const loadConfig = useCallback(async () => {
