@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback } from "react";
+import BubblePhysics from "@/components/BubblePhysics";
 import { Activity, TrendingUp, Clock, Zap } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Cell,
@@ -147,64 +148,30 @@ const Activity24h = () => {
         </div>
 
         {/* Bubble container */}
-        <div className="relative w-full min-h-[400px] flex flex-wrap items-center justify-center gap-3 py-4">
-          {filteredTokens.map((token) => {
+        <BubblePhysics
+          height={480}
+          hoveredId={hoveredToken?.symbol ?? null}
+          onHover={(id) => {
+            if (id) {
+              const t = filteredTokens.find(t => t.symbol === id) ?? null;
+              setHoveredToken(t);
+            } else {
+              setHoveredToken(null);
+            }
+          }}
+          bubbles={filteredTokens.map((token) => {
             const ratio = token.tx24h / maxTx;
-            const size = Math.max(56, Math.min(160, ratio * 160));
-            const isHovered = hoveredToken?.symbol === token.symbol;
-            const color = CATEGORY_COLORS[token.category];
-
-            return (
-              <div
-                key={token.symbol}
-                className="relative cursor-pointer transition-all duration-300"
-                style={{
-                  width: size,
-                  height: size,
-                }}
-                onMouseEnter={() => setHoveredToken(token)}
-                onMouseLeave={() => setHoveredToken(null)}
-              >
-                {/* Glow */}
-                <div
-                  className="absolute inset-0 rounded-full blur-xl transition-opacity duration-300"
-                  style={{
-                    backgroundColor: color,
-                    opacity: isHovered ? 0.35 : 0.08,
-                  }}
-                />
-                {/* Bubble */}
-                <div
-                  className="relative w-full h-full rounded-full flex flex-col items-center justify-center border transition-all duration-300"
-                  style={{
-                    backgroundColor: color + "15",
-                    borderColor: isHovered ? color : color + "40",
-                    transform: isHovered ? "scale(1.12)" : "scale(1)",
-                    boxShadow: isHovered ? `0 0 30px ${color}44, inset 0 0 20px ${color}11` : "none",
-                  }}
-                >
-                  <span className="font-bold text-foreground" style={{ fontSize: Math.max(10, size * 0.14) }}>
-                    {token.symbol}
-                  </span>
-                  <span
-                    className="font-mono font-medium"
-                    style={{
-                      fontSize: Math.max(8, size * 0.1),
-                      color: token.change >= 0 ? "hsl(var(--primary))" : "hsl(var(--neon-red))",
-                    }}
-                  >
-                    {token.change >= 0 ? "+" : ""}{token.change}%
-                  </span>
-                  {size > 80 && (
-                    <span className="text-muted-foreground font-mono" style={{ fontSize: Math.max(7, size * 0.07) }}>
-                      {formatCompact(token.tx24h)} TX
-                    </span>
-                  )}
-                </div>
-              </div>
-            );
+            const radius = Math.max(28, Math.min(80, ratio * 80));
+            return {
+              id: token.symbol,
+              symbol: token.symbol,
+              label2: `${token.change >= 0 ? "+" : ""}${token.change}%`,
+              label3: `${formatCompact(token.tx24h)} TX`,
+              radius,
+              color: CATEGORY_COLORS[token.category],
+            };
           })}
-        </div>
+        />
 
         {/* Tooltip */}
         {hoveredToken && (
