@@ -26,6 +26,29 @@ export default function MyWallet() {
 
   const activeAddress = walletAddress || manualAddress.trim();
 
+  // Auto-restore wallet address from DB if localStorage is empty
+  useEffect(() => {
+    async function restoreFromDb() {
+      if (walletAddress) return; // already have it
+      try {
+        const { supabase } = await import("@/integrations/supabase/client");
+        const { data } = await supabase
+          .from("bot_config")
+          .select("value")
+          .eq("key", "connected_wallet")
+          .maybeSingle();
+        if (data?.value) {
+          const val = typeof data.value === "string" ? data.value : JSON.stringify(data.value).replace(/"/g, "");
+          if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(val)) {
+            localStorage.setItem("connected_wallet", val);
+            setWalletAddress(val);
+          }
+        }
+      } catch { /* ignore */ }
+    }
+    restoreFromDb();
+  }, []);
+
   useEffect(() => {
     if (walletAddress) loadWalletData(walletAddress);
   }, [walletAddress]);
@@ -39,6 +62,14 @@ export default function MyWallet() {
       toast.error("Nieprawidłowy adres portfela");
       return;
     }
+
+    // Persist address to localStorage + DB
+    localStorage.setItem("connected_wallet", address);
+    setWalletAddress(address);
+    try {
+      const { supabase } = await import("@/integrations/supabase/client");
+      await supabase.from("bot_config").upsert({ key: "connected_wallet", value: JSON.stringify(address) }, { onConflict: "key" });
+    } catch { /* non-critical */ }
 
     setLoading(true);
     try {
