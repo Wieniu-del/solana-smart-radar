@@ -21,6 +21,7 @@ import { Search, Clock, X, Wifi, WifiOff } from "lucide-react";
 import { toast } from "sonner";
 
 const Analyze = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [walletData, setWalletData] = useState<WalletData | null>(null);
   const [tokens, setTokens] = useState<HeliusTokenBalance[]>([]);
   const [trades, setTrades] = useState<ParsedTrade[]>([]);
@@ -28,6 +29,7 @@ const Analyze = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isLive, setIsLive] = useState(false);
   const { history, addEntry, removeEntry, clearHistory } = useSearchHistory();
+  const [autoSearchDone, setAutoSearchDone] = useState(false);
 
   const handleSearch = async (address: string) => {
     if (!isValidSolanaAddress(address)) {
