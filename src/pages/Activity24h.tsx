@@ -62,6 +62,29 @@ const Activity24h = () => {
   const [hourlyData, setHourlyData] = useState<{ hour: string; tx: number; wallets: number; smart: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const intervalRef = useRef(0);
+  const [liveTokens, setLiveTokens] = useState<TokenBubble[]>(MOCK_TOKENS);
+  const tokenTickRef = useRef(0);
+
+  // Simulate real-time token fluctuations every 3s
+  useEffect(() => {
+    const tick = () => {
+      setLiveTokens(prev => prev.map(t => {
+        const delta = (Math.random() - 0.48) * 0.06; // slight upward bias
+        const txJitter = Math.floor(t.tx24h * (0.97 + Math.random() * 0.06));
+        const volJitter = Math.floor(t.volume24h * (0.97 + Math.random() * 0.06));
+        const walletJitter = Math.floor(t.wallets * (0.98 + Math.random() * 0.04));
+        return {
+          ...t,
+          tx24h: txJitter,
+          volume24h: volJitter,
+          wallets: walletJitter,
+          change: Math.round((t.change + delta) * 100) / 100,
+        };
+      }));
+    };
+    tokenTickRef.current = window.setInterval(tick, 3000);
+    return () => clearInterval(tokenTickRef.current);
+  }, []);
 
   const fetchLiveData = useCallback(async () => {
     const key = getHeliusApiKey();
