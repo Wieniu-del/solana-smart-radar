@@ -265,6 +265,21 @@ Deno.serve(async (req) => {
           .single();
         const positionSol = (posConfig?.value as number) || 0.1;
 
+        // Get trailing stop settings
+        const { data: tsConfig } = await supabase
+          .from("bot_config")
+          .select("value")
+          .eq("key", "trailing_stop_pct")
+          .single();
+        const trailingStopPct = (tsConfig?.value as number) || 10;
+
+        const { data: tpConfig } = await supabase
+          .from("bot_config")
+          .select("value")
+          .eq("key", "take_profit_pct")
+          .single();
+        const takeProfitPct = (tpConfig?.value as number) || 50;
+
         for (const candidate of buySignals) {
           if (candidate.totalScore > 80) {
             try {
@@ -284,11 +299,36 @@ Deno.serve(async (req) => {
               const swapData = await swapRes.json();
 
               if (swapData.success) {
+                // Get entry price from Jupiter
+                let entryPrice = 0;
+                try {
+                  const priceRes = await fetch(`https://api.jup.ag/price/v2?ids=${candidate.mint}`);
+                  if (priceRes.ok) {
+                    const priceData = await priceRes.json();
+                    entryPrice = Number(priceData.data?.[candidate.mint]?.price) || 0;
+                  }
+                } catch (_) {}
+
+                // Create open position with trailing stop-loss
+                await supabase.from("open_positions").insert({
+                  token_mint: candidate.mint,
+                  token_symbol: candidate.symbol,
+                  entry_price_usd: entryPrice,
+                  current_price_usd: entryPrice,
+                  highest_price_usd: entryPrice,
+                  amount_sol: positionSol,
+                  token_amount: swapData.outputAmount ? Number(swapData.outputAmount) / 1e6 : 0,
+                  trailing_stop_pct: trailingStopPct,
+                  take_profit_pct: takeProfitPct,
+                  stop_price_usd: entryPrice * (1 - trailingStopPct / 100),
+                  status: "open",
+                });
+
                 await supabase.from("notifications").insert({
                   type: "swap_success",
                   title: `✅ Auto-swap: ${candidate.symbol}`,
-                  message: `Kupiono ${candidate.symbol} za ${positionSol} SOL. TX: ${swapData.txSignature?.slice(0, 12)}...`,
-                  details: { tx: swapData.txSignature, token: candidate.symbol, amount_sol: positionSol, mint: candidate.mint },
+                  message: `Kupiono ${candidate.symbol} za ${positionSol} SOL. Trailing SL: ${trailingStopPct}%, TP: ${takeProfitPct}%. TX: ${swapData.txSignature?.slice(0, 12)}...`,
+                  details: { tx: swapData.txSignature, token: candidate.symbol, amount_sol: positionSol, mint: candidate.mint, trailing_stop_pct: trailingStopPct, take_profit_pct: takeProfitPct },
                 });
               } else {
                 await supabase.from("notifications").insert({
@@ -307,6 +347,20 @@ Deno.serve(async (req) => {
               });
             }
           }
+        }
+
+        // After processing buys, also check open positions (trailing stop / TP)
+        try {
+          await fetch(`${supabaseUrl}/functions/v1/position-monitor`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${supabaseKey}`,
+            },
+            body: JSON.stringify({ triggered_by: "bot-monitor" }),
+          });
+        } catch (pmErr) {
+          console.error("Position monitor trigger error:", pmErr);
         }
       }
     }
