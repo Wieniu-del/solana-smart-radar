@@ -248,55 +248,56 @@ Deno.serve(async (req) => {
     }
 
     // 4b. Smart Money Correlation — bonus if 2+ wallets bought same token
-    const mintWalletCount: Record<string, Set<string>> = {};
-    for (const c of allCandidates) {
-      if (!mintWalletCount[c.mint]) mintWalletCount[c.mint] = new Set();
-      mintWalletCount[c.mint].add(c.sourceWallet);
-    }
-    for (const c of allCandidates) {
-      const walletsBuying = mintWalletCount[c.mint]?.size || 1;
-      if (walletsBuying >= 2) {
-        const correlationBonus = Math.min(walletsBuying * 8, 20); // max +20 pts
-        c.totalScore = Math.min(100, c.totalScore + correlationBonus);
-        c.correlationBonus = correlationBonus;
-        c.correlationWallets = walletsBuying;
-        // Re-evaluate decision with new score
-        c.decision = c.totalScore >= minScoreThreshold ? "BUY" : c.totalScore >= 45 ? "WATCH" : "SKIP";
+    if (pCorrelation.enabled) {
+      const mintWalletCount: Record<string, Set<string>> = {};
+      for (const c of allCandidates) {
+        if (!mintWalletCount[c.mint]) mintWalletCount[c.mint] = new Set();
+        mintWalletCount[c.mint].add(c.sourceWallet);
+      }
+      for (const c of allCandidates) {
+        const walletsBuying = mintWalletCount[c.mint]?.size || 1;
+        if (walletsBuying >= (pCorrelation.min_wallets || 2)) {
+          const correlationBonus = Math.min(walletsBuying * (pCorrelation.bonus_per_wallet || 8), pCorrelation.max_bonus || 20);
+          c.totalScore = Math.min(100, c.totalScore + correlationBonus);
+          c.correlationBonus = correlationBonus;
+          c.correlationWallets = walletsBuying;
+          c.decision = c.totalScore >= buyThreshold ? "BUY" : c.totalScore >= watchThreshold ? "WATCH" : "SKIP";
+        }
       }
     }
     // Recount buy signals after correlation
     totalBuySignals = allCandidates.filter((c) => c.decision === "BUY").length;
 
-    // 4c. AI Sentiment analysis for BUY candidates
-    const buySignals = allCandidates.filter((c) => c.decision === "BUY");
-    for (const candidate of buySignals) {
-      try {
-        const sentimentRes = await fetch(`${supabaseUrl}/functions/v1/token-sentiment`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${supabaseKey}`,
-          },
-          body: JSON.stringify({ tokenSymbol: candidate.symbol, tokenMint: candidate.mint }),
-        });
-        if (sentimentRes.ok) {
-          const sentimentData = await sentimentRes.json();
-          if (sentimentData.success && sentimentData.analysis) {
-            candidate.sentiment = sentimentData.analysis;
-            const sentScore = sentimentData.analysis.sentiment_score || 0;
-            // Adjust total score based on sentiment (-10 to +10)
-            const sentimentAdjust = Math.round(sentScore / 10);
-            candidate.totalScore = Math.max(0, Math.min(100, candidate.totalScore + sentimentAdjust));
-            candidate.sentimentAdjust = sentimentAdjust;
-            // If strongly bearish, downgrade to WATCH
-            if (sentimentData.analysis.recommendation === "AVOID" || sentScore < -50) {
-              candidate.decision = "WATCH";
-              candidate.totalScore = Math.min(candidate.totalScore, 60);
+    // 4c. AI Sentiment analysis for BUY candidates (if enabled)
+    if (pSentiment.enabled) {
+      const buySignals = allCandidates.filter((c) => c.decision === "BUY");
+      for (const candidate of buySignals) {
+        try {
+          const sentimentRes = await fetch(`${supabaseUrl}/functions/v1/token-sentiment`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${supabaseKey}`,
+            },
+            body: JSON.stringify({ tokenSymbol: candidate.symbol, tokenMint: candidate.mint }),
+          });
+          if (sentimentRes.ok) {
+            const sentimentData = await sentimentRes.json();
+            if (sentimentData.success && sentimentData.analysis) {
+              candidate.sentiment = sentimentData.analysis;
+              const sentScore = sentimentData.analysis.sentiment_score || 0;
+              const sentimentAdjust = Math.round(sentScore / 10);
+              candidate.totalScore = Math.max(0, Math.min(100, candidate.totalScore + sentimentAdjust));
+              candidate.sentimentAdjust = sentimentAdjust;
+              if (pSentiment.block_on_avoid && (sentimentData.analysis.recommendation === "AVOID" || sentScore < -50)) {
+                candidate.decision = "WATCH";
+                candidate.totalScore = Math.min(candidate.totalScore, 60);
+              }
             }
           }
+        } catch (sentErr) {
+          console.error(`Sentiment error for ${candidate.symbol}:`, sentErr);
         }
-      } catch (sentErr) {
-        console.error(`Sentiment error for ${candidate.symbol}:`, sentErr);
       }
     }
 
