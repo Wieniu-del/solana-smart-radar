@@ -26,7 +26,7 @@ const WalletSearch = ({ onSearch, isLoading }: WalletSearchProps) => {
             type="text"
             value={address}
             onChange={(e) => setAddress(e.target.value)}
-            placeholder="Enter Solana wallet address..."
+            placeholder="Wklej adres portfela Solana (np. 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU)"
             className="flex-1 bg-transparent px-4 py-4 font-mono text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
           />
           <button
