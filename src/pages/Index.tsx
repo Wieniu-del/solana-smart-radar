@@ -229,8 +229,8 @@ const Index = () => {
               >
                 <span className="text-xs font-mono text-muted-foreground w-5">#{i + 1}</span>
                 <div className="flex-1 min-w-0">
-                  <Link to="/analyze" className="text-xs font-mono text-foreground hover:text-primary truncate block transition-colors">
-                    {w.address.slice(0, 4)}...{w.address.slice(-4)}
+                  <Link to="/analyze" className="text-xs font-mono text-foreground hover:text-primary break-all transition-colors">
+                    {w.address}
                   </Link>
                 </div>
                 <ScoreBadge score={w.smartScore} />
@@ -350,8 +350,8 @@ const Index = () => {
                   className="flex items-center gap-3 bg-muted/30 hover:bg-muted/50 rounded-lg px-3 py-2 transition-all duration-300"
                   style={{ animation: `fade-in-up 0.3s ease-out ${i * 0.06}s both` }}
                 >
-                  <span className="text-xs font-mono text-foreground truncate flex-1">
-                    {entry.address.slice(0, 6)}...{entry.address.slice(-4)}
+                  <span className="text-xs font-mono text-foreground break-all flex-1">
+                    {entry.address}
                   </span>
                   <ScoreBadge score={entry.smartScore} />
                   <span className="text-[10px] text-muted-foreground">

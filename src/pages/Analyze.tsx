@@ -194,9 +194,9 @@ const Analyze = () => {
               <div className="space-y-2">
                 {history.slice(0, 8).map((entry) => (
                   <div key={entry.address} className="flex items-center gap-3 bg-muted/30 rounded-lg px-3 py-2 group">
-                    <button onClick={() => handleSearch(entry.address)} className="flex-1 text-left">
-                      <span className="text-xs font-mono text-foreground hover:text-primary transition-colors">
-                        {entry.address.slice(0, 10)}...{entry.address.slice(-6)}
+                    <button onClick={() => handleSearch(entry.address)} className="flex-1 text-left min-w-0">
+                      <span className="text-xs font-mono text-foreground hover:text-primary transition-colors break-all">
+                        {entry.address}
                       </span>
                     </button>
                     <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded ${
