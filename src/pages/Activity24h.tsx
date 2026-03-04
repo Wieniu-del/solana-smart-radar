@@ -163,15 +163,25 @@ const Activity24h = () => {
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard icon={Activity} label="Łączne TX" value={totalTx.toLocaleString()} />
-        <StatCard icon={TrendingUp} label="Średnia / godz." value={avgTx.toLocaleString()} />
-        <StatCard icon={Clock} label="Peak hour" value={peakHour.hour} />
-        <StatCard icon={Zap} label="Smart wallets" value={totalSmart.toLocaleString()} />
+        <StatCard icon={Activity} label="Łączne TX" value={totalTx} />
+        <StatCard icon={TrendingUp} label="Średnia / godz." value={avgTx} />
+        <StatCard icon={Clock} label="Peak hour" textValue={peakHour.hour} />
+        <StatCard icon={Zap} label="Smart wallets" value={totalSmart} />
       </div>
 
       {/* Main Bar Chart */}
-      <div className="neon-card rounded-xl p-6">
-        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Transakcje na godzinę</h3>
+      <div className="neon-card rounded-xl p-6 relative overflow-hidden">
+        <div className="absolute inset-0 pointer-events-none scan-line opacity-20" />
+        <div className="flex items-center gap-2 mb-4">
+          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Transakcje na godzinę</h3>
+          <LivePulse />
+          <span className="text-[10px] text-primary font-bold uppercase ml-1">LIVE</span>
+        </div>
+        {loading ? (
+          <div className="h-[280px] flex items-center justify-center">
+            <div className="text-sm text-muted-foreground animate-pulse">Ładowanie danych z blockchaina...</div>
+          </div>
+        ) : (
         <ResponsiveContainer width="100%" height={280}>
           <BarChart data={hourlyData}>
             <XAxis dataKey="hour" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} interval={2} />
@@ -188,6 +198,7 @@ const Activity24h = () => {
             </Bar>
           </BarChart>
         </ResponsiveContainer>
+        )}
       </div>
 
       {/* Token Bubble Map */}
