@@ -38,7 +38,33 @@ const MOCK_TOKENS: TokenBubble[] = [
   { symbol: "MANGO", name: "Mango", tx24h: 150000, volume24h: 35000000, wallets: 14000, change: 1.9, category: "defi" },
   { symbol: "TRUMP", name: "TRUMP", tx24h: 680000, volume24h: 160000000, wallets: 71000, change: -8.2, category: "meme" },
   { symbol: "SAMO", name: "Samoyed", tx24h: 120000, volume24h: 22000000, wallets: 11000, change: 6.3, category: "meme" },
+  // New tokens
+  { symbol: "HNT", name: "Helium", tx24h: 340000, volume24h: 78000000, wallets: 31000, change: 4.5, category: "infra" },
+  { symbol: "MSOL", name: "Marinade SOL", tx24h: 480000, volume24h: 210000000, wallets: 55000, change: 1.8, category: "defi" },
+  { symbol: "DRIFT", name: "Drift Protocol", tx24h: 290000, volume24h: 62000000, wallets: 24000, change: -5.3, category: "defi" },
+  { symbol: "BSOL", name: "BlazeStake SOL", tx24h: 180000, volume24h: 45000000, wallets: 16000, change: 2.1, category: "defi" },
+  { symbol: "FIDA", name: "Bonfida", tx24h: 95000, volume24h: 18000000, wallets: 8500, change: -3.7, category: "defi" },
+  { symbol: "STEP", name: "Step Finance", tx24h: 72000, volume24h: 12000000, wallets: 6200, change: 9.1, category: "defi" },
+  { symbol: "MYRO", name: "Myro", tx24h: 420000, volume24h: 55000000, wallets: 38000, change: 22.4, category: "meme" },
+  { symbol: "MEW", name: "cat in a dogs world", tx24h: 580000, volume24h: 95000000, wallets: 62000, change: -6.8, category: "meme" },
+  { symbol: "SLERF", name: "Slerf", tx24h: 310000, volume24h: 42000000, wallets: 29000, change: 15.2, category: "meme" },
+  { symbol: "KMNO", name: "Kamino", tx24h: 250000, volume24h: 58000000, wallets: 21000, change: 3.9, category: "defi" },
+  { symbol: "MNDE", name: "Marinade", tx24h: 110000, volume24h: 25000000, wallets: 9800, change: -1.2, category: "defi" },
+  { symbol: "ZEUS", name: "Zeus Network", tx24h: 195000, volume24h: 38000000, wallets: 17000, change: 8.6, category: "infra" },
+  { symbol: "TNSR", name: "Tensor NFT", tx24h: 165000, volume24h: 32000000, wallets: 14500, change: -2.9, category: "nft" },
+  { symbol: "PENG", name: "Peng", tx24h: 230000, volume24h: 28000000, wallets: 19000, change: 11.7, category: "meme" },
+  { symbol: "MOBILE", name: "Helium Mobile", tx24h: 140000, volume24h: 21000000, wallets: 12000, change: -4.6, category: "infra" },
+  { symbol: "BOME", name: "Book of Meme", tx24h: 490000, volume24h: 72000000, wallets: 41000, change: -9.1, category: "meme" },
 ];
+
+// Colors based on change direction: green = up, red = down
+function getBubbleColor(change: number): string {
+  if (change > 5) return "hsl(145, 90%, 45%)";      // strong green
+  if (change > 0) return "hsl(155, 70%, 40%)";       // green
+  if (change > -0.1) return "hsl(200, 50%, 50%)";    // neutral blue
+  if (change > -5) return "hsl(0, 65%, 50%)";        // red
+  return "hsl(0, 80%, 45%)";                          // strong red
+}
 
 const CATEGORY_COLORS: Record<TokenBubble["category"], string> = {
   defi: "hsl(155, 100%, 50%)",
@@ -291,7 +317,7 @@ const Activity24h = () => {
               label2: `${token.change >= 0 ? "+" : ""}${token.change}%`,
               label3: `${formatCompact(token.tx24h)} TX`,
               radius,
-              color: CATEGORY_COLORS[token.category],
+              color: getBubbleColor(token.change),
             };
           })}
         />

@@ -14,6 +14,7 @@ interface BubbleState {
   y: number;
   vx: number;
   vy: number;
+  grabbed: boolean;
 }
 
 interface BubblePhysicsProps {
@@ -24,10 +25,10 @@ interface BubblePhysicsProps {
   hoveredId?: string | null;
 }
 
-const DAMPING = 0.998;
+const DAMPING = 0.995;
 const BOUNCE = 0.7;
 const REPULSION = 0.4;
-const DRIFT_FORCE = 0.02;
+const DRIFT_FORCE = 0.015;
 
 export default function BubblePhysics({ bubbles, height = 450, onHover, onClick, hoveredId }: BubblePhysicsProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -35,22 +36,28 @@ export default function BubblePhysics({ bubbles, height = 450, onHover, onClick,
   const rafRef = useRef<number>(0);
   const [positions, setPositions] = useState<Map<string, { x: number; y: number }>>(new Map());
   const mouseRef = useRef<{ x: number; y: number } | null>(null);
+  const hoveredRef = useRef<string | null>(null);
 
-  // Initialize bubble positions
+  // Keep hoveredRef in sync
+  useEffect(() => {
+    hoveredRef.current = hoveredId ?? null;
+  }, [hoveredId]);
+
   const initBubbles = useCallback((width: number, h: number) => {
     const states = new Map<string, BubbleState>();
     bubbles.forEach((b, i) => {
       const existing = statesRef.current.get(b.id);
       if (existing) {
-        states.set(b.id, existing);
+        states.set(b.id, { ...existing, grabbed: existing.grabbed });
       } else {
         const angle = (i / bubbles.length) * Math.PI * 2;
         const spread = Math.min(width, h) * 0.3;
         states.set(b.id, {
           x: width / 2 + Math.cos(angle) * spread * (0.5 + Math.random() * 0.5),
           y: h / 2 + Math.sin(angle) * spread * (0.5 + Math.random() * 0.5),
-          vx: (Math.random() - 0.5) * 1.5,
-          vy: (Math.random() - 0.5) * 1.5,
+          vx: (Math.random() - 0.5) * 1,
+          vy: (Math.random() - 0.5) * 1,
+          grabbed: false,
         });
       }
     });
@@ -69,25 +76,36 @@ export default function BubblePhysics({ bubbles, height = 450, onHover, onClick,
     const tick = () => {
       const states = statesRef.current;
       const ids = Array.from(states.keys());
+      const currentHovered = hoveredRef.current;
 
-      // Physics step
       for (let i = 0; i < ids.length; i++) {
         const a = states.get(ids[i])!;
         const ra = radiusMap.get(ids[i]) || 30;
+        const isHovered = ids[i] === currentHovered;
 
-        // Random drift
-        a.vx += (Math.random() - 0.5) * DRIFT_FORCE;
-        a.vy += (Math.random() - 0.5) * DRIFT_FORCE;
+        if (isHovered && mouseRef.current) {
+          // Hovered bubble: gently attract to cursor (sticky)
+          const dx = mouseRef.current.x - a.x;
+          const dy = mouseRef.current.y - a.y;
+          a.vx += dx * 0.04;
+          a.vy += dy * 0.04;
+          a.vx *= 0.85;
+          a.vy *= 0.85;
+        } else {
+          // Random drift
+          a.vx += (Math.random() - 0.5) * DRIFT_FORCE;
+          a.vy += (Math.random() - 0.5) * DRIFT_FORCE;
 
-        // Mouse repulsion
-        if (mouseRef.current) {
-          const dx = a.x - mouseRef.current.x;
-          const dy = a.y - mouseRef.current.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < ra + 60 && dist > 0) {
-            const force = (ra + 60 - dist) * 0.015;
-            a.vx += (dx / dist) * force;
-            a.vy += (dy / dist) * force;
+          // Non-hovered bubbles: gentle repulsion from cursor
+          if (mouseRef.current) {
+            const dx = a.x - mouseRef.current.x;
+            const dy = a.y - mouseRef.current.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < ra + 40 && dist > 0) {
+              const force = (ra + 40 - dist) * 0.005;
+              a.vx += (dx / dist) * force;
+              a.vy += (dy / dist) * force;
+            }
           }
         }
 
@@ -105,13 +123,11 @@ export default function BubblePhysics({ bubbles, height = 450, onHover, onClick,
             const nx = dx / dist;
             const ny = dy / dist;
 
-            // Separate
             a.x -= nx * overlap * REPULSION;
             a.y -= ny * overlap * REPULSION;
             b.x += nx * overlap * REPULSION;
             b.y += ny * overlap * REPULSION;
 
-            // Bounce velocities
             const dvx = a.vx - b.vx;
             const dvy = a.vy - b.vy;
             const dot = dvx * nx + dvy * ny;
@@ -136,17 +152,16 @@ export default function BubblePhysics({ bubbles, height = 450, onHover, onClick,
 
         // Speed limit
         const speed = Math.sqrt(a.vx * a.vx + a.vy * a.vy);
-        if (speed > 2.5) {
-          a.vx = (a.vx / speed) * 2.5;
-          a.vy = (a.vy / speed) * 2.5;
+        const maxSpeed = isHovered ? 4 : 2;
+        if (speed > maxSpeed) {
+          a.vx = (a.vx / speed) * maxSpeed;
+          a.vy = (a.vy / speed) * maxSpeed;
         }
 
-        // Update position
         a.x += a.vx;
         a.y += a.vy;
       }
 
-      // Publish positions for render
       const newPos = new Map<string, { x: number; y: number }>();
       states.forEach((s, id) => newPos.set(id, { x: s.x, y: s.y }));
       setPositions(newPos);
@@ -189,6 +204,7 @@ export default function BubblePhysics({ bubbles, height = 450, onHover, onClick,
               left: pos.x - b.radius,
               top: pos.y - b.radius,
               willChange: "transform",
+              zIndex: isHovered ? 50 : 1,
             }}
             onMouseEnter={() => onHover?.(b.id)}
             onClick={() => onClick?.(b.id)}
@@ -198,7 +214,7 @@ export default function BubblePhysics({ bubbles, height = 450, onHover, onClick,
               className="absolute inset-0 rounded-full blur-xl pointer-events-none"
               style={{
                 backgroundColor: b.color,
-                opacity: isHovered ? 0.4 : 0.1,
+                opacity: isHovered ? 0.5 : 0.12,
                 transition: "opacity 0.3s",
               }}
             />
@@ -208,10 +224,10 @@ export default function BubblePhysics({ bubbles, height = 450, onHover, onClick,
               style={{
                 backgroundColor: b.color + "18",
                 borderColor: isHovered ? b.color : b.color + "44",
-                transform: isHovered ? "scale(1.1)" : "scale(1)",
+                transform: isHovered ? "scale(1.15)" : "scale(1)",
                 transition: "transform 0.3s, border-color 0.3s, box-shadow 0.3s",
                 boxShadow: isHovered
-                  ? `0 0 40px ${b.color}55, inset 0 0 25px ${b.color}15`
+                  ? `0 0 50px ${b.color}66, inset 0 0 30px ${b.color}20`
                   : `0 0 10px ${b.color}11`,
               }}
             >
