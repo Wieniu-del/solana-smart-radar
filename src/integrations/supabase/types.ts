@@ -107,6 +107,77 @@ export type Database = {
         }
         Relationships: []
       }
+      open_positions: {
+        Row: {
+          amount_sol: number
+          close_reason: string | null
+          closed_at: string | null
+          current_price_usd: number
+          entry_price_usd: number
+          highest_price_usd: number
+          id: string
+          opened_at: string
+          pnl_pct: number | null
+          signal_id: string | null
+          status: string
+          stop_price_usd: number | null
+          take_profit_pct: number
+          token_amount: number | null
+          token_mint: string
+          token_symbol: string | null
+          trailing_stop_pct: number
+          updated_at: string
+        }
+        Insert: {
+          amount_sol?: number
+          close_reason?: string | null
+          closed_at?: string | null
+          current_price_usd?: number
+          entry_price_usd?: number
+          highest_price_usd?: number
+          id?: string
+          opened_at?: string
+          pnl_pct?: number | null
+          signal_id?: string | null
+          status?: string
+          stop_price_usd?: number | null
+          take_profit_pct?: number
+          token_amount?: number | null
+          token_mint: string
+          token_symbol?: string | null
+          trailing_stop_pct?: number
+          updated_at?: string
+        }
+        Update: {
+          amount_sol?: number
+          close_reason?: string | null
+          closed_at?: string | null
+          current_price_usd?: number
+          entry_price_usd?: number
+          highest_price_usd?: number
+          id?: string
+          opened_at?: string
+          pnl_pct?: number | null
+          signal_id?: string | null
+          status?: string
+          stop_price_usd?: number | null
+          take_profit_pct?: number
+          token_amount?: number | null
+          token_mint?: string
+          token_symbol?: string | null
+          trailing_stop_pct?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "open_positions_signal_id_fkey"
+            columns: ["signal_id"]
+            isOneToOne: false
+            referencedRelation: "trading_signals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
