@@ -55,6 +55,8 @@ export default function BotControlPanel() {
   const [savedMaxPosition, setSavedMaxPosition] = useState(0.1);
   const [savedTrailingStop, setSavedTrailingStop] = useState(10);
   const [savedTakeProfit, setSavedTakeProfit] = useState(50);
+  const [maxOpenPositions, setMaxOpenPositions] = useState(3);
+  const [savedMaxOpenPositions, setSavedMaxOpenPositions] = useState(3);
   const [recentRuns, setRecentRuns] = useState<BotRun[]>([]);
   const [openPositions, setOpenPositions] = useState<OpenPosition[]>([]);
   const [closedPositions, setClosedPositions] = useState<OpenPosition[]>([]);
