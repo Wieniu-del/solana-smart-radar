@@ -1,0 +1,296 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+const HELIUS_BASE = "https://api.helius.xyz/v0";
+const HELIUS_RPC = "https://mainnet.helius-rpc.com";
+
+// Known safe tokens
+const KNOWN_SAFE_MINTS = new Set([
+  "So11111111111111111111111111111111111111112",
+  "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+  "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+  "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",
+  "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So",
+]);
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  const startTime = Date.now();
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const heliusKey = Deno.env.get("HELIUS_API_KEY");
+
+  const supabase = createClient(supabaseUrl, supabaseKey);
+
+  // Create run record
+  const { data: run } = await supabase
+    .from("bot_runs")
+    .insert({ status: "running" })
+    .select("id")
+    .single();
+
+  const runId = run?.id;
+
+  try {
+    if (!heliusKey) {
+      throw new Error("HELIUS_API_KEY not configured");
+    }
+
+    // 1. Check if bot is enabled
+    const { data: enabledConfig } = await supabase
+      .from("bot_config")
+      .select("value")
+      .eq("key", "bot_enabled")
+      .single();
+
+    if (!enabledConfig || enabledConfig.value !== true) {
+      await updateRun(supabase, runId, {
+        status: "skipped",
+        finished_at: new Date().toISOString(),
+        duration_ms: Date.now() - startTime,
+        details: { reason: "Bot disabled" },
+      });
+      return jsonResponse({ success: true, status: "skipped", reason: "Bot disabled" });
+    }
+
+    // 2. Get tracked wallets
+    const { data: walletsConfig } = await supabase
+      .from("bot_config")
+      .select("value")
+      .eq("key", "tracked_wallets")
+      .single();
+
+    const wallets: string[] = (walletsConfig?.value as string[]) || [];
+    if (wallets.length === 0) {
+      await updateRun(supabase, runId, {
+        status: "completed",
+        finished_at: new Date().toISOString(),
+        duration_ms: Date.now() - startTime,
+        details: { reason: "No tracked wallets" },
+      });
+      return jsonResponse({ success: true, status: "no_wallets" });
+    }
+
+    // 3. Get scoring threshold
+    const { data: thresholdConfig } = await supabase
+      .from("bot_config")
+      .select("value")
+      .eq("key", "min_score_threshold")
+      .single();
+    const minScoreThreshold = (thresholdConfig?.value as number) || 70;
+
+    // 4. Analyze each wallet
+    let totalTokensFound = 0;
+    let totalSignals = 0;
+    let totalBuySignals = 0;
+    const allCandidates: any[] = [];
+    const seenMints = new Set<string>();
+
+    for (const wallet of wallets) {
+      try {
+        // Fetch transactions
+        const txRes = await fetch(
+          `${HELIUS_BASE}/addresses/${wallet}/transactions?api-key=${heliusKey}&limit=50`
+        );
+        if (!txRes.ok) continue;
+        const txns = await txRes.json();
+
+        // Fetch token balances
+        const balRes = await fetch(`${HELIUS_RPC}/?api-key=${heliusKey}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            method: "getAssetsByOwner",
+            params: {
+              ownerAddress: wallet,
+              displayOptions: { showFungible: true, showNativeBalance: true },
+            },
+          }),
+        });
+
+        let tokens: any[] = [];
+        let totalValueUsd = 0;
+        if (balRes.ok) {
+          const balJson = await balRes.json();
+          const items = balJson.result?.items || [];
+          const nativeBal = balJson.result?.nativeBalance;
+
+          if (nativeBal) {
+            const solAmt = nativeBal.lamports / 1e9;
+            const solPrice = nativeBal.price_per_sol || 0;
+            tokens.push({
+              mint: "So11111111111111111111111111111111111111112",
+              amount: solAmt,
+              symbol: "SOL",
+              priceUsd: solPrice,
+              valueUsd: solAmt * solPrice,
+            });
+            totalValueUsd += solAmt * solPrice;
+          }
+
+          for (const item of items) {
+            if (item.interface === "FungibleToken" || item.interface === "FungibleAsset") {
+              const info = item.token_info || {};
+              const meta = item.content?.metadata || {};
+              const amount = (info.balance || 0) / Math.pow(10, info.decimals || 0);
+              if (amount <= 0) continue;
+              const priceUsd = info.price_info?.price_per_token || 0;
+              const valueUsd = amount * priceUsd;
+              tokens.push({
+                mint: item.id,
+                amount,
+                symbol: info.symbol || meta.symbol || "???",
+                name: meta.name || "Unknown",
+                priceUsd,
+                valueUsd,
+              });
+              totalValueUsd += valueUsd;
+            }
+          }
+        }
+
+        // Parse trades (recent buys)
+        const oneDayAgo = Date.now() / 1000 - 86400;
+        for (const tx of txns) {
+          if (tx.timestamp <= oneDayAgo) continue;
+          const tokenTransfers = tx.tokenTransfers || [];
+          const incoming = tokenTransfers.find((t: any) => t.toUserAccount === wallet);
+          const outgoing = tokenTransfers.find((t: any) => t.fromUserAccount === wallet);
+
+          if (incoming && (!outgoing || tx.type === "SWAP")) {
+            const mint = incoming.mint;
+            if (!seenMints.has(mint) && !KNOWN_SAFE_MINTS.has(mint)) {
+              seenMints.add(mint);
+
+              // Quick security check
+              const tokenInfo = tokens.find((t: any) => t.mint === mint);
+              const isSafe = KNOWN_SAFE_MINTS.has(mint);
+              const hasPrice = tokenInfo ? tokenInfo.priceUsd > 0 : false;
+              const valueUsd = tokenInfo?.valueUsd || 0;
+
+              // Simple scoring
+              const securityScore = isSafe ? 100 : hasPrice ? 60 : 30;
+              const liquidityScore = valueUsd > 100000 ? 80 : valueUsd > 10000 ? 60 : valueUsd > 1000 ? 40 : 20;
+              const walletScore = totalValueUsd > 100000 ? 80 : totalValueUsd > 10000 ? 60 : 40;
+
+              const totalScore = Math.round(
+                securityScore * 0.3 + liquidityScore * 0.25 + walletScore * 0.45
+              );
+
+              totalTokensFound++;
+
+              const decision = totalScore >= minScoreThreshold ? "BUY" : totalScore >= 45 ? "WATCH" : "SKIP";
+
+              allCandidates.push({
+                mint,
+                symbol: incoming.tokenSymbol || tokenInfo?.symbol || "???",
+                name: tokenInfo?.name || incoming.tokenSymbol || "Unknown",
+                sourceWallet: wallet,
+                securityScore,
+                liquidityScore,
+                walletScore,
+                totalScore,
+                decision,
+                valueUsd,
+                totalValueUsd,
+              });
+
+              if (decision === "BUY") totalBuySignals++;
+            }
+          }
+        }
+      } catch (err) {
+        console.error(`Wallet ${wallet} error:`, err);
+      }
+    }
+
+    // 5. Save BUY signals to trading_signals
+    const buySignals = allCandidates.filter((c) => c.decision === "BUY");
+    if (buySignals.length > 0) {
+      const signals = buySignals.map((c) => ({
+        wallet_address: c.sourceWallet,
+        token_mint: c.mint,
+        token_symbol: c.symbol,
+        token_name: c.name,
+        signal_type: "BUY",
+        strategy: "Bot Pipeline (auto)",
+        smart_score: c.walletScore,
+        risk_score: 100 - c.securityScore,
+        confidence: c.totalScore,
+        conditions: {
+          security_score: c.securityScore,
+          liquidity_score: c.liquidityScore,
+          wallet_score: c.walletScore,
+          total_score: c.totalScore,
+          source: "cron_monitor",
+          value_usd: c.valueUsd,
+        },
+        status: "pending",
+      }));
+
+      await supabase.from("trading_signals").insert(signals);
+      totalSignals = signals.length;
+    }
+
+    // 6. Update run record
+    await updateRun(supabase, runId, {
+      status: "completed",
+      finished_at: new Date().toISOString(),
+      wallets_scanned: wallets.length,
+      tokens_found: totalTokensFound,
+      signals_generated: totalSignals,
+      buy_signals: totalBuySignals,
+      duration_ms: Date.now() - startTime,
+      details: {
+        candidates: allCandidates.length,
+        wallets_count: wallets.length,
+      },
+    });
+
+    return jsonResponse({
+      success: true,
+      wallets_scanned: wallets.length,
+      tokens_found: totalTokensFound,
+      signals_generated: totalSignals,
+      buy_signals: totalBuySignals,
+      duration_ms: Date.now() - startTime,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    console.error("Bot monitor error:", msg);
+
+    await updateRun(supabase, runId, {
+      status: "error",
+      finished_at: new Date().toISOString(),
+      error_message: msg,
+      duration_ms: Date.now() - startTime,
+    });
+
+    return jsonResponse({ success: false, error: msg }, 500);
+  }
+});
+
+async function updateRun(supabase: any, runId: string | undefined, data: Record<string, any>) {
+  if (!runId) return;
+  await supabase.from("bot_runs").update(data).eq("id", runId);
+}
+
+function jsonResponse(data: any, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "application/json",
+    },
+  });
+}

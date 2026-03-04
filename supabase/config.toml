@@ -1,1 +1,10 @@
 project_id = "rlhlzizvneeacdmsqrxx"
+
+[functions.bot-monitor]
+verify_jwt = false
+
+[functions.execute-swap]
+verify_jwt = false
+
+[functions.news-scanner]
+verify_jwt = false
