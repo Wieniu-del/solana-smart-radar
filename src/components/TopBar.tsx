@@ -1,10 +1,13 @@
 import { useEffect, useState, useCallback } from "react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { getHeliusApiKey } from "@/services/helius";
-import { Wifi, WifiOff, Loader2 } from "lucide-react";
+import { Wifi, WifiOff, Loader2, LogOut, User } from "lucide-react";
 import NotificationCenter from "@/components/NotificationCenter";
+import { useAuth } from "@/hooks/useAuth";
+import { Button } from "@/components/ui/button";
 
 const TopBar = () => {
+  const { user, signOut } = useAuth();
   const [chainStatus, setChainStatus] = useState<"online" | "offline" | "checking">("checking");
   const [currentTime, setCurrentTime] = useState(new Date());
   const [latency, setLatency] = useState<number | null>(null);
@@ -94,6 +97,24 @@ const TopBar = () => {
         <span className="text-xs font-mono text-muted-foreground hidden md:inline">
           {currentTime.toLocaleTimeString("en-US", { hour12: false })}
         </span>
+
+        <div className="h-4 w-px bg-border" />
+
+        <div className="flex items-center gap-2">
+          <User className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="text-xs font-mono text-muted-foreground hidden sm:inline truncate max-w-[120px]">
+            {user?.email}
+          </span>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+            onClick={signOut}
+            title="Wyloguj"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
     </header>
   );
