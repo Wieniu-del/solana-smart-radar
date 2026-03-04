@@ -30,6 +30,8 @@ export default function BotControlPanel() {
   const [newWallet, setNewWallet] = useState("");
   const [minScore, setMinScore] = useState(70);
   const [maxPosition, setMaxPosition] = useState(0.1);
+  const [savedMinScore, setSavedMinScore] = useState(70);
+  const [savedMaxPosition, setSavedMaxPosition] = useState(0.1);
   const [recentRuns, setRecentRuns] = useState<BotRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -44,8 +46,8 @@ export default function BotControlPanel() {
           switch (c.key) {
             case "bot_enabled": setBotEnabled(c.value === true); break;
             case "tracked_wallets": setTrackedWallets(c.value as string[] || []); break;
-            case "min_score_threshold": setMinScore(c.value as number || 70); break;
-            case "max_position_sol": setMaxPosition(c.value as number || 0.1); break;
+            case "min_score_threshold": { const v = c.value as number || 70; setMinScore(v); setSavedMinScore(v); break; }
+            case "max_position_sol": { const v = c.value as number || 0.1; setMaxPosition(v); setSavedMaxPosition(v); break; }
           }
         }
       }
@@ -81,8 +83,7 @@ export default function BotControlPanel() {
   async function updateConfig(key: string, value: any) {
     const { error } = await supabase
       .from("bot_config")
-      .update({ value, updated_at: new Date().toISOString() })
-      .eq("key", key);
+      .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: "key" });
     if (error) throw error;
   }
 
@@ -149,6 +150,8 @@ export default function BotControlPanel() {
         updateConfig("min_score_threshold", minScore),
         updateConfig("max_position_sol", maxPosition),
       ]);
+      setSavedMinScore(minScore);
+      setSavedMaxPosition(maxPosition);
       toast({ title: "✅ Ustawienia zapisane" });
     } catch (e: any) {
       toast({ title: "Błąd", description: e.message, variant: "destructive" });
@@ -326,6 +329,12 @@ export default function BotControlPanel() {
                 value={maxPosition}
                 onChange={(e) => setMaxPosition(Number(e.target.value))}
               />
+            </div>
+            {(minScore !== savedMinScore || maxPosition !== savedMaxPosition) && (
+              <p className="text-[10px] text-neon-amber">⚠ Niezapisane zmiany</p>
+            )}
+            <div className="text-[10px] text-muted-foreground bg-muted/30 rounded p-2">
+              Zapisane: score <span className="text-foreground font-medium">{savedMinScore}</span>, pozycja <span className="text-foreground font-medium">{savedMaxPosition} SOL</span>
             </div>
             <Button onClick={saveSettings} disabled={saving} className="w-full" size="sm">
               {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
