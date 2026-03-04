@@ -40,6 +40,11 @@ function requireKey(): string {
   return key;
 }
 
+// Validate Solana address (Base58, 32-44 chars)
+export function isValidSolanaAddress(address: string): boolean {
+  return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address);
+}
+
 // ─── Wallet Transactions ───
 export interface HeliusTransaction {
   signature: string;

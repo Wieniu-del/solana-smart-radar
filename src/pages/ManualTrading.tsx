@@ -2,11 +2,12 @@ import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Slider } from "@/components/ui/slider";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 import {
   HandCoins, TrendingUp, TrendingDown, ArrowRightLeft, Settings2,
-  DollarSign, Percent, Shield, Loader2
+  DollarSign, Percent, Shield, Loader2, Activity, Zap
 } from "lucide-react";
 
 interface ManualOrder {
@@ -18,8 +19,11 @@ interface ManualOrder {
   slippage: number;
   stopLoss: number | null;
   takeProfit: number | null;
-  status: "pending" | "executed" | "failed";
+  trailingStop: number | null;
+  status: "pending" | "executing" | "executed" | "failed";
   createdAt: string;
+  txSignature?: string;
+  errorMessage?: string;
 }
 
 export default function ManualTrading() {
@@ -30,14 +34,39 @@ export default function ManualTrading() {
   const [slippage, setSlippage] = useState("1");
   const [stopLoss, setStopLoss] = useState("20");
   const [takeProfit, setTakeProfit] = useState("50");
+  const [trailingStop, setTrailingStop] = useState("0");
+  const [useTrailingStop, setUseTrailingStop] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [orders, setOrders] = useState<ManualOrder[]>(() => {
     try { return JSON.parse(localStorage.getItem("manual_orders") || "[]"); } catch { return []; }
   });
 
+  const executeOnJupiter = async (order: ManualOrder): Promise<{ success: boolean; txSignature?: string; error?: string }> => {
+    try {
+      const { data, error } = await supabase.functions.invoke("execute-swap", {
+        body: {
+          action: order.type,
+          tokenMint: order.tokenMint,
+          amountSol: order.amountSol,
+          slippageBps: Math.round(order.slippage * 100),
+        },
+      });
+
+      if (error) return { success: false, error: error.message };
+      if (!data?.success) return { success: false, error: data?.error || "Nieznany błąd Jupiter" };
+      return { success: true, txSignature: data.txSignature };
+    } catch (err: unknown) {
+      return { success: false, error: err instanceof Error ? err.message : "Błąd połączenia" };
+    }
+  };
+
   const handleSubmit = async () => {
     if (!tokenMint.trim()) {
       toast.error("Podaj adres tokena (mint)");
+      return;
+    }
+    if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(tokenMint.trim())) {
+      toast.error("Nieprawidłowy adres tokena");
       return;
     }
     if (parseFloat(amountSol) <= 0) {
@@ -56,16 +85,35 @@ export default function ManualTrading() {
       slippage: parseFloat(slippage),
       stopLoss: stopLoss ? parseFloat(stopLoss) : null,
       takeProfit: takeProfit ? parseFloat(takeProfit) : null,
-      status: "pending",
+      trailingStop: useTrailingStop && parseFloat(trailingStop) > 0 ? parseFloat(trailingStop) : null,
+      status: "executing",
       createdAt: new Date().toISOString(),
     };
 
-    // Save locally (no edge function execution yet)
+    // Save immediately as executing
     const updated = [order, ...orders];
     setOrders(updated);
     localStorage.setItem("manual_orders", JSON.stringify(updated));
 
-    toast.success(`Zlecenie ${orderType} dodane — oczekuje na wykonanie`);
+    toast.info(`⏳ Wykonuję ${orderType} przez Jupiter DEX...`);
+
+    // Execute via Jupiter
+    const result = await executeOnJupiter(order);
+
+    order.status = result.success ? "executed" : "failed";
+    order.txSignature = result.txSignature;
+    order.errorMessage = result.error;
+
+    const finalOrders = [order, ...orders];
+    setOrders(finalOrders);
+    localStorage.setItem("manual_orders", JSON.stringify(finalOrders));
+
+    if (result.success) {
+      toast.success(`✅ ${orderType} wykonany! TX: ${result.txSignature?.slice(0, 8)}...`);
+    } else {
+      toast.error(`❌ Błąd: ${result.error}`);
+    }
+
     setSubmitting(false);
     setTokenMint("");
     setTokenSymbol("");
@@ -83,8 +131,11 @@ export default function ManualTrading() {
         <HandCoins className="h-8 w-8 text-secondary" />
         <div>
           <h1 className="text-2xl font-bold text-foreground">Handel Ręczny</h1>
-          <p className="text-sm text-muted-foreground">Twórz ręczne zlecenia kupna i sprzedaży tokenów</p>
+          <p className="text-sm text-muted-foreground">Zlecenia kupna/sprzedaży przez Jupiter DEX</p>
         </div>
+        <Badge variant="outline" className="ml-auto text-xs border-primary/30 text-primary">
+          <Zap className="h-3 w-3 mr-1" /> Jupiter V6
+        </Badge>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -106,8 +157,7 @@ export default function ManualTrading() {
                     : "bg-muted text-muted-foreground border border-border hover:border-muted-foreground"
                 }`}
               >
-                <TrendingUp className="h-4 w-4" />
-                KUP
+                <TrendingUp className="h-4 w-4" /> KUP
               </button>
               <button
                 onClick={() => setOrderType("SELL")}
@@ -117,8 +167,7 @@ export default function ManualTrading() {
                     : "bg-muted text-muted-foreground border border-border hover:border-muted-foreground"
                 }`}
               >
-                <TrendingDown className="h-4 w-4" />
-                SPRZEDAJ
+                <TrendingDown className="h-4 w-4" /> SPRZEDAJ
               </button>
             </div>
 
@@ -143,16 +192,14 @@ export default function ManualTrading() {
               />
             </div>
 
-            {/* Amount */}
+            {/* Amount & Slippage */}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
                   <DollarSign className="h-3 w-3" /> Kwota (SOL)
                 </label>
                 <input
-                  type="number"
-                  step="0.01"
-                  min="0"
+                  type="number" step="0.01" min="0"
                   value={amountSol}
                   onChange={(e) => setAmountSol(e.target.value)}
                   className="w-full bg-muted border border-border rounded-lg px-4 py-2.5 text-sm font-mono text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
@@ -163,9 +210,7 @@ export default function ManualTrading() {
                   <Percent className="h-3 w-3" /> Slippage (%)
                 </label>
                 <input
-                  type="number"
-                  step="0.1"
-                  min="0"
+                  type="number" step="0.1" min="0"
                   value={slippage}
                   onChange={(e) => setSlippage(e.target.value)}
                   className="w-full bg-muted border border-border rounded-lg px-4 py-2.5 text-sm font-mono text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
@@ -180,9 +225,7 @@ export default function ManualTrading() {
                   <Shield className="h-3 w-3" /> Stop Loss (%)
                 </label>
                 <input
-                  type="number"
-                  step="1"
-                  min="0"
+                  type="number" step="1" min="0"
                   value={stopLoss}
                   onChange={(e) => setStopLoss(e.target.value)}
                   className="w-full bg-muted border border-border rounded-lg px-4 py-2.5 text-sm font-mono text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
@@ -193,14 +236,56 @@ export default function ManualTrading() {
                   <TrendingUp className="h-3 w-3" /> Take Profit (%)
                 </label>
                 <input
-                  type="number"
-                  step="1"
-                  min="0"
+                  type="number" step="1" min="0"
                   value={takeProfit}
                   onChange={(e) => setTakeProfit(e.target.value)}
                   className="w-full bg-muted border border-border rounded-lg px-4 py-2.5 text-sm font-mono text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
                 />
               </div>
+            </div>
+
+            {/* Trailing Stop-Loss */}
+            <div className="border border-border rounded-lg p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-foreground flex items-center gap-2">
+                  <Activity className="h-4 w-4 text-primary" />
+                  Ruchomy Stop-Loss (Trailing)
+                </label>
+                <button
+                  onClick={() => setUseTrailingStop(!useTrailingStop)}
+                  className={`w-10 h-5 rounded-full transition-colors relative ${
+                    useTrailingStop ? "bg-primary" : "bg-muted-foreground/30"
+                  }`}
+                >
+                  <span className={`block w-4 h-4 rounded-full bg-background absolute top-0.5 transition-transform ${
+                    useTrailingStop ? "translate-x-5" : "translate-x-0.5"
+                  }`} />
+                </button>
+              </div>
+              {useTrailingStop && (
+                <div className="space-y-2">
+                  <p className="text-[10px] text-muted-foreground">
+                    Stop-loss podąża za ceną w górę. Gdy cena spadnie o podany % od szczytu, pozycja zostanie zamknięta.
+                  </p>
+                  <div className="flex items-center gap-3">
+                    <Slider
+                      value={[parseFloat(trailingStop) || 0]}
+                      onValueChange={(v) => setTrailingStop(v[0].toString())}
+                      min={1}
+                      max={30}
+                      step={0.5}
+                      className="flex-1"
+                    />
+                    <span className="text-sm font-mono font-bold text-primary w-12 text-right">
+                      {trailingStop}%
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-[10px] text-muted-foreground">
+                    <span>Agresywny (1%)</span>
+                    <span>Konserwatywny (30%)</span>
+                  </div>
+                </div>
+              )}
             </div>
 
             <Button
@@ -217,7 +302,7 @@ export default function ManualTrading() {
               ) : (
                 <>
                   <ArrowRightLeft className="h-5 w-5 mr-2" />
-                  {orderType === "BUY" ? "Złóż zlecenie kupna" : "Złóż zlecenie sprzedaży"}
+                  {orderType === "BUY" ? "Kup przez Jupiter" : "Sprzedaj przez Jupiter"}
                 </>
               )}
             </Button>
@@ -264,14 +349,31 @@ export default function ManualTrading() {
                       <p className="text-[10px] text-muted-foreground font-mono truncate">{order.tokenMint}</p>
                       <p className="text-[10px] text-muted-foreground">
                         SL: {order.stopLoss || "-"}% · TP: {order.takeProfit || "-"}% · Slip: {order.slippage}%
+                        {order.trailingStop ? ` · Trail: ${order.trailingStop}%` : ""}
                       </p>
+                      {order.txSignature && (
+                        <a
+                          href={`https://solscan.io/tx/${order.txSignature}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[10px] text-primary hover:underline font-mono"
+                        >
+                          TX: {order.txSignature.slice(0, 12)}...
+                        </a>
+                      )}
+                      {order.errorMessage && (
+                        <p className="text-[10px] text-destructive">{order.errorMessage}</p>
+                      )}
                     </div>
                     <Badge className={
                       order.status === "executed" ? "bg-primary/10 text-primary border-primary/30" :
+                      order.status === "executing" ? "bg-neon-amber/10 text-neon-amber border-neon-amber/30 animate-pulse" :
                       order.status === "failed" ? "bg-destructive/10 text-destructive border-destructive/30" :
-                      "bg-neon-amber/10 text-neon-amber border-neon-amber/30"
+                      "bg-muted text-muted-foreground border-border"
                     }>
-                      {order.status === "pending" ? "Oczekuje" : order.status === "executed" ? "Wykonano" : "Błąd"}
+                      {order.status === "pending" ? "Oczekuje" : 
+                       order.status === "executing" ? "Wykonuję..." :
+                       order.status === "executed" ? "Wykonano" : "Błąd"}
                     </Badge>
                   </div>
                 ))}
