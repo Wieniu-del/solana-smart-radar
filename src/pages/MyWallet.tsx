@@ -37,9 +37,12 @@ export default function MyWallet() {
           .select("value")
           .eq("key", "connected_wallet")
           .maybeSingle();
-        if (data?.value && typeof data.value === "string" && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(data.value)) {
-          localStorage.setItem("connected_wallet", data.value);
-          setWalletAddress(data.value);
+        if (data?.value) {
+          const val = typeof data.value === "string" ? data.value : JSON.stringify(data.value).replace(/"/g, "");
+          if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(val)) {
+            localStorage.setItem("connected_wallet", val);
+            setWalletAddress(val);
+          }
         }
       } catch { /* ignore */ }
     }
