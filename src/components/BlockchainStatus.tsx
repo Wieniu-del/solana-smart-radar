@@ -46,11 +46,15 @@ const BlockchainStatus = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Re-check when localStorage changes (key added/removed)
+  // Re-check when key changes
   useEffect(() => {
     const handler = () => checkConnection();
     window.addEventListener("storage", handler);
-    return () => window.removeEventListener("storage", handler);
+    window.addEventListener("helius-key-updated", handler);
+    return () => {
+      window.removeEventListener("storage", handler);
+      window.removeEventListener("helius-key-updated", handler);
+    };
   }, []);
 
   return (
