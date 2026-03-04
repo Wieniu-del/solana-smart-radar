@@ -283,7 +283,7 @@ Deno.serve(async (req) => {
     // 5. Save BUY signals to trading_signals
     const finalBuySignals = allCandidates.filter((c) => c.decision === "BUY");
     if (finalBuySignals.length > 0) {
-      const signals = buySignals.map((c) => ({
+      const signals = finalBuySignals.map((c) => ({
         wallet_address: c.sourceWallet,
         token_mint: c.mint,
         token_symbol: c.symbol,
@@ -302,6 +302,9 @@ Deno.serve(async (req) => {
           value_usd: c.valueUsd,
           correlation_wallets: c.correlationWallets || 1,
           correlation_bonus: c.correlationBonus || 0,
+          sentiment: c.sentiment?.sentiment || "unknown",
+          sentiment_score: c.sentiment?.sentiment_score || 0,
+          sentiment_adjust: c.sentimentAdjust || 0,
         },
         status: "pending",
       }));
