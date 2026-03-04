@@ -309,6 +309,7 @@ Deno.serve(async (req) => {
           }
         }
       }
+    }
 
     // 6. Update run record
     await updateRun(supabase, runId, {
