@@ -9,6 +9,7 @@ const SettingsPage = () => {
   const [apiKey, setApiKey] = useState("");
   const [saved, setSaved] = useState(false);
   const [validating, setValidating] = useState(false);
+  const [refreshingKey, setRefreshingKey] = useState(false);
   const [network, setNetwork] = useState(() => localStorage.getItem("solana_network") || "mainnet");
   const [wallets, setWallets] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem("tracked_wallets") || "[]"); } catch { return []; }
@@ -20,8 +21,16 @@ const SettingsPage = () => {
   const [connecting, setConnecting] = useState(false);
 
   useEffect(() => {
-    const existing = getHeliusApiKey();
-    if (existing) setApiKey(existing);
+    const bootstrapKey = async () => {
+      const existing = getHeliusApiKey();
+      if (existing) {
+        setApiKey(existing);
+        return;
+      }
+      const fresh = await initHeliusApiKey();
+      if (fresh) setApiKey(fresh);
+    };
+    bootstrapKey();
   }, []);
 
   const handleSaveKey = async () => {
@@ -275,6 +284,7 @@ const SettingsPage = () => {
         {getHeliusApiKey() && (
           <button
             onClick={async () => {
+              setRefreshingKey(true);
               localStorage.removeItem("helius_api_key");
               setApiKey("");
               window.dispatchEvent(new Event("helius-key-updated"));
@@ -284,13 +294,15 @@ const SettingsPage = () => {
                 setApiKey(freshKey);
                 toast.success("Nowy klucz API pobrany i zapisany pomyślnie!");
               } else {
-                toast.error("Nie udało się pobrać klucza z backendu — wklej go ręcznie");
+                toast.error("Nie udało się pobrać klucza z backendu — kliknij Zapisz lub odśwież stronę");
               }
+              setRefreshingKey(false);
             }}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-destructive/30 text-destructive text-sm hover:bg-destructive/10 transition-colors"
+            disabled={refreshingKey}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-destructive/30 text-destructive text-sm hover:bg-destructive/10 transition-colors disabled:opacity-50"
           >
-            <Trash2 className="h-4 w-4" />
-            Wyczyść i pobierz nowy klucz API
+            {refreshingKey ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            {refreshingKey ? "Pobieranie..." : "Wyczyść i pobierz nowy klucz API"}
           </button>
         )}
       </div>
