@@ -183,7 +183,7 @@ const Alerts = () => {
                     {rule.type === "burst" && `${rule.config.txCount} TX w ${rule.config.timeWindowMin} min`}
                     {rule.type === "score_threshold" && `Smart Score ≥ ${rule.config.scoreThreshold}`}
                     {rule.type === "reactivation" && `Po ${rule.config.silenceHours}h ciszy`}
-                    {rule.walletAddress && ` · ${rule.walletAddress.slice(0, 6)}...${rule.walletAddress.slice(-4)}`}
+                    {rule.walletAddress && ` · ${rule.walletAddress}`}
                   </div>
                 </div>
                 <button onClick={() => toggleRule(rule.id)} className="text-muted-foreground hover:text-foreground transition-colors">

@@ -332,7 +332,7 @@ export default function BotControlPanel() {
               ) : (
                 trackedWallets.map((w) => (
                   <div key={w} className="flex items-center justify-between bg-muted/30 rounded px-2.5 py-1.5">
-                    <span className="text-[11px] font-mono text-foreground truncate mr-2">{w.slice(0, 6)}...{w.slice(-4)}</span>
+                    <span className="text-[11px] font-mono text-foreground break-all mr-2">{w}</span>
                     <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => removeWallet(w)}>
                       <Trash2 className="h-3 w-3 text-destructive" />
                     </Button>
