@@ -340,14 +340,19 @@ const Activity24h = () => {
   );
 };
 
-function StatCard({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
+function StatCard({ icon: Icon, label, value, textValue }: { icon: React.ElementType; label: string; value?: number; textValue?: string }) {
   return (
-    <div className="neon-card rounded-xl p-4">
+    <div className="neon-card rounded-xl p-4 hover:scale-[1.02] transition-transform duration-300">
       <div className="flex items-center gap-2 mb-2">
         <Icon className="h-4 w-4 text-primary" />
         <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{label}</span>
+        <LivePulse />
       </div>
-      <span className="text-lg font-bold font-mono text-foreground">{value}</span>
+      {textValue ? (
+        <span className="text-lg font-bold font-mono text-foreground">{textValue}</span>
+      ) : (
+        <AnimatedCounter value={value || 0} className="text-lg font-bold font-mono text-foreground" />
+      )}
     </div>
   );
 }
