@@ -264,6 +264,8 @@ Deno.serve(async (req) => {
           total_score: c.totalScore,
           source: "cron_monitor",
           value_usd: c.valueUsd,
+          correlation_wallets: c.correlationWallets || 1,
+          correlation_bonus: c.correlationBonus || 0,
         },
         status: "pending",
       }));
