@@ -87,6 +87,16 @@ Deno.serve(async (req) => {
       .single();
     const minScoreThreshold = (thresholdConfig?.value as number) || 70;
 
+    // 3b. Get dynamic sizing config
+    const { data: dynSizingConfig } = await supabase
+      .from("bot_config")
+      .select("value")
+      .eq("key", "dynamic_sizing")
+      .single();
+    const dynamicSizing = (dynSizingConfig?.value as { enabled: boolean; min_sol: number; max_sol: number }) || {
+      enabled: false, min_sol: 0.05, max_sol: 0.5,
+    };
+
     // 4. Analyze each wallet
     let totalTokensFound = 0;
     let totalSignals = 0;
@@ -214,6 +224,26 @@ Deno.serve(async (req) => {
       }
     }
 
+    // 4b. Smart Money Correlation — bonus if 2+ wallets bought same token
+    const mintWalletCount: Record<string, Set<string>> = {};
+    for (const c of allCandidates) {
+      if (!mintWalletCount[c.mint]) mintWalletCount[c.mint] = new Set();
+      mintWalletCount[c.mint].add(c.sourceWallet);
+    }
+    for (const c of allCandidates) {
+      const walletsBuying = mintWalletCount[c.mint]?.size || 1;
+      if (walletsBuying >= 2) {
+        const correlationBonus = Math.min(walletsBuying * 8, 20); // max +20 pts
+        c.totalScore = Math.min(100, c.totalScore + correlationBonus);
+        c.correlationBonus = correlationBonus;
+        c.correlationWallets = walletsBuying;
+        // Re-evaluate decision with new score
+        c.decision = c.totalScore >= minScoreThreshold ? "BUY" : c.totalScore >= 45 ? "WATCH" : "SKIP";
+      }
+    }
+    // Recount buy signals after correlation
+    totalBuySignals = allCandidates.filter((c) => c.decision === "BUY").length;
+
     // 5. Save BUY signals to trading_signals
     const buySignals = allCandidates.filter((c) => c.decision === "BUY");
     if (buySignals.length > 0) {
@@ -234,6 +264,8 @@ Deno.serve(async (req) => {
           total_score: c.totalScore,
           source: "cron_monitor",
           value_usd: c.valueUsd,
+          correlation_wallets: c.correlationWallets || 1,
+          correlation_bonus: c.correlationBonus || 0,
         },
         status: "pending",
       }));
@@ -280,7 +312,7 @@ Deno.serve(async (req) => {
             .select("value")
             .eq("key", "max_position_sol")
             .single();
-          const positionSol = (posConfig?.value as number) || 0.1;
+          const basePositionSol = (posConfig?.value as number) || 0.1;
 
           // Get trailing stop settings
           const { data: tsConfig } = await supabase
@@ -306,6 +338,14 @@ Deno.serve(async (req) => {
               break;
             }
             if (candidate.totalScore > 80) {
+            // Dynamic sizing: scale position by confidence score
+            let positionSol = basePositionSol;
+            if (dynamicSizing.enabled) {
+              const scoreNorm = Math.max(0, Math.min(1, (candidate.totalScore - 70) / 30)); // 70=0%, 100=100%
+              positionSol = dynamicSizing.min_sol + scoreNorm * (dynamicSizing.max_sol - dynamicSizing.min_sol);
+              positionSol = Math.round(positionSol * 1000) / 1000; // round to 3 decimals
+            }
+
             try {
               const swapRes = await fetch(`${supabaseUrl}/functions/v1/execute-swap`, {
                 method: "POST",
