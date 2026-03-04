@@ -224,6 +224,26 @@ Deno.serve(async (req) => {
       }
     }
 
+    // 4b. Smart Money Correlation — bonus if 2+ wallets bought same token
+    const mintWalletCount: Record<string, Set<string>> = {};
+    for (const c of allCandidates) {
+      if (!mintWalletCount[c.mint]) mintWalletCount[c.mint] = new Set();
+      mintWalletCount[c.mint].add(c.sourceWallet);
+    }
+    for (const c of allCandidates) {
+      const walletsBuying = mintWalletCount[c.mint]?.size || 1;
+      if (walletsBuying >= 2) {
+        const correlationBonus = Math.min(walletsBuying * 8, 20); // max +20 pts
+        c.totalScore = Math.min(100, c.totalScore + correlationBonus);
+        c.correlationBonus = correlationBonus;
+        c.correlationWallets = walletsBuying;
+        // Re-evaluate decision with new score
+        c.decision = c.totalScore >= minScoreThreshold ? "BUY" : c.totalScore >= 45 ? "WATCH" : "SKIP";
+      }
+    }
+    // Recount buy signals after correlation
+    totalBuySignals = allCandidates.filter((c) => c.decision === "BUY").length;
+
     // 5. Save BUY signals to trading_signals
     const buySignals = allCandidates.filter((c) => c.decision === "BUY");
     if (buySignals.length > 0) {
