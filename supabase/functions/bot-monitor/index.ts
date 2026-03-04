@@ -238,9 +238,77 @@ Deno.serve(async (req) => {
         status: "pending",
       }));
 
-      await supabase.from("trading_signals").insert(signals);
+      const { data: insertedSignals } = await supabase.from("trading_signals").insert(signals).select("id, token_symbol, confidence");
       totalSignals = signals.length;
-    }
+
+      // Send notifications for each signal
+      const notifications = signals.map((s: any) => ({
+        type: "signal",
+        title: `🔔 Sygnał BUY: ${s.token_symbol}`,
+        message: `Wykryto sygnał kupna ${s.token_symbol} z confidence ${s.confidence}%. Źródło: ${s.wallet_address.slice(0, 6)}...${s.wallet_address.slice(-4)}`,
+        details: { token_mint: s.token_mint, token_symbol: s.token_symbol, confidence: s.confidence, wallet: s.wallet_address },
+      }));
+      await supabase.from("notifications").insert(notifications);
+
+      // 5b. Auto-execute if enabled
+      const { data: autoExecConfig } = await supabase
+        .from("bot_config")
+        .select("value")
+        .eq("key", "auto_execute")
+        .single();
+
+      if (autoExecConfig?.value === true) {
+        const { data: posConfig } = await supabase
+          .from("bot_config")
+          .select("value")
+          .eq("key", "max_position_sol")
+          .single();
+        const positionSol = (posConfig?.value as number) || 0.1;
+
+        for (const candidate of buySignals) {
+          if (candidate.totalScore > 80) {
+            try {
+              const swapRes = await fetch(`${supabaseUrl}/functions/v1/execute-swap`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${supabaseKey}`,
+                },
+                body: JSON.stringify({
+                  action: "BUY",
+                  tokenMint: candidate.mint,
+                  amountSol: positionSol,
+                  slippageBps: 150,
+                }),
+              });
+              const swapData = await swapRes.json();
+
+              if (swapData.success) {
+                await supabase.from("notifications").insert({
+                  type: "swap_success",
+                  title: `✅ Auto-swap: ${candidate.symbol}`,
+                  message: `Kupiono ${candidate.symbol} za ${positionSol} SOL. TX: ${swapData.txSignature?.slice(0, 12)}...`,
+                  details: { tx: swapData.txSignature, token: candidate.symbol, amount_sol: positionSol, mint: candidate.mint },
+                });
+              } else {
+                await supabase.from("notifications").insert({
+                  type: "swap_error",
+                  title: `❌ Auto-swap nieudany: ${candidate.symbol}`,
+                  message: `Błąd: ${swapData.error?.slice(0, 100) || "Nieznany błąd"}`,
+                  details: { error: swapData.error, token: candidate.symbol, mint: candidate.mint },
+                });
+              }
+            } catch (swapErr: any) {
+              await supabase.from("notifications").insert({
+                type: "swap_error",
+                title: `❌ Auto-swap błąd: ${candidate.symbol}`,
+                message: `Wyjątek: ${swapErr.message?.slice(0, 100) || "Nieznany błąd"}`,
+                details: { error: swapErr.message, token: candidate.symbol },
+              });
+            }
+          }
+        }
+      }
 
     // 6. Update run record
     await updateRun(supabase, runId, {
