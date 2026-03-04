@@ -330,6 +330,11 @@ export default function AutoTrading() {
         <TabsContent value="pnl">
           <PnLDashboard />
         </TabsContent>
+
+        {/* ─── System Status Tab ─── */}
+        <TabsContent value="status">
+          <SystemStatusPanel />
+        </TabsContent>
       </Tabs>
     </div>
   );
