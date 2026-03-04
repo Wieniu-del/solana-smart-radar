@@ -77,45 +77,54 @@ export default function AutoTrading() {
       return;
     }
 
-    // Try localStorage first, then fall back to bot_config in DB
+    // Resolve tracked wallets from DB + localStorage (with strong fallback)
+    const normalizeWallets = (value: unknown): string[] => {
+      const walletRegex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+      if (!Array.isArray(value)) return [];
+      return Array.from(new Set(value.filter((w): w is string => typeof w === "string" && walletRegex.test(w.trim())).map((w) => w.trim())));
+    };
+
     let trackedWallets: string[] = [];
+
     try {
       const stored = localStorage.getItem("tracked_wallets");
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          trackedWallets = parsed;
-        }
+        trackedWallets = normalizeWallets(parsed);
       }
-    } catch { /* ignore parse errors */ }
+    } catch {
+      // Ignore invalid localStorage format
+    }
 
-    // If localStorage is empty, always fetch from bot_config table
-    if (trackedWallets.length === 0) {
-      try {
-        const { data, error } = await supabase
-          .from("bot_config")
-          .select("value")
-          .eq("key", "tracked_wallets")
-          .single();
-        console.log("[Bot] DB tracked_wallets:", data?.value, "error:", error);
-        if (data?.value) {
-          const val = data.value;
-          const dbWallets = Array.isArray(val) ? val.filter((w): w is string => typeof w === "string") : [];
-          if (dbWallets.length > 0) {
-            trackedWallets = dbWallets;
-            localStorage.setItem("tracked_wallets", JSON.stringify(dbWallets));
-          }
-        }
-      } catch (e) {
-        console.error("[Bot] Failed to fetch wallets from DB:", e);
+    try {
+      const { data, error } = await supabase
+        .from("bot_config")
+        .select("value")
+        .eq("key", "tracked_wallets")
+        .maybeSingle();
+
+      if (error) {
+        console.warn("[Bot] tracked_wallets query warning:", error.message);
       }
+
+      const dbWallets = normalizeWallets(data?.value);
+      if (dbWallets.length > 0) {
+        trackedWallets = dbWallets;
+        localStorage.setItem("tracked_wallets", JSON.stringify(dbWallets));
+      }
+    } catch (e) {
+      console.error("[Bot] Failed to fetch wallets from DB:", e);
     }
 
     if (trackedWallets.length === 0) {
-      toast({ title: "Brak portfeli", description: "Dodaj śledzone portfele w Ustawieniach lub w panelu bota", variant: "destructive" });
+      const now = Date.now();
+      if (now - lastNoWalletToastAtRef.current > 15000) {
+        toast({ title: "Brak portfeli", description: "Dodaj śledzone portfele w Ustawieniach lub w panelu bota", variant: "destructive" });
+        lastNoWalletToastAtRef.current = now;
+      }
       return;
     }
-    
+
     console.log("[Bot] Using", trackedWallets.length, "tracked wallets");
 
     setScanning(true);
