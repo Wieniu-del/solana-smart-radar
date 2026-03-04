@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Key, Check, Globe, RefreshCw, Wallet, Plus, Trash2, Loader2, Link2, Zap, Shield } from "lucide-react";
-import { getHeliusApiKey, setHeliusApiKey, validateHeliusKey } from "@/services/helius";
+import { getHeliusApiKey, setHeliusApiKey, validateHeliusKey, initHeliusApiKey } from "@/services/helius";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
