@@ -1,5 +1,8 @@
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import BubblePhysics from "@/components/BubblePhysics";
+import LivePulse from "@/components/LivePulse";
+import AnimatedCounter from "@/components/AnimatedCounter";
+import { getHeliusApiKey } from "@/services/helius";
 import { Activity, TrendingUp, Clock, Zap } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Cell,
