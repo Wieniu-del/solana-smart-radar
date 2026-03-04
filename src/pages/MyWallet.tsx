@@ -26,6 +26,26 @@ export default function MyWallet() {
 
   const activeAddress = walletAddress || manualAddress.trim();
 
+  // Auto-restore wallet address from DB if localStorage is empty
+  useEffect(() => {
+    async function restoreFromDb() {
+      if (walletAddress) return; // already have it
+      try {
+        const { supabase } = await import("@/integrations/supabase/client");
+        const { data } = await supabase
+          .from("bot_config")
+          .select("value")
+          .eq("key", "connected_wallet")
+          .maybeSingle();
+        if (data?.value && typeof data.value === "string" && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(data.value)) {
+          localStorage.setItem("connected_wallet", data.value);
+          setWalletAddress(data.value);
+        }
+      } catch { /* ignore */ }
+    }
+    restoreFromDb();
+  }, []);
+
   useEffect(() => {
     if (walletAddress) loadWalletData(walletAddress);
   }, [walletAddress]);
