@@ -354,6 +354,7 @@ Deno.serve(async (req) => {
                   message: `Kupiono ${candidate.symbol} za ${positionSol} SOL. Trailing SL: ${trailingStopPct}%, TP: ${takeProfitPct}%. TX: ${swapData.txSignature?.slice(0, 12)}...`,
                   details: { tx: swapData.txSignature, token: candidate.symbol, amount_sol: positionSol, mint: candidate.mint, trailing_stop_pct: trailingStopPct, take_profit_pct: takeProfitPct },
                 });
+                executed++;
               } else {
                 await supabase.from("notifications").insert({
                   type: "swap_error",
@@ -372,6 +373,7 @@ Deno.serve(async (req) => {
             }
           }
         }
+        } // close else for position limit check
 
         // After processing buys, also check open positions (trailing stop / TP)
         try {
