@@ -338,6 +338,14 @@ Deno.serve(async (req) => {
               break;
             }
             if (candidate.totalScore > 80) {
+            // Dynamic sizing: scale position by confidence score
+            let positionSol = basePositionSol;
+            if (dynamicSizing.enabled) {
+              const scoreNorm = Math.max(0, Math.min(1, (candidate.totalScore - 70) / 30)); // 70=0%, 100=100%
+              positionSol = dynamicSizing.min_sol + scoreNorm * (dynamicSizing.max_sol - dynamicSizing.min_sol);
+              positionSol = Math.round(positionSol * 1000) / 1000; // round to 3 decimals
+            }
+
             try {
               const swapRes = await fetch(`${supabaseUrl}/functions/v1/execute-swap`, {
                 method: "POST",
