@@ -6,10 +6,11 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import BotControlPanel from "@/components/BotControlPanel";
+import PnLDashboard from "@/components/PnLDashboard";
 import {
   Bot, Zap, ShieldAlert, TrendingUp, TrendingDown, Clock, AlertTriangle,
   CheckCircle2, XCircle, Activity, Target, DollarSign, Play, Square,
-  Filter, Shield, Droplets, Users, Loader2
+  Filter, Shield, Droplets, Users, Loader2, BarChart3
 } from "lucide-react";
 import {
   getStrategies, toggleStrategy, getRecentSignals, updateSignalStatus,
@@ -203,6 +204,10 @@ export default function AutoTrading() {
             )}
           </TabsTrigger>
           <TabsTrigger value="history">Historia</TabsTrigger>
+          <TabsTrigger value="pnl">
+            <BarChart3 className="h-3.5 w-3.5 mr-1" />
+            PnL
+          </TabsTrigger>
         </TabsList>
 
         {/* ─── Bot 24/7 Control Panel ─── */}
@@ -295,6 +300,11 @@ export default function AutoTrading() {
               .filter((s) => s.status !== "pending")
               .map((signal) => <SignalCard key={signal.id} signal={signal} readonly />)
           )}
+        </TabsContent>
+
+        {/* ─── PnL Dashboard Tab ─── */}
+        <TabsContent value="pnl">
+          <PnLDashboard />
         </TabsContent>
       </Tabs>
     </div>
