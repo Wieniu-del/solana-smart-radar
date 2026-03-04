@@ -1,13 +1,13 @@
 import { useMemo, useState } from "react";
-import { Trophy, ArrowUpDown, Search } from "lucide-react";
+import { Trophy, ArrowUpDown, Search, Copy, ExternalLink } from "lucide-react";
 import { mockTopWallets, generateMockWallet, WalletData } from "@/types/wallet";
 import { Link } from "react-router-dom";
+import { toast } from "sonner";
 
 type SortKey = "smartScore" | "transactionCount24h" | "totalTransactions";
 
 const Ranking = () => {
   const wallets = useMemo<WalletData[]>(() => {
-    // Generate 50 wallets
     const all = [...mockTopWallets, ...Array.from({ length: 30 }, () => generateMockWallet())];
     return all.sort((a, b) => b.smartScore - a.smartScore);
   }, []);
@@ -28,6 +28,11 @@ const Ranking = () => {
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) setSortAsc(!sortAsc);
     else { setSortKey(key); setSortAsc(false); }
+  };
+
+  const copyAddress = (addr: string) => {
+    navigator.clipboard.writeText(addr);
+    toast.success("Adres skopiowany!");
   };
 
   const statusBadge = (status: WalletData["status"]) => {
@@ -66,7 +71,7 @@ const Ranking = () => {
             <thead>
               <tr className="border-b border-border">
                 <th className="text-left px-4 py-3 text-[10px] text-muted-foreground uppercase tracking-wider w-12">#</th>
-                <th className="text-left px-4 py-3 text-[10px] text-muted-foreground uppercase tracking-wider">Adres</th>
+                <th className="text-left px-4 py-3 text-[10px] text-muted-foreground uppercase tracking-wider">Adres portfela</th>
                 <th className="text-left px-4 py-3 text-[10px] text-muted-foreground uppercase tracking-wider">Status</th>
                 <SortHeader label="Smart Score" sortKey="smartScore" currentKey={sortKey} asc={sortAsc} onSort={toggleSort} />
                 <SortHeader label="TX 24h" sortKey="transactionCount24h" currentKey={sortKey} asc={sortAsc} onSort={toggleSort} />
@@ -79,9 +84,27 @@ const Ranking = () => {
                 <tr key={w.address} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
                   <td className="px-4 py-3 text-xs text-muted-foreground font-mono">{i + 1}</td>
                   <td className="px-4 py-3">
-                    <Link to="/analyze" className="text-xs font-mono text-foreground hover:text-primary transition-colors">
-                      {w.address.slice(0, 6)}...{w.address.slice(-4)}
-                    </Link>
+                    <div className="flex items-center gap-2">
+                      <Link to="/analyze" className="text-xs font-mono text-foreground hover:text-primary transition-colors break-all">
+                        {w.address}
+                      </Link>
+                      <button
+                        onClick={() => copyAddress(w.address)}
+                        className="text-muted-foreground hover:text-primary transition-colors shrink-0"
+                        title="Kopiuj adres"
+                      >
+                        <Copy className="h-3 w-3" />
+                      </button>
+                      <a
+                        href={`https://solscan.io/account/${w.address}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-muted-foreground hover:text-primary transition-colors shrink-0"
+                        title="Zobacz na Solscan"
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </div>
                   </td>
                   <td className="px-4 py-3">{statusBadge(w.status)}</td>
                   <td className="px-4 py-3">

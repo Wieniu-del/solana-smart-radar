@@ -7,14 +7,29 @@ export function getHeliusApiKey(): string | null {
 }
 
 export function setHeliusApiKey(key: string) {
-  // Sanitize: extract only the API key if user pasted full URL
+  // Sanitize: extract only the API key from various input formats
   let clean = key.trim();
-  const match = clean.match(/api-key=([a-f0-9-]+)/i);
-  if (match) {
-    clean = match[1];
+
+  // Handle full URL with api-key param
+  const urlMatch = clean.match(/api-key=([a-f0-9-]+)/i);
+  if (urlMatch) {
+    clean = urlMatch[1];
+  } else {
+    // Handle KEY=value or PREFIX=value formats (e.g. HELIUS_WS=xxx, HELIUS_API_KEY=xxx)
+    const eqIndex = clean.lastIndexOf("=");
+    if (eqIndex !== -1 && eqIndex < clean.length - 1) {
+      clean = clean.substring(eqIndex + 1).trim();
+    }
   }
-  // Remove any extra params that might have been pasted
+
+  // Final cleanup: keep only valid UUID characters (hex + hyphens)
   clean = clean.replace(/[^a-f0-9-]/gi, "");
+
+  if (clean.length < 10) {
+    console.warn("Helius key too short after cleaning:", clean.length);
+    return;
+  }
+
   localStorage.setItem("helius_api_key", clean);
 }
 
