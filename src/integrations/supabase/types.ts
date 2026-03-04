@@ -14,6 +14,69 @@ export type Database = {
   }
   public: {
     Tables: {
+      bot_config: {
+        Row: {
+          id: string
+          key: string
+          updated_at: string
+          value: Json
+        }
+        Insert: {
+          id?: string
+          key: string
+          updated_at?: string
+          value?: Json
+        }
+        Update: {
+          id?: string
+          key?: string
+          updated_at?: string
+          value?: Json
+        }
+        Relationships: []
+      }
+      bot_runs: {
+        Row: {
+          buy_signals: number | null
+          details: Json | null
+          duration_ms: number | null
+          error_message: string | null
+          finished_at: string | null
+          id: string
+          signals_generated: number | null
+          started_at: string
+          status: string
+          tokens_found: number | null
+          wallets_scanned: number | null
+        }
+        Insert: {
+          buy_signals?: number | null
+          details?: Json | null
+          duration_ms?: number | null
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          signals_generated?: number | null
+          started_at?: string
+          status?: string
+          tokens_found?: number | null
+          wallets_scanned?: number | null
+        }
+        Update: {
+          buy_signals?: number | null
+          details?: Json | null
+          duration_ms?: number | null
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          signals_generated?: number | null
+          started_at?: string
+          status?: string
+          tokens_found?: number | null
+          wallets_scanned?: number | null
+        }
+        Relationships: []
+      }
       trade_executions: {
         Row: {
           action: string

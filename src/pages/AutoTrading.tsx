@@ -5,6 +5,7 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
+import BotControlPanel from "@/components/BotControlPanel";
 import {
   Bot, Zap, ShieldAlert, TrendingUp, TrendingDown, Clock, AlertTriangle,
   CheckCircle2, XCircle, Activity, Target, DollarSign, Play, Square,
@@ -179,8 +180,11 @@ export default function AutoTrading() {
         </CardContent>
       </Card>
 
-      <Tabs defaultValue="pipeline" className="space-y-4">
+      <Tabs defaultValue="bot247" className="space-y-4">
         <TabsList className="bg-muted">
+          <TabsTrigger value="bot247">
+            🤖 Bot 24/7
+          </TabsTrigger>
           <TabsTrigger value="pipeline">
             Wyniki Pipeline
             {pipelineResults.length > 0 && (
@@ -200,6 +204,11 @@ export default function AutoTrading() {
           </TabsTrigger>
           <TabsTrigger value="history">Historia</TabsTrigger>
         </TabsList>
+
+        {/* ─── Bot 24/7 Control Panel ─── */}
+        <TabsContent value="bot247">
+          <BotControlPanel />
+        </TabsContent>
 
         {/* ─── Pipeline Results Tab ─── */}
         <TabsContent value="pipeline" className="space-y-3">
