@@ -1,9 +1,53 @@
 // Helius API Service for Solana blockchain data
+import { supabase } from "@/integrations/supabase/client";
+
 const HELIUS_BASE = "https://api.helius.xyz/v0";
 const HELIUS_RPC = "https://mainnet.helius-rpc.com";
 
+let _cachedKey: string | null = null;
+let _fetchingKey: Promise<string | null> | null = null;
+
 export function getHeliusApiKey(): string | null {
-  return localStorage.getItem("helius_api_key");
+  // Check memory cache first, then localStorage
+  if (_cachedKey) return _cachedKey;
+  const stored = localStorage.getItem("helius_api_key");
+  if (stored) {
+    _cachedKey = stored;
+    return stored;
+  }
+  return null;
+}
+
+/**
+ * Auto-fetch Helius API key from Cloud secrets and store locally.
+ * Called once on app startup.
+ */
+export async function initHeliusApiKey(): Promise<string | null> {
+  // Already have key
+  const existing = getHeliusApiKey();
+  if (existing) return existing;
+
+  // Prevent duplicate fetches
+  if (_fetchingKey) return _fetchingKey;
+
+  _fetchingKey = (async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke("get-helius-key");
+      if (error || !data?.key) return null;
+      const key = data.key as string;
+      localStorage.setItem("helius_api_key", key);
+      _cachedKey = key;
+      // Notify other components (TopBar, BlockchainStatus)
+      window.dispatchEvent(new Event("helius-key-updated"));
+      return key;
+    } catch {
+      return null;
+    } finally {
+      _fetchingKey = null;
+    }
+  })();
+
+  return _fetchingKey;
 }
 
 export function setHeliusApiKey(key: string) {
