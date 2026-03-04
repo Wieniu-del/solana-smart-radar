@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.news-scanner]
 verify_jwt = false
+
+[functions.position-monitor]
+verify_jwt = false
