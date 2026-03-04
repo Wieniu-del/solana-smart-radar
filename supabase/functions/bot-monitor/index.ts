@@ -333,7 +333,7 @@ Deno.serve(async (req) => {
         status: "pending",
       }));
 
-      const { data: insertedSignals } = await supabase.from("trading_signals").insert(signals).select("id, token_symbol, confidence");
+      const { data: insertedSignals } = await supabase.from("trading_signals").insert(signals).select("id, token_symbol, token_mint, confidence");
       totalSignals = signals.length;
 
       // Send notifications for each signal
