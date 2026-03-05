@@ -285,6 +285,61 @@ Deno.serve(async (req) => {
             if (decision === "BUY") totalBuySignals++;
           }
         }
+
+        // Fallback: if no recent buy-like transfer found, use high-value non-base holdings
+        const walletHasCandidate = allCandidates.some((c) => c.sourceWallet === wallet);
+        if (!walletHasCandidate) {
+          const minLiquidityUsd = Number(pLiquidity.min_value_usd || 1000);
+
+          for (const token of tokens) {
+            const mint = token?.mint as string | undefined;
+            if (!mint || BASE_ASSET_MINTS.has(mint) || seenMints.has(mint) || blockedMints.has(mint)) continue;
+
+            const valueUsd = Number(token?.valueUsd || 0);
+            if (valueUsd < minLiquidityUsd) continue;
+
+            seenMints.add(mint);
+            totalTokensFound++;
+
+            const hasPrice = Number(token?.priceUsd || 0) > 0;
+            const isSafe = KNOWN_SAFE_MINTS.has(mint);
+
+            const securityScore = pSecurity.enabled
+              ? (isSafe ? 100 : hasPrice ? 60 : 30)
+              : 70;
+            const liquidityScore = pLiquidity.enabled
+              ? (valueUsd > 100000 ? 80 : valueUsd > 10000 ? 60 : valueUsd > 1000 ? 40 : 20)
+              : 60;
+            const walletScore = pWallet.enabled
+              ? (totalValueUsd > 100000 ? 80 : totalValueUsd > 10000 ? 60 : 40)
+              : 60;
+
+            const totalScore = Math.round(
+              securityScore * 0.3 + liquidityScore * 0.25 + walletScore * 0.45
+            );
+            const decision = totalScore >= buyThreshold ? "BUY" : totalScore >= watchThreshold ? "WATCH" : "SKIP";
+            const fallbackSymbol = `${mint.slice(0, 4)}...${mint.slice(-4)}`;
+            const resolvedSymbol = token?.symbol || fallbackSymbol;
+            const resolvedName = token?.name || resolvedSymbol;
+
+            allCandidates.push({
+              mint,
+              symbol: resolvedSymbol,
+              name: resolvedName,
+              sourceWallet: wallet,
+              source: "holding_snapshot",
+              securityScore,
+              liquidityScore,
+              walletScore,
+              totalScore,
+              decision,
+              valueUsd,
+              totalValueUsd,
+            });
+
+            if (decision === "BUY") totalBuySignals++;
+          }
+        }
       } catch (err) {
         console.error(`Wallet ${wallet} error:`, err);
       }
