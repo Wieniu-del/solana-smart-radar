@@ -227,7 +227,7 @@ Deno.serve(async (req) => {
           const incomingMint = incoming?.mint as string | undefined;
           const outgoingMint = outgoing?.mint as string | undefined;
 
-          if (!incomingMint || BASE_ASSET_MINTS.has(incomingMint)) continue;
+          if (!incomingMint || BASE_ASSET_MINTS.has(incomingMint) || blockedMints.has(incomingMint)) continue;
 
           const isDirectBuy = !!incoming && !outgoing;
           const isBaseToTokenSwap = !!incoming && !!outgoing && !!outgoingMint && BASE_ASSET_MINTS.has(outgoingMint);
