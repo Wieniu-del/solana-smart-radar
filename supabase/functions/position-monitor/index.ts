@@ -29,22 +29,9 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: true, message: "No open positions", checked: 0, closed: 0 });
     }
 
-    // 2. Get current prices for all tokens via Jupiter
+    // 2. Get current prices for all tokens (Jupiter Lite + DexScreener fallback)
     const mints = [...new Set(positions.map((p: any) => p.token_mint))];
-    const priceMap: Record<string, number> = {};
-
-    try {
-      const ids = mints.join(",");
-      const priceRes = await fetch(`https://api.jup.ag/price/v2?ids=${ids}`);
-      if (priceRes.ok) {
-        const priceData = await priceRes.json();
-        for (const [mint, info] of Object.entries(priceData.data || {})) {
-          priceMap[mint] = Number((info as any).price) || 0;
-        }
-      }
-    } catch (e) {
-      console.error("Price fetch error:", e);
-    }
+    const priceMap = await fetchTokenPrices(mints);
 
     let closedCount = 0;
     const updates: any[] = [];
@@ -53,13 +40,28 @@ Deno.serve(async (req) => {
       const currentPrice = priceMap[pos.token_mint] || 0;
       if (currentPrice <= 0) continue;
 
-      const entryPrice = Number(pos.entry_price_usd) || 0;
-      if (entryPrice <= 0) continue;
+      const trailingStopPct = Number(pos.trailing_stop_pct) || 10;
+      const takeProfitPct = Number(pos.take_profit_pct) || 50;
+
+      let entryPrice = Number(pos.entry_price_usd) || 0;
+      if (entryPrice <= 0) {
+        const highestPriceSeed = Math.max(Number(pos.highest_price_usd) || 0, currentPrice);
+        const seededStopPrice = highestPriceSeed * (1 - trailingStopPct / 100);
+
+        await supabase.from("open_positions").update({
+          entry_price_usd: currentPrice,
+          current_price_usd: currentPrice,
+          highest_price_usd: highestPriceSeed,
+          stop_price_usd: seededStopPrice,
+          pnl_pct: 0,
+          updated_at: new Date().toISOString(),
+        }).eq("id", pos.id);
+
+        continue;
+      }
 
       const highestPrice = Math.max(Number(pos.highest_price_usd) || 0, currentPrice);
       const pnlPct = ((currentPrice - entryPrice) / entryPrice) * 100;
-      const trailingStopPct = Number(pos.trailing_stop_pct) || 10;
-      const takeProfitPct = Number(pos.take_profit_pct) || 50;
 
       // Trailing stop price = highest price * (1 - trailing%)
       const stopPrice = highestPrice * (1 - trailingStopPct / 100);
@@ -162,6 +164,50 @@ Deno.serve(async (req) => {
     return jsonResponse({ success: false, error: err.message }, 500);
   }
 });
+
+async function fetchTokenPrices(mints: string[]): Promise<Record<string, number>> {
+  const prices: Record<string, number> = {};
+  if (mints.length === 0) return prices;
+
+  // 1) Jupiter Lite
+  try {
+    const ids = encodeURIComponent(mints.join(","));
+    const priceRes = await fetch(`https://lite-api.jup.ag/price/v2?ids=${ids}`);
+    if (priceRes.ok) {
+      const priceData = await priceRes.json();
+      for (const [mint, info] of Object.entries(priceData?.data || {})) {
+        const p = Number((info as any)?.price);
+        if (Number.isFinite(p) && p > 0) prices[mint] = p;
+      }
+    }
+  } catch (e) {
+    console.error("Jupiter price fetch error:", e);
+  }
+
+  // 2) DexScreener fallback for missing mints
+  const missing = mints.filter((mint) => !prices[mint]);
+  await Promise.all(
+    missing.map(async (mint) => {
+      try {
+        const dexRes = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${mint}`);
+        if (!dexRes.ok) return;
+        const dexData = await dexRes.json();
+        const pairs = Array.isArray(dexData?.pairs) ? dexData.pairs : [];
+        const validPairs = pairs
+          .filter((p: any) => Number(p?.priceUsd) > 0)
+          .sort((a: any, b: any) => Number(b?.liquidity?.usd || 0) - Number(a?.liquidity?.usd || 0));
+        const dexPrice = Number(validPairs[0]?.priceUsd);
+        if (Number.isFinite(dexPrice) && dexPrice > 0) {
+          prices[mint] = dexPrice;
+        }
+      } catch (_) {
+        // ignore individual token fallback errors
+      }
+    })
+  );
+
+  return prices;
+}
 
 function jsonResponse(data: any, status = 200) {
   return new Response(JSON.stringify(data), {

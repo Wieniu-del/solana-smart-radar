@@ -647,16 +647,7 @@ async function executeBuySignal({
       return false;
     }
 
-    let entryPrice = 0;
-    try {
-      const priceRes = await fetch(`https://api.jup.ag/price/v2?ids=${signal.token_mint}`);
-      if (priceRes.ok) {
-        const priceData = await priceRes.json();
-        entryPrice = Number(priceData.data?.[signal.token_mint]?.price) || 0;
-      }
-    } catch (_) {
-      // ignore price lookup failures
-    }
+    const entryPrice = await fetchTokenUsdPrice(signal.token_mint);
 
     await supabase.from("open_positions").insert({
       signal_id: signal.id,
@@ -704,6 +695,38 @@ async function executeBuySignal({
     });
     return false;
   }
+}
+
+async function fetchTokenUsdPrice(tokenMint: string): Promise<number> {
+  // 1) Jupiter Lite price API
+  try {
+    const priceRes = await fetch(`https://lite-api.jup.ag/price/v2?ids=${encodeURIComponent(tokenMint)}`);
+    if (priceRes.ok) {
+      const priceData = await priceRes.json();
+      const jupPrice = Number(priceData?.data?.[tokenMint]?.price);
+      if (Number.isFinite(jupPrice) && jupPrice > 0) return jupPrice;
+    }
+  } catch (_) {
+    // ignore
+  }
+
+  // 2) DexScreener fallback
+  try {
+    const dexRes = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${tokenMint}`);
+    if (dexRes.ok) {
+      const dexData = await dexRes.json();
+      const pairs = Array.isArray(dexData?.pairs) ? dexData.pairs : [];
+      const validPairs = pairs
+        .filter((p: any) => Number(p?.priceUsd) > 0)
+        .sort((a: any, b: any) => Number(b?.liquidity?.usd || 0) - Number(a?.liquidity?.usd || 0));
+      const dexPrice = Number(validPairs[0]?.priceUsd);
+      if (Number.isFinite(dexPrice) && dexPrice > 0) return dexPrice;
+    }
+  } catch (_) {
+    // ignore
+  }
+
+  return 0;
 }
 
 async function updateRun(supabase: any, runId: string | undefined, data: Record<string, any>) {
