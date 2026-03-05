@@ -499,6 +499,7 @@ Deno.serve(async (req) => {
       details: {
         candidates: allCandidates.length,
         wallets_count: wallets.length,
+        lookback_hours: lookbackHours,
       },
     });
 
