@@ -489,6 +489,112 @@ Deno.serve(async (req) => {
   }
 });
 
+async function executeBuySignal({
+  supabase,
+  supabaseUrl,
+  supabaseKey,
+  signal,
+  positionSol,
+  trailingStopPct,
+  takeProfitPct,
+}: {
+  supabase: any;
+  supabaseUrl: string;
+  supabaseKey: string;
+  signal: { id: string; token_mint: string; token_symbol: string | null; token_name: string | null; confidence?: number | null };
+  positionSol: number;
+  trailingStopPct: number;
+  takeProfitPct: number;
+}) {
+  const fallbackSymbol = signal.token_mint?.slice(0, 4) ? `${signal.token_mint.slice(0, 4)}...${signal.token_mint.slice(-4)}` : "???";
+  const symbol = signal.token_symbol || signal.token_name || fallbackSymbol;
+
+  try {
+    const swapRes = await fetch(`${supabaseUrl}/functions/v1/execute-swap`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${supabaseKey}`,
+      },
+      body: JSON.stringify({
+        action: "BUY",
+        tokenMint: signal.token_mint,
+        amountSol: positionSol,
+        slippageBps: 150,
+      }),
+    });
+
+    const swapData = await swapRes.json();
+
+    if (!swapData.success) {
+      await supabase.from("notifications").insert({
+        type: "swap_error",
+        title: `❌ Auto-swap nieudany: ${symbol}`,
+        message: `Błąd: ${swapData.error?.slice(0, 100) || "Nieznany błąd"}`,
+        details: { error: swapData.error, token: symbol, mint: signal.token_mint, signal_id: signal.id },
+      });
+      return false;
+    }
+
+    let entryPrice = 0;
+    try {
+      const priceRes = await fetch(`https://api.jup.ag/price/v2?ids=${signal.token_mint}`);
+      if (priceRes.ok) {
+        const priceData = await priceRes.json();
+        entryPrice = Number(priceData.data?.[signal.token_mint]?.price) || 0;
+      }
+    } catch (_) {
+      // ignore price lookup failures
+    }
+
+    await supabase.from("open_positions").insert({
+      signal_id: signal.id,
+      token_mint: signal.token_mint,
+      token_symbol: symbol,
+      entry_price_usd: entryPrice,
+      current_price_usd: entryPrice,
+      highest_price_usd: entryPrice,
+      amount_sol: positionSol,
+      token_amount: swapData.outputAmount ? Number(swapData.outputAmount) / 1e6 : 0,
+      trailing_stop_pct: trailingStopPct,
+      take_profit_pct: takeProfitPct,
+      stop_price_usd: entryPrice * (1 - trailingStopPct / 100),
+      status: "open",
+    });
+
+    await supabase.from("notifications").insert({
+      type: "swap_success",
+      title: `✅ Auto-swap: ${symbol}`,
+      message: `Kupiono ${symbol} za ${positionSol} SOL. Trailing SL: ${trailingStopPct}%, TP: ${takeProfitPct}%. TX: ${swapData.txSignature?.slice(0, 12)}...`,
+      details: {
+        tx: swapData.txSignature,
+        token: symbol,
+        amount_sol: positionSol,
+        mint: signal.token_mint,
+        signal_id: signal.id,
+        trailing_stop_pct: trailingStopPct,
+        take_profit_pct: takeProfitPct,
+      },
+    });
+
+    await supabase.from("trading_signals").update({
+      status: "executed",
+      executed_at: new Date().toISOString(),
+      tx_signature: swapData.txSignature || null,
+    }).eq("id", signal.id);
+
+    return true;
+  } catch (swapErr: any) {
+    await supabase.from("notifications").insert({
+      type: "swap_error",
+      title: `❌ Auto-swap błąd: ${symbol}`,
+      message: `Wyjątek: ${swapErr.message?.slice(0, 100) || "Nieznany błąd"}`,
+      details: { error: swapErr.message, token: symbol, mint: signal.token_mint, signal_id: signal.id },
+    });
+    return false;
+  }
+}
+
 async function updateRun(supabase: any, runId: string | undefined, data: Record<string, any>) {
   if (!runId) return;
   await supabase.from("bot_runs").update(data).eq("id", runId);
