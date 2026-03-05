@@ -86,23 +86,9 @@ serve(async (req) => {
 
     // 3. Deserialize, sign and send transaction
     const txBytes = Uint8Array.from(atob(swapTransaction), c => c.charCodeAt(0));
-
-    // Sign using ed25519
-    const { sign } = await import("https://deno.land/x/ed25519@1.6.0/mod.ts");
-    const signature = sign(txBytes, keyBytes.slice(0, 32));
-
-    // Send raw transaction to Solana RPC
-    const HELIUS_KEY = Deno.env.get("HELIUS_API_KEY");
-    const rpcUrl = HELIUS_KEY 
-      ? `https://mainnet.helius-rpc.com/?api-key=${HELIUS_KEY}`
-      : "https://api.mainnet-beta.solana.com";
-
-    // Construct signed transaction
-    // For versioned transactions, we need to insert the signature
-    const signedTx = new Uint8Array(txBytes);
-    // The first 64 bytes after the signature count are the signature slot
-    const sigOffset = 1; // after compact-u16 signature count
-    signedTx.set(signature, sigOffset);
+    const tx = VersionedTransaction.deserialize(txBytes);
+    tx.sign([signer]);
+    const signedTx = tx.serialize();
 
     const sendRes = await fetch(rpcUrl, {
       method: "POST",
