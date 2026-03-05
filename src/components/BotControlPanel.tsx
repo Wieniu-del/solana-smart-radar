@@ -582,42 +582,83 @@ function MiniStat({ icon: Icon, label, value }: { icon: any; label: string; valu
 }
 
 function PositionRow({ position: pos }: { position: OpenPosition }) {
-  const hasPriceData = Number(pos.entry_price_usd) > 0 && Number(pos.current_price_usd) > 0;
-  const computedPnl = hasPriceData
-    ? ((Number(pos.current_price_usd) - Number(pos.entry_price_usd)) / Number(pos.entry_price_usd)) * 100
-    : null;
-  const pnl = hasPriceData
-    ? (typeof pos.pnl_pct === "number" && Number.isFinite(pos.pnl_pct) ? pos.pnl_pct : computedPnl ?? 0)
-    : null;
-  const isPositive = (pnl ?? 0) >= 0;
+  const entry = Number(pos.entry_price_usd) || 0;
+  const current = Number(pos.current_price_usd) || 0;
+  const highest = Number(pos.highest_price_usd) || 0;
+  const stopPrice = Number(pos.stop_price_usd) || 0;
+  const amountSol = Number(pos.amount_sol) || 0;
+  const trailingPct = Number(pos.trailing_stop_pct) || 10;
+  const tpPct = Number(pos.take_profit_pct) || 50;
 
-  const formatUsd = (value: number | null | undefined) =>
-    typeof value === "number" && Number.isFinite(value) && value > 0 ? `$${value.toFixed(6)}` : "—";
+  const hasPriceData = entry > 0 && current > 0;
+  const pnl = hasPriceData ? ((current - entry) / entry) * 100 : (Number(pos.pnl_pct) || 0);
+  const isPositive = pnl >= 0;
+  const pnlSol = hasPriceData ? (pnl / 100) * amountSol : 0;
+
+  // Time since open
+  const openedDate = new Date(pos.opened_at);
+  const now = new Date();
+  const diffMs = now.getTime() - openedDate.getTime();
+  const diffH = Math.floor(diffMs / 3600000);
+  const diffM = Math.floor((diffMs % 3600000) / 60000);
+  const timeAgo = diffH > 0 ? `${diffH}h ${diffM}m` : `${diffM}m`;
+
+  // Distance to stop loss
+  const distToSL = hasPriceData && stopPrice > 0 ? ((current - stopPrice) / current) * 100 : null;
+
+  const fmtPrice = (v: number) => v > 0 ? (v < 0.001 ? `$${v.toFixed(8)}` : v < 1 ? `$${v.toFixed(6)}` : `$${v.toFixed(4)}`) : "—";
 
   return (
-    <div className="flex items-center justify-between bg-muted/20 rounded-lg px-3 py-2.5">
-      <div className="flex items-center gap-3">
-        <div className={`p-1.5 rounded ${isPositive ? "bg-primary/15" : "bg-destructive/15"}`}>
-          {isPositive ? <TrendingUp className="h-4 w-4 text-primary" /> : <TrendingDown className="h-4 w-4 text-destructive" />}
+    <div className={`rounded-lg px-3 py-3 border ${isPositive ? "border-primary/30 bg-primary/5" : "border-destructive/30 bg-destructive/5"}`}>
+      {/* Row 1: Token + PnL */}
+      <div className="flex items-center justify-between mb-1.5">
+        <div className="flex items-center gap-2">
+          <div className={`p-1 rounded ${isPositive ? "bg-primary/20" : "bg-destructive/20"}`}>
+            {isPositive ? <TrendingUp className="h-3.5 w-3.5 text-primary" /> : <TrendingDown className="h-3.5 w-3.5 text-destructive" />}
+          </div>
+          <span className="text-sm font-bold text-foreground">{pos.token_symbol || "???"}</span>
+          <Badge variant="outline" className="text-[9px] px-1.5 py-0">{amountSol.toFixed(3)} SOL</Badge>
+          <span className="text-[9px] text-muted-foreground">⏱ {timeAgo}</span>
         </div>
-        <div>
-          <p className="text-sm font-medium text-foreground">{pos.token_symbol || "???"}</p>
-          <p className="text-[10px] text-muted-foreground">
-            Wejście: {formatUsd(pos.entry_price_usd)} | Teraz: {formatUsd(pos.current_price_usd)}
-          </p>
+        <div className="text-right">
+          <span className={`text-base font-black ${isPositive ? "text-primary" : "text-destructive"}`}>
+            {isPositive ? "+" : ""}{pnl.toFixed(2)}%
+          </span>
+          {pnlSol !== 0 && (
+            <span className={`text-[10px] ml-1.5 ${isPositive ? "text-primary/70" : "text-destructive/70"}`}>
+              ({isPositive ? "+" : ""}{pnlSol.toFixed(4)} SOL)
+            </span>
+          )}
         </div>
       </div>
-      <div className="text-right">
-        {pnl === null ? (
-          <p className="text-sm font-bold text-muted-foreground">Brak wyceny</p>
-        ) : (
-          <p className={`text-sm font-bold ${isPositive ? "text-primary" : "text-destructive"}`}>
-            {isPositive ? "+" : ""}{pnl.toFixed(1)}%
-          </p>
-        )}
-        <p className="text-[10px] text-muted-foreground">
-          SL: {formatUsd(pos.stop_price_usd)} | Max: {formatUsd(pos.highest_price_usd)}
-        </p>
+      {/* Row 2: Prices */}
+      <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+        <div className="flex gap-3">
+          <span>Wejście: <span className="text-foreground">{fmtPrice(entry)}</span></span>
+          <span>Teraz: <span className={`font-medium ${isPositive ? "text-primary" : "text-destructive"}`}>{fmtPrice(current)}</span></span>
+          <span>Max: <span className="text-foreground">{fmtPrice(highest)}</span></span>
+        </div>
+        <div className="flex gap-2">
+          <span>SL: {fmtPrice(stopPrice)}</span>
+          {distToSL !== null && (
+            <span className={distToSL < 3 ? "text-destructive font-medium" : ""}>
+              ({distToSL.toFixed(1)}% do SL)
+            </span>
+          )}
+        </div>
+      </div>
+      {/* Row 3: Progress bar TP */}
+      <div className="mt-1.5">
+        <div className="flex justify-between text-[9px] text-muted-foreground mb-0.5">
+          <span>SL -{trailingPct}%</span>
+          <span>TP +{tpPct}%</span>
+        </div>
+        <div className="h-1.5 bg-muted/40 rounded-full overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all ${isPositive ? "bg-primary" : "bg-destructive"}`}
+            style={{ width: `${Math.min(Math.max(((pnl + trailingPct) / (tpPct + trailingPct)) * 100, 0), 100)}%` }}
+          />
+        </div>
       </div>
     </div>
   );
