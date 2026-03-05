@@ -194,57 +194,71 @@ Deno.serve(async (req) => {
         // Parse trades (recent buys)
         const oneDayAgo = Date.now() / 1000 - 86400;
         for (const tx of txns) {
-          if (tx.timestamp <= oneDayAgo) continue;
-          const tokenTransfers = tx.tokenTransfers || [];
-          const incoming = tokenTransfers.find((t: any) => t.toUserAccount === wallet);
-          const outgoing = tokenTransfers.find((t: any) => t.fromUserAccount === wallet);
+          if (!tx?.timestamp || tx.timestamp <= oneDayAgo) continue;
 
-          if (incoming && (!outgoing || tx.type === "SWAP")) {
-            const mint = incoming.mint;
-            if (!seenMints.has(mint) && !KNOWN_SAFE_MINTS.has(mint)) {
-              seenMints.add(mint);
+          const tokenTransfers = Array.isArray(tx.tokenTransfers) ? tx.tokenTransfers : [];
+          const incoming = tokenTransfers.find((t: any) => t?.toUserAccount === wallet && t?.mint);
+          const outgoing = tokenTransfers.find((t: any) => t?.fromUserAccount === wallet && t?.mint);
 
-              // Quick security check
-              const tokenInfo = tokens.find((t: any) => t.mint === mint);
-              const isSafe = KNOWN_SAFE_MINTS.has(mint);
-              const hasPrice = tokenInfo ? tokenInfo.priceUsd > 0 : false;
-              const valueUsd = tokenInfo?.valueUsd || 0;
+          const incomingMint = incoming?.mint as string | undefined;
+          const outgoingMint = outgoing?.mint as string | undefined;
 
-              // Scoring with pipeline config
-              const securityScore = pSecurity.enabled
-                ? (isSafe ? 100 : hasPrice ? 60 : 30)
-                : 70; // neutral if disabled
-              const liquidityScore = pLiquidity.enabled
-                ? (valueUsd > 100000 ? 80 : valueUsd > 10000 ? 60 : valueUsd > 1000 ? 40 : 20)
-                : 60; // neutral if disabled
-              const walletScore = pWallet.enabled
-                ? (totalValueUsd > 100000 ? 80 : totalValueUsd > 10000 ? 60 : 40)
-                : 60; // neutral if disabled
+          if (!incomingMint || BASE_ASSET_MINTS.has(incomingMint)) continue;
 
-              const totalScore = Math.round(
-                securityScore * 0.3 + liquidityScore * 0.25 + walletScore * 0.45
-              );
+          const isDirectBuy = !!incoming && !outgoing;
+          const isBaseToTokenSwap = !!incoming && !!outgoing && !!outgoingMint && BASE_ASSET_MINTS.has(outgoingMint);
+          const isSwapLikeTx = tx.type === "SWAP" || tx.type === "UNKNOWN" || tx.type === "TRANSFER";
 
-              totalTokensFound++;
+          // Accept only probable buy-like movements
+          if (!(isDirectBuy || (isBaseToTokenSwap && isSwapLikeTx))) continue;
 
-              const decision = totalScore >= buyThreshold ? "BUY" : totalScore >= watchThreshold ? "WATCH" : "SKIP";
+          if (!seenMints.has(incomingMint)) {
+            seenMints.add(incomingMint);
 
-              allCandidates.push({
-                mint,
-                symbol: incoming.tokenSymbol || tokenInfo?.symbol || "???",
-                name: tokenInfo?.name || incoming.tokenSymbol || "Unknown",
-                sourceWallet: wallet,
-                securityScore,
-                liquidityScore,
-                walletScore,
-                totalScore,
-                decision,
-                valueUsd,
-                totalValueUsd,
-              });
+            // Quick security check
+            const tokenInfo = tokens.find((t: any) => t.mint === incomingMint);
+            const isSafe = KNOWN_SAFE_MINTS.has(incomingMint);
+            const hasPrice = tokenInfo ? tokenInfo.priceUsd > 0 : false;
+            const valueUsd = tokenInfo?.valueUsd || 0;
 
-              if (decision === "BUY") totalBuySignals++;
-            }
+            // Scoring with pipeline config
+            const securityScore = pSecurity.enabled
+              ? (isSafe ? 100 : hasPrice ? 60 : 30)
+              : 70; // neutral if disabled
+            const liquidityScore = pLiquidity.enabled
+              ? (valueUsd > 100000 ? 80 : valueUsd > 10000 ? 60 : valueUsd > 1000 ? 40 : 20)
+              : 60; // neutral if disabled
+            const walletScore = pWallet.enabled
+              ? (totalValueUsd > 100000 ? 80 : totalValueUsd > 10000 ? 60 : 40)
+              : 60; // neutral if disabled
+
+            const totalScore = Math.round(
+              securityScore * 0.3 + liquidityScore * 0.25 + walletScore * 0.45
+            );
+
+            totalTokensFound++;
+
+            const decision = totalScore >= buyThreshold ? "BUY" : totalScore >= watchThreshold ? "WATCH" : "SKIP";
+
+            const fallbackSymbol = `${incomingMint.slice(0, 4)}...${incomingMint.slice(-4)}`;
+            const resolvedSymbol = incoming?.tokenSymbol || tokenInfo?.symbol || fallbackSymbol;
+            const resolvedName = tokenInfo?.name || incoming?.tokenName || resolvedSymbol;
+
+            allCandidates.push({
+              mint: incomingMint,
+              symbol: resolvedSymbol,
+              name: resolvedName,
+              sourceWallet: wallet,
+              securityScore,
+              liquidityScore,
+              walletScore,
+              totalScore,
+              decision,
+              valueUsd,
+              totalValueUsd,
+            });
+
+            if (decision === "BUY") totalBuySignals++;
           }
         }
       } catch (err) {
