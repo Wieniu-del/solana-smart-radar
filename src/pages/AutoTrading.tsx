@@ -391,24 +391,24 @@ function PipelineResultCard({ result }: { result: PipelineResult }) {
         <div className="flex items-start justify-between">
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <span className="font-semibold text-foreground text-lg">{result.token.symbol}</span>
+             <span className="font-bold text-foreground text-xl">{result.token.symbol}</span>
               {result.token.name && result.token.name !== result.token.symbol && (
-                <span className="text-xs text-muted-foreground">({result.token.name})</span>
+                <span className="text-sm text-muted-foreground">({result.token.name})</span>
               )}
-              <Badge className={decisionColors[result.decision]}>
+              <Badge className={`${decisionColors[result.decision]} text-sm px-3 py-1`}>
                 {decisionLabels[result.decision]}
               </Badge>
-              <Badge variant="outline" className="text-[10px]">
+              <Badge variant="outline" className="text-xs px-2 py-0.5">
                 Score: {result.totalScore}/100
               </Badge>
-              <Badge variant="outline" className="text-[10px]">
+              <Badge variant="outline" className="text-xs px-2 py-0.5">
                 {result.token.source === "smart_wallet" ? "Smart Money" :
                  result.token.source === "whale_buy" ? "Wieloryb" : "Nowa para"}
               </Badge>
             </div>
 
-            <p className="text-xs font-mono text-muted-foreground mb-1 truncate">{result.token.mint}</p>
-            <p className="text-[11px] text-muted-foreground mb-3">
+            <p className="text-sm font-mono text-muted-foreground mb-1 truncate">{result.token.mint}</p>
+            <p className="text-sm text-muted-foreground mb-3">
               Sygnał: {new Date(result.timestamp).toLocaleDateString("pl-PL")} · {new Date(result.timestamp).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
             </p>
 
@@ -435,7 +435,7 @@ function PipelineResultCard({ result }: { result: PipelineResult }) {
             </div>
 
             {/* Wallet data */}
-            <div className="flex gap-4 text-[10px] text-muted-foreground mb-2">
+            <div className="flex gap-4 text-xs text-muted-foreground mb-2">
               <span>Smart wallets kupujące: {result.walletData.smartWalletsBuying}</span>
               <span>Wieloryby kupujące: {result.walletData.whaleWalletsBuying}</span>
               <span>Łącznie kupujących: {result.walletData.totalBuyers}</span>
@@ -444,7 +444,7 @@ function PipelineResultCard({ result }: { result: PipelineResult }) {
             {/* Reasons */}
             <div className="space-y-0.5">
               {result.reasons.map((reason, i) => (
-                <p key={i} className="text-[10px] text-muted-foreground">{reason}</p>
+                <p key={i} className="text-xs text-muted-foreground">{reason}</p>
               ))}
             </div>
           </div>
@@ -459,9 +459,9 @@ function ScoreBreakdownItem({ icon: Icon, label, score, color }: {
 }) {
   return (
     <div className="bg-muted/30 rounded-lg p-2 text-center">
-      <Icon className={`h-4 w-4 mx-auto mb-1 ${color}`} />
-      <p className={`text-lg font-bold ${color}`}>{score}</p>
-      <p className="text-[9px] text-muted-foreground">{label}</p>
+      <Icon className={`h-5 w-5 mx-auto mb-1 ${color}`} />
+      <p className={`text-2xl font-bold ${color}`}>{score}</p>
+      <p className="text-xs text-muted-foreground">{label}</p>
     </div>
   );
 }
@@ -516,20 +516,20 @@ function SignalCard({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-semibold text-foreground">
+                <span className="font-bold text-foreground text-lg">
                   {signal.signal_type} {displayToken}
                 </span>
                 <Badge className={statusColors[signal.status] || ""}>
                   {signal.status}
                 </Badge>
               </div>
-              <p className="text-xs text-muted-foreground mt-0.5">
+              <p className="text-sm text-muted-foreground mt-0.5">
                 Strategia: {signal.strategy}
               </p>
-              <p className="text-xs text-foreground/90 mt-1">
+              <p className="text-sm text-foreground/90 mt-1">
                 Token: <span className="font-medium">{normalizedName || displayToken}</span>
               </p>
-              <div className="flex gap-4 mt-2 text-[10px] text-muted-foreground">
+              <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
                 <span className="flex items-center gap-1">
                   <Target className="h-3 w-3" />
                   Score: {signal.smart_score}
@@ -557,11 +557,11 @@ function SignalCard({
                   </span>
                 )}
               </div>
-              <p className="text-[10px] text-muted-foreground mt-1 font-mono truncate max-w-xs">
+              <p className="text-xs text-muted-foreground mt-1 font-mono truncate max-w-md">
                 {signal.wallet_address}
               </p>
-              <p className="text-[11px] text-muted-foreground mt-1">
-                Data sygnału: {new Date(signal.created_at).toLocaleDateString("pl-PL")} · Godzina: {new Date(signal.created_at).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+              <p className="text-sm text-muted-foreground mt-1">
+                📅 {new Date(signal.created_at).toLocaleDateString("pl-PL")} · 🕐 {new Date(signal.created_at).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
               </p>
             </div>
           </div>
