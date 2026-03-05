@@ -202,9 +202,8 @@ Deno.serve(async (req) => {
         }
 
         // Parse trades (recent buys)
-        const oneDayAgo = Date.now() / 1000 - 86400;
         for (const tx of txns) {
-          if (!tx?.timestamp || tx.timestamp <= oneDayAgo) continue;
+          if (!tx?.timestamp || tx.timestamp <= lookbackSinceTs) continue;
 
           const tokenTransfers = Array.isArray(tx.tokenTransfers) ? tx.tokenTransfers : [];
           const incoming = tokenTransfers.find((t: any) => t?.toUserAccount === wallet && t?.mint);
