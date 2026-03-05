@@ -165,6 +165,50 @@ Deno.serve(async (req) => {
   }
 });
 
+async function fetchTokenPrices(mints: string[]): Promise<Record<string, number>> {
+  const prices: Record<string, number> = {};
+  if (mints.length === 0) return prices;
+
+  // 1) Jupiter Lite
+  try {
+    const ids = encodeURIComponent(mints.join(","));
+    const priceRes = await fetch(`https://lite-api.jup.ag/price/v2?ids=${ids}`);
+    if (priceRes.ok) {
+      const priceData = await priceRes.json();
+      for (const [mint, info] of Object.entries(priceData?.data || {})) {
+        const p = Number((info as any)?.price);
+        if (Number.isFinite(p) && p > 0) prices[mint] = p;
+      }
+    }
+  } catch (e) {
+    console.error("Jupiter price fetch error:", e);
+  }
+
+  // 2) DexScreener fallback for missing mints
+  const missing = mints.filter((mint) => !prices[mint]);
+  await Promise.all(
+    missing.map(async (mint) => {
+      try {
+        const dexRes = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${mint}`);
+        if (!dexRes.ok) return;
+        const dexData = await dexRes.json();
+        const pairs = Array.isArray(dexData?.pairs) ? dexData.pairs : [];
+        const validPairs = pairs
+          .filter((p: any) => Number(p?.priceUsd) > 0)
+          .sort((a: any, b: any) => Number(b?.liquidity?.usd || 0) - Number(a?.liquidity?.usd || 0));
+        const dexPrice = Number(validPairs[0]?.priceUsd);
+        if (Number.isFinite(dexPrice) && dexPrice > 0) {
+          prices[mint] = dexPrice;
+        }
+      } catch (_) {
+        // ignore individual token fallback errors
+      }
+    })
+  );
+
+  return prices;
+}
+
 function jsonResponse(data: any, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
