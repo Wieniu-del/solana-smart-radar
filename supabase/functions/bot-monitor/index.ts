@@ -450,7 +450,6 @@ Deno.serve(async (req) => {
           console.error("Position monitor trigger error:", pmErr);
         }
       }
-    }
 
     // 6. Update run record
     await updateRun(supabase, runId, {
