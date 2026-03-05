@@ -8,11 +8,16 @@ const corsHeaders = {
 const HELIUS_BASE = "https://api.helius.xyz/v0";
 const HELIUS_RPC = "https://mainnet.helius-rpc.com";
 
-// Known safe tokens
-const KNOWN_SAFE_MINTS = new Set([
+// Base assets (never BUY these)
+const BASE_ASSET_MINTS = new Set([
   "So11111111111111111111111111111111111111112",
   "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
   "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+]);
+
+// Known safer tokens (used only for safety scoring)
+const KNOWN_SAFE_MINTS = new Set([
+  ...BASE_ASSET_MINTS,
   "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
   "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",
   "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So",
