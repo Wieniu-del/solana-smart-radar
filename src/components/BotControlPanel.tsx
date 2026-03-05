@@ -582,8 +582,17 @@ function MiniStat({ icon: Icon, label, value }: { icon: any; label: string; valu
 }
 
 function PositionRow({ position: pos }: { position: OpenPosition }) {
-  const pnl = pos.pnl_pct || 0;
-  const isPositive = pnl >= 0;
+  const hasPriceData = Number(pos.entry_price_usd) > 0 && Number(pos.current_price_usd) > 0;
+  const computedPnl = hasPriceData
+    ? ((Number(pos.current_price_usd) - Number(pos.entry_price_usd)) / Number(pos.entry_price_usd)) * 100
+    : null;
+  const pnl = hasPriceData
+    ? (typeof pos.pnl_pct === "number" && Number.isFinite(pos.pnl_pct) ? pos.pnl_pct : computedPnl ?? 0)
+    : null;
+  const isPositive = (pnl ?? 0) >= 0;
+
+  const formatUsd = (value: number | null | undefined) =>
+    typeof value === "number" && Number.isFinite(value) && value > 0 ? `$${value.toFixed(6)}` : "—";
 
   return (
     <div className="flex items-center justify-between bg-muted/20 rounded-lg px-3 py-2.5">
@@ -594,16 +603,20 @@ function PositionRow({ position: pos }: { position: OpenPosition }) {
         <div>
           <p className="text-sm font-medium text-foreground">{pos.token_symbol || "???"}</p>
           <p className="text-[10px] text-muted-foreground">
-            Wejście: ${pos.entry_price_usd?.toFixed(6)} | Teraz: ${pos.current_price_usd?.toFixed(6)}
+            Wejście: {formatUsd(pos.entry_price_usd)} | Teraz: {formatUsd(pos.current_price_usd)}
           </p>
         </div>
       </div>
       <div className="text-right">
-        <p className={`text-sm font-bold ${isPositive ? "text-primary" : "text-destructive"}`}>
-          {isPositive ? "+" : ""}{pnl.toFixed(1)}%
-        </p>
+        {pnl === null ? (
+          <p className="text-sm font-bold text-muted-foreground">Brak wyceny</p>
+        ) : (
+          <p className={`text-sm font-bold ${isPositive ? "text-primary" : "text-destructive"}`}>
+            {isPositive ? "+" : ""}{pnl.toFixed(1)}%
+          </p>
+        )}
         <p className="text-[10px] text-muted-foreground">
-          SL: ${pos.stop_price_usd?.toFixed(6)} | Max: ${pos.highest_price_usd?.toFixed(6)}
+          SL: {formatUsd(pos.stop_price_usd)} | Max: {formatUsd(pos.highest_price_usd)}
         </p>
       </div>
     </div>
