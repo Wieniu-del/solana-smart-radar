@@ -354,6 +354,11 @@ export async function runPipeline(
       };
     }
 
+    const resolvedSymbol = normalizeTokenLabel(tokenData.symbol) || normalizeTokenLabel(candidate.symbol) || shortMint(candidate.mint);
+    const resolvedName = normalizeTokenLabel(tokenData.name) || normalizeTokenLabel(candidate.name) || resolvedSymbol;
+    candidate.symbol = resolvedSymbol;
+    candidate.name = resolvedName;
+
     // Security scan
     const security = runSecurityScan(tokenData);
 
