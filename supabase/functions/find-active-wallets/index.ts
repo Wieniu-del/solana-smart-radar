@@ -14,8 +14,12 @@ const BASE_ASSET_MINTS = new Set([
   "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
 ]);
 
-// Jupiter V6 program ID
-const JUPITER_PROGRAM = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
+// Known active wallets to use as seeds for discovering counterparties
+const SEED_WALLETS = [
+  "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1", // Raydium Authority
+  "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8", // Raydium AMM
+  "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM", // Known active trader
+];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -32,58 +36,28 @@ Deno.serve(async (req) => {
   const supabase = createClient(supabaseUrl, supabaseKey);
 
   try {
-    // Step 1: Get recent Jupiter swap signatures
-    console.log("[find-wallets] Fetching recent Jupiter swap signatures...");
-    const sigRes = await fetch(`${HELIUS_RPC}/?api-key=${heliusKey}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "getSignaturesForAddress",
-        params: [JUPITER_PROGRAM, { limit: 100 }],
-      }),
-    });
-
-    if (!sigRes.ok) {
-      const err = await sigRes.text();
-      return jsonResponse({ success: false, error: `Signatures fetch failed: ${err}` }, 502);
-    }
-
-    const sigJson = await sigRes.json();
-    const allSigs = (sigJson.result || []).map((s: any) => s.signature);
-    console.log(`[find-wallets] Got ${allSigs.length} signatures`);
-
-    if (allSigs.length === 0) {
-      return jsonResponse({ success: true, discovered: 0, candidates: [], total_analyzed: 0, reason: "No recent Jupiter signatures" });
-    }
-
-    // Step 2: Parse transactions in batches of 20
     const walletActivity: Record<string, { buys: number; tokens: Set<string>; solSpent: number }> = {};
-    
-    const batches: string[][] = [];
-    for (let i = 0; i < Math.min(allSigs.length, 60); i += 20) {
-      batches.push(allSigs.slice(i, i + 20));
-    }
 
-    for (const batch of batches) {
+    // Strategy: Get recent transactions from known active swap wallets
+    // and find their counterparties who are buying tokens
+    for (const seedWallet of SEED_WALLETS) {
       try {
-        const parseRes = await fetch(`${HELIUS_BASE}/transactions?api-key=${heliusKey}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ transactions: batch }),
-        });
-
-        if (!parseRes.ok) {
-          console.error("[find-wallets] Parse batch failed:", parseRes.status);
+        console.log(`[find-wallets] Scanning seed: ${seedWallet.slice(0, 8)}...`);
+        const txRes = await fetch(
+          `${HELIUS_BASE}/addresses/${seedWallet}/transactions?api-key=${heliusKey}&limit=100`
+        );
+        
+        if (!txRes.ok) {
+          console.error(`[find-wallets] Seed ${seedWallet.slice(0,8)} failed: ${txRes.status}`);
           continue;
         }
 
-        const parsedTxns = await parseRes.json();
-        console.log(`[find-wallets] Parsed ${parsedTxns.length} transactions`);
+        const txns = await txRes.json();
+        console.log(`[find-wallets] Seed ${seedWallet.slice(0,8)}: ${txns.length} txns`);
 
-        for (const tx of parsedTxns) {
-          if (!tx?.feePayer) continue;
+        for (const tx of txns) {
+          if (!tx?.feePayer || tx.feePayer === seedWallet) continue;
+          
           const wallet = tx.feePayer;
           const transfers = Array.isArray(tx.tokenTransfers) ? tx.tokenTransfers : [];
 
@@ -97,7 +71,6 @@ Deno.serve(async (req) => {
             }
           }
 
-          // Track SOL spent
           if (walletActivity[wallet]) {
             const nativeTransfers = Array.isArray(tx.nativeTransfers) ? tx.nativeTransfers : [];
             for (const nt of nativeTransfers) {
@@ -107,14 +80,14 @@ Deno.serve(async (req) => {
             }
           }
         }
-      } catch (batchErr) {
-        console.error("[find-wallets] Batch error:", batchErr);
+      } catch (err) {
+        console.error(`[find-wallets] Seed error:`, err);
       }
     }
 
-    console.log(`[find-wallets] Total wallets found: ${Object.keys(walletActivity).length}`);
+    console.log(`[find-wallets] Total unique wallets: ${Object.keys(walletActivity).length}`);
 
-    // Step 3: Score and rank
+    // Score and rank
     const candidates = Object.entries(walletActivity)
       .map(([address, data]) => ({
         address,
@@ -125,11 +98,11 @@ Deno.serve(async (req) => {
       }))
       .filter(w => w.buys >= 1)
       .sort((a, b) => b.score - a.score)
-      .slice(0, 20);
+      .slice(0, 15);
 
-    console.log(`[find-wallets] Candidates after scoring: ${candidates.length}`);
+    console.log(`[find-wallets] Scored candidates: ${candidates.length}`);
 
-    // Step 4: Verify top candidates with balance check
+    // Verify top candidates
     const verified: any[] = [];
     for (const candidate of candidates) {
       if (verified.length >= 10) break;
@@ -150,6 +123,8 @@ Deno.serve(async (req) => {
 
         if (!balRes.ok) continue;
         const balJson = await balRes.json();
+        if (balJson.error) continue;
+
         const nativeBal = balJson.result?.nativeBalance;
         const solBalance = nativeBal ? nativeBal.lamports / 1e9 : 0;
         const solPrice = nativeBal?.price_per_sol || 0;
@@ -170,7 +145,6 @@ Deno.serve(async (req) => {
           }
         }
 
-        // Accept wallets with reasonable balance AND token holdings
         if (solBalance > 0.5 && tokenCount >= 1) {
           verified.push({
             ...candidate,
@@ -180,14 +154,12 @@ Deno.serve(async (req) => {
             tokenValueUsd: Math.round(tokenValueUsd),
           });
         }
-      } catch (_) {
-        // skip on error
-      }
+      } catch (_) {}
     }
 
     console.log(`[find-wallets] Verified: ${verified.length}`);
 
-    // Step 5: Auto-update tracked_wallets
+    // Auto-update tracked_wallets
     if (verified.length >= 2) {
       const newWallets = verified.slice(0, 7).map(w => w.address);
 
@@ -201,7 +173,7 @@ Deno.serve(async (req) => {
         type: "discovery",
         title: `🔄 Nowe aktywne portfele (${newWallets.length})`,
         message: verified.slice(0, 7).map(w =>
-          `${w.address.slice(0, 6)}...${w.address.slice(-4)} — ${w.buys} zakupów, ${w.uniqueTokens} tokenów, ${w.solBalance} SOL ($${w.portfolioUsd})`
+          `${w.address.slice(0, 6)}...${w.address.slice(-4)} — ${w.buys} buy, ${w.uniqueTokens} tokenów, ${w.solBalance} SOL ($${w.portfolioUsd})`
         ).join("\n"),
         details: { wallets: verified.slice(0, 7) },
       });
