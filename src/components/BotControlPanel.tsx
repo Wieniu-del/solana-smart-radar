@@ -609,47 +609,45 @@ function PositionRow({ position: pos }: { position: OpenPosition }) {
   const fmtPrice = (v: number) => v > 0 ? (v < 0.001 ? `$${v.toFixed(8)}` : v < 1 ? `$${v.toFixed(6)}` : `$${v.toFixed(4)}`) : "—";
 
   return (
-    <div className={`rounded-lg px-3 py-3 border ${isPositive ? "border-primary/30 bg-primary/5" : "border-destructive/30 bg-destructive/5"}`}>
+    <div className={`rounded-lg px-4 py-3.5 border ${isPositive ? "border-primary/30 bg-primary/5" : "border-destructive/30 bg-destructive/5"}`}>
       {/* Row 1: Token + PnL */}
-      <div className="flex items-center justify-between mb-1.5">
-        <div className="flex items-center gap-2">
-          <div className={`p-1 rounded ${isPositive ? "bg-primary/20" : "bg-destructive/20"}`}>
-            {isPositive ? <TrendingUp className="h-3.5 w-3.5 text-primary" /> : <TrendingDown className="h-3.5 w-3.5 text-destructive" />}
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2.5">
+          <div className={`p-1.5 rounded ${isPositive ? "bg-primary/20" : "bg-destructive/20"}`}>
+            {isPositive ? <TrendingUp className="h-5 w-5 text-primary" /> : <TrendingDown className="h-5 w-5 text-destructive" />}
           </div>
-          <span className="text-sm font-bold text-foreground">{pos.token_symbol || "???"}</span>
-          <Badge variant="outline" className="text-[9px] px-1.5 py-0">{amountSol.toFixed(3)} SOL</Badge>
-          <span className="text-[9px] text-muted-foreground">⏱ {timeAgo}</span>
+          <span className="text-base font-bold text-foreground">{pos.token_symbol || "???"}</span>
+          <Badge variant="outline" className="text-[10px] px-2 py-0.5">{amountSol.toFixed(3)} SOL</Badge>
+          <span className="text-[10px] text-muted-foreground">⏱ {timeAgo}</span>
         </div>
         <div className="text-right">
-          <span className={`text-base font-black ${isPositive ? "text-primary" : "text-destructive"}`}>
+          <span className={`text-xl font-black ${isPositive ? "text-primary" : "text-destructive"}`}>
             {isPositive ? "+" : ""}{pnl.toFixed(2)}%
           </span>
-          {pnlSol !== 0 && (
-            <span className={`text-[10px] ml-1.5 ${isPositive ? "text-primary/70" : "text-destructive/70"}`}>
-              ({isPositive ? "+" : ""}{pnlSol.toFixed(4)} SOL)
-            </span>
-          )}
+          <span className={`text-xs ml-2 ${isPositive ? "text-primary/80" : "text-destructive/80"}`}>
+            ({isPositive ? "+" : ""}{pnlSol.toFixed(4)} SOL)
+          </span>
         </div>
       </div>
       {/* Row 2: Prices */}
-      <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-        <div className="flex gap-3">
-          <span>Wejście: <span className="text-foreground">{fmtPrice(entry)}</span></span>
-          <span>Teraz: <span className={`font-medium ${isPositive ? "text-primary" : "text-destructive"}`}>{fmtPrice(current)}</span></span>
-          <span>Max: <span className="text-foreground">{fmtPrice(highest)}</span></span>
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <div className="flex gap-4">
+          <span>Wejście: <span className="text-foreground font-medium">{fmtPrice(entry)}</span></span>
+          <span>Teraz: <span className={`font-semibold ${isPositive ? "text-primary" : "text-destructive"}`}>{fmtPrice(current)}</span></span>
+          <span>Max: <span className="text-foreground font-medium">{fmtPrice(highest)}</span></span>
         </div>
-        <div className="flex gap-2">
-          <span>SL: {fmtPrice(stopPrice)}</span>
+        <div className="flex gap-2.5">
+          <span>SL: <span className="text-foreground">{fmtPrice(stopPrice)}</span></span>
           {distToSL !== null && (
-            <span className={distToSL < 3 ? "text-destructive font-medium" : ""}>
+            <span className={`font-medium ${distToSL < 3 ? "text-destructive" : "text-muted-foreground"}`}>
               ({distToSL.toFixed(1)}% do SL)
             </span>
           )}
         </div>
       </div>
       {/* Row 3: Progress bar TP */}
-      <div className="mt-1.5">
-        <div className="flex justify-between text-[9px] text-muted-foreground mb-0.5">
+      <div className="mt-2">
+        <div className="flex justify-between text-[10px] text-muted-foreground mb-0.5">
           <span>SL -{trailingPct}%</span>
           <span>TP +{tpPct}%</span>
         </div>
