@@ -3,13 +3,41 @@
  * Token Detection → Security Scan → Liquidity Check → Wallet Analysis → Scoring → Execution → Risk Management
  */
 
-import { analyzeWallet, getTokenBalances, type WalletAnalysis, type HeliusTokenBalance } from "./helius";
+import { analyzeWallet, getTokenBalances, type WalletAnalysis, type HeliusTokenBalance, type ParsedTrade } from "./helius";
 import { analyzeTokenSecurity, analyzeAllTokens, type TokenSecurityReport } from "./tokenSecurity";
 import { calculateSmartScore, type SmartScoreBreakdown } from "./walletScoring";
 import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
+const BASE_ASSET_MINTS = new Set<string>([
+  SOL_MINT,
+  "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", // USDC
+  "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB", // USDT
+]);
+
+function normalizeTokenLabel(value?: string | null): string {
+  const label = (value || "").trim();
+  return label && label !== "???" ? label : "";
+}
+
+function shortMint(mint: string): string {
+  return `${mint.slice(0, 4)}...${mint.slice(-4)}`;
+}
+
+function shouldConsiderBuyCandidate(trade: ParsedTrade): boolean {
+  if (!trade.tokenOut?.mint) return false;
+  const outMint = trade.tokenOut.mint;
+  if (BASE_ASSET_MINTS.has(outMint)) return false;
+
+  if (trade.type === "BUY") return true;
+
+  if (trade.type === "SWAP" && trade.tokenIn?.mint) {
+    return BASE_ASSET_MINTS.has(trade.tokenIn.mint);
+  }
+
+  return false;
+}
 
 // ─── Pipeline Types ───
 
