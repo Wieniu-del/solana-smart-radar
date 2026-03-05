@@ -507,7 +507,7 @@ function SignalCard({
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-foreground">
-                  {signal.signal_type} {signal.token_symbol}
+                  {signal.signal_type} {signal.token_symbol || signal.token_name || "???"}
                 </span>
                 <Badge className={statusColors[signal.status] || ""}>
                   {signal.status}
@@ -515,6 +515,9 @@ function SignalCard({
               </div>
               <p className="text-xs text-muted-foreground mt-0.5">
                 Strategia: {signal.strategy}
+              </p>
+              <p className="text-xs text-foreground/90 mt-1">
+                Token: <span className="font-medium">{signal.token_name || signal.token_symbol || "Nieznany"}</span>
               </p>
               <div className="flex gap-4 mt-2 text-[10px] text-muted-foreground">
                 <span className="flex items-center gap-1">
@@ -547,8 +550,8 @@ function SignalCard({
               <p className="text-[10px] text-muted-foreground mt-1 font-mono truncate max-w-xs">
                 {signal.wallet_address}
               </p>
-              <p className="text-[10px] text-muted-foreground">
-                {new Date(signal.created_at).toLocaleString("pl-PL")}
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Data sygnału: {new Date(signal.created_at).toLocaleDateString("pl-PL")} · Godzina: {new Date(signal.created_at).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
               </p>
             </div>
           </div>
