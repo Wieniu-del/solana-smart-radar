@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { Keypair, VersionedTransaction } from "https://esm.sh/@solana/web3.js@1.98.4?target=deno";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -53,11 +54,12 @@ serve(async (req) => {
 
     const quoteData = await quoteRes.json();
 
-    // 2. Get swap transaction from Jupiter
-    // Derive public key from private key
-    const keyBytes = decodeBase58(PRIVATE_KEY);
-    const publicKeyBytes = keyBytes.slice(32);
-    const userPublicKey = encodeBase58(publicKeyBytes);
+    // Derive user public key from wallet secret
+    const keyBytes = parsePrivateKey(PRIVATE_KEY);
+    const signer = keyBytes.length === 32
+      ? Keypair.fromSeed(keyBytes)
+      : Keypair.fromSecretKey(keyBytes);
+    const userPublicKey = signer.publicKey.toBase58();
 
     const swapRes = await fetch(JUPITER_SWAP_API, {
       method: "POST",
@@ -84,23 +86,14 @@ serve(async (req) => {
 
     // 3. Deserialize, sign and send transaction
     const txBytes = Uint8Array.from(atob(swapTransaction), c => c.charCodeAt(0));
+    const tx = VersionedTransaction.deserialize(txBytes);
+    tx.sign([signer]);
+    const signedTx = tx.serialize();
 
-    // Sign using ed25519
-    const { sign } = await import("https://deno.land/x/ed25519@1.6.0/mod.ts");
-    const signature = sign(txBytes, keyBytes.slice(0, 32));
-
-    // Send raw transaction to Solana RPC
     const HELIUS_KEY = Deno.env.get("HELIUS_API_KEY");
-    const rpcUrl = HELIUS_KEY 
+    const rpcUrl = HELIUS_KEY
       ? `https://mainnet.helius-rpc.com/?api-key=${HELIUS_KEY}`
       : "https://api.mainnet-beta.solana.com";
-
-    // Construct signed transaction
-    // For versioned transactions, we need to insert the signature
-    const signedTx = new Uint8Array(txBytes);
-    // The first 64 bytes after the signature count are the signature slot
-    const sigOffset = 1; // after compact-u16 signature count
-    signedTx.set(signature, sigOffset);
 
     const sendRes = await fetch(rpcUrl, {
       method: "POST",
@@ -167,28 +160,14 @@ function decodeBase58(str: string): Uint8Array {
   return new Uint8Array(bytes.reverse());
 }
 
-function encodeBase58(bytes: Uint8Array): string {
-  const ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-  const digits: number[] = [0];
-  for (const byte of bytes) {
-    let carry = byte;
-    for (let i = 0; i < digits.length; i++) {
-      carry += digits[i] << 8;
-      digits[i] = carry % 58;
-      carry = (carry / 58) | 0;
-    }
-    while (carry > 0) {
-      digits.push(carry % 58);
-      carry = (carry / 58) | 0;
-    }
+function parsePrivateKey(raw: string): Uint8Array {
+  const trimmed = raw.trim();
+
+  if (trimmed.startsWith("[")) {
+    const parsed = JSON.parse(trimmed);
+    if (!Array.isArray(parsed)) throw new Error("Invalid SOLANA_PRIVATE_KEY JSON format");
+    return new Uint8Array(parsed);
   }
-  let str = "";
-  for (const byte of bytes) {
-    if (byte !== 0) break;
-    str += "1";
-  }
-  for (let i = digits.length - 1; i >= 0; i--) {
-    str += ALPHABET[digits[i]];
-  }
-  return str;
+
+  return decodeBase58(trimmed);
 }
