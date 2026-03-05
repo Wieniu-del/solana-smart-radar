@@ -40,13 +40,28 @@ Deno.serve(async (req) => {
       const currentPrice = priceMap[pos.token_mint] || 0;
       if (currentPrice <= 0) continue;
 
-      const entryPrice = Number(pos.entry_price_usd) || 0;
-      if (entryPrice <= 0) continue;
+      const trailingStopPct = Number(pos.trailing_stop_pct) || 10;
+      const takeProfitPct = Number(pos.take_profit_pct) || 50;
+
+      let entryPrice = Number(pos.entry_price_usd) || 0;
+      if (entryPrice <= 0) {
+        const highestPriceSeed = Math.max(Number(pos.highest_price_usd) || 0, currentPrice);
+        const seededStopPrice = highestPriceSeed * (1 - trailingStopPct / 100);
+
+        await supabase.from("open_positions").update({
+          entry_price_usd: currentPrice,
+          current_price_usd: currentPrice,
+          highest_price_usd: highestPriceSeed,
+          stop_price_usd: seededStopPrice,
+          pnl_pct: 0,
+          updated_at: new Date().toISOString(),
+        }).eq("id", pos.id);
+
+        continue;
+      }
 
       const highestPrice = Math.max(Number(pos.highest_price_usd) || 0, currentPrice);
       const pnlPct = ((currentPrice - entryPrice) / entryPrice) * 100;
-      const trailingStopPct = Number(pos.trailing_stop_pct) || 10;
-      const takeProfitPct = Number(pos.take_profit_pct) || 50;
 
       // Trailing stop price = highest price * (1 - trailing%)
       const stopPrice = highestPrice * (1 - trailingStopPct / 100);

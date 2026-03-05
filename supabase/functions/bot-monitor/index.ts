@@ -697,6 +697,38 @@ async function executeBuySignal({
   }
 }
 
+async function fetchTokenUsdPrice(tokenMint: string): Promise<number> {
+  // 1) Jupiter Lite price API
+  try {
+    const priceRes = await fetch(`https://lite-api.jup.ag/price/v2?ids=${encodeURIComponent(tokenMint)}`);
+    if (priceRes.ok) {
+      const priceData = await priceRes.json();
+      const jupPrice = Number(priceData?.data?.[tokenMint]?.price);
+      if (Number.isFinite(jupPrice) && jupPrice > 0) return jupPrice;
+    }
+  } catch (_) {
+    // ignore
+  }
+
+  // 2) DexScreener fallback
+  try {
+    const dexRes = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${tokenMint}`);
+    if (dexRes.ok) {
+      const dexData = await dexRes.json();
+      const pairs = Array.isArray(dexData?.pairs) ? dexData.pairs : [];
+      const validPairs = pairs
+        .filter((p: any) => Number(p?.priceUsd) > 0)
+        .sort((a: any, b: any) => Number(b?.liquidity?.usd || 0) - Number(a?.liquidity?.usd || 0));
+      const dexPrice = Number(validPairs[0]?.priceUsd);
+      if (Number.isFinite(dexPrice) && dexPrice > 0) return dexPrice;
+    }
+  } catch (_) {
+    // ignore
+  }
+
+  return 0;
+}
+
 async function updateRun(supabase: any, runId: string | undefined, data: Record<string, any>) {
   if (!runId) return;
   await supabase.from("bot_runs").update(data).eq("id", runId);
