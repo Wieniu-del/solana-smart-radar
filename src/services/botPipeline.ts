@@ -428,31 +428,37 @@ export function checkRiskLevels(
 // ─── 8. Save Pipeline Results as Signals ───
 
 export async function savePipelineSignals(results: PipelineResult[]) {
-  const buyResults = results.filter((r) => r.decision === "BUY");
+  const buyResults = results.filter((r) => r.decision === "BUY" && r.token.mint !== SOL_MINT);
   if (buyResults.length === 0) return;
 
-  const signals = buyResults.map((r) => ({
-    wallet_address: r.token.sourceWallet || "pipeline",
-    token_mint: r.token.mint,
-    token_symbol: r.token.symbol,
-    token_name: r.token.name,
-    signal_type: "BUY",
-    strategy: `Bot Pipeline (${r.token.source})`,
-    smart_score: r.walletScore,
-    risk_score: 100 - r.securityScore,
-    confidence: r.totalScore,
-    conditions: {
-      security_score: r.securityScore,
-      liquidity_score: r.liquidityScore,
-      wallet_score: r.walletScore,
-      total_score: r.totalScore,
-      reasons: r.reasons,
-      source: r.token.source,
-      smart_wallets_buying: r.walletData.smartWalletsBuying,
-      whale_wallets_buying: r.walletData.whaleWalletsBuying,
-    } as unknown as Json,
-    status: "pending",
-  }));
+  const signals = buyResults.map((r) => {
+    const fallbackLabel = shortMint(r.token.mint);
+    const tokenSymbol = normalizeTokenLabel(r.token.symbol) || fallbackLabel;
+    const tokenName = normalizeTokenLabel(r.token.name) || tokenSymbol;
+
+    return {
+      wallet_address: r.token.sourceWallet || "pipeline",
+      token_mint: r.token.mint,
+      token_symbol: tokenSymbol,
+      token_name: tokenName,
+      signal_type: "BUY",
+      strategy: `Bot Pipeline (${r.token.source})`,
+      smart_score: r.walletScore,
+      risk_score: 100 - r.securityScore,
+      confidence: r.totalScore,
+      conditions: {
+        security_score: r.securityScore,
+        liquidity_score: r.liquidityScore,
+        wallet_score: r.walletScore,
+        total_score: r.totalScore,
+        reasons: r.reasons,
+        source: r.token.source,
+        smart_wallets_buying: r.walletData.smartWalletsBuying,
+        whale_wallets_buying: r.walletData.whaleWalletsBuying,
+      } as unknown as Json,
+      status: "pending",
+    };
+  });
 
   const { error } = await supabase.from("trading_signals").insert(signals);
   if (error) console.error("Error saving pipeline signals:", error);
