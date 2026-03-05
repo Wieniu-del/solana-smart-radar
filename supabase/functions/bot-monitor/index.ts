@@ -306,33 +306,33 @@ Deno.serve(async (req) => {
 
     // 5. Save BUY signals to trading_signals
     const finalBuySignals = allCandidates.filter((c) => c.decision === "BUY");
-    if (finalBuySignals.length > 0) {
-      const signals = finalBuySignals.map((c) => ({
-        wallet_address: c.sourceWallet,
-        token_mint: c.mint,
-        token_symbol: c.symbol,
-        token_name: c.name,
-        signal_type: "BUY",
-        strategy: "Bot Pipeline (auto)",
-        smart_score: c.walletScore,
-        risk_score: 100 - c.securityScore,
-        confidence: c.totalScore,
-        conditions: {
-          security_score: c.securityScore,
-          liquidity_score: c.liquidityScore,
-          wallet_score: c.walletScore,
-          total_score: c.totalScore,
-          source: "cron_monitor",
-          value_usd: c.valueUsd,
-          correlation_wallets: c.correlationWallets || 1,
-          correlation_bonus: c.correlationBonus || 0,
-          sentiment: c.sentiment?.sentiment || "unknown",
-          sentiment_score: c.sentiment?.sentiment_score || 0,
-          sentiment_adjust: c.sentimentAdjust || 0,
-        },
-        status: "pending",
-      }));
+    const signals = finalBuySignals.map((c) => ({
+      wallet_address: c.sourceWallet,
+      token_mint: c.mint,
+      token_symbol: c.symbol,
+      token_name: c.name,
+      signal_type: "BUY",
+      strategy: "Bot Pipeline (auto)",
+      smart_score: c.walletScore,
+      risk_score: 100 - c.securityScore,
+      confidence: c.totalScore,
+      conditions: {
+        security_score: c.securityScore,
+        liquidity_score: c.liquidityScore,
+        wallet_score: c.walletScore,
+        total_score: c.totalScore,
+        source: "cron_monitor",
+        value_usd: c.valueUsd,
+        correlation_wallets: c.correlationWallets || 1,
+        correlation_bonus: c.correlationBonus || 0,
+        sentiment: c.sentiment?.sentiment || "unknown",
+        sentiment_score: c.sentiment?.sentiment_score || 0,
+        sentiment_adjust: c.sentimentAdjust || 0,
+      },
+      status: "pending",
+    }));
 
+    if (signals.length > 0) {
       const { error: insertSignalsError } = await supabase.from("trading_signals").insert(signals);
       if (insertSignalsError) throw insertSignalsError;
       totalSignals = signals.length;
@@ -345,6 +345,7 @@ Deno.serve(async (req) => {
         details: { token_mint: s.token_mint, token_symbol: s.token_symbol, confidence: s.confidence, wallet: s.wallet_address },
       }));
       await supabase.from("notifications").insert(notifications);
+    }
 
       // 5b. Auto-execute pending BUY signals if enabled (or missing config)
       const { data: autoExecConfig } = await supabase
