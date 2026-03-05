@@ -20,3 +20,6 @@ verify_jwt = false
 
 [functions.get-helius-key]
 verify_jwt = false
+
+[functions.find-active-wallets]
+verify_jwt = false
