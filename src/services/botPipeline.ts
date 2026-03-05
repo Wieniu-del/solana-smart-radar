@@ -9,6 +9,8 @@ import { calculateSmartScore, type SmartScoreBreakdown } from "./walletScoring";
 import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
 
+const SOL_MINT = "So11111111111111111111111111111111111111112";
+
 // ─── Pipeline Types ───
 
 export interface TokenCandidate {
@@ -85,6 +87,8 @@ export function detectTokensFromWallet(analysis: WalletAnalysis): TokenCandidate
 
   for (const trade of recentBuys) {
     if (!trade.tokenOut) continue;
+    if (trade.tokenOut.mint === SOL_MINT) continue;
+
     candidates.push({
       mint: trade.tokenOut.mint,
       symbol: trade.tokenOut.symbol,
@@ -110,6 +114,8 @@ export function detectWhaleTokens(analysis: WalletAnalysis): TokenCandidate[] {
 
   for (const trade of recentBuys) {
     if (!trade.tokenOut) continue;
+    if (trade.tokenOut.mint === SOL_MINT) continue;
+
     candidates.push({
       mint: trade.tokenOut.mint,
       symbol: trade.tokenOut.symbol,
