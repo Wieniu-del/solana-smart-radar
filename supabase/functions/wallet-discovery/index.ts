@@ -5,8 +5,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const HELIUS_BASE = "https://api.helius.xyz/v0";
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -30,53 +28,123 @@ Deno.serve(async (req) => {
       .single();
     const currentWallets: string[] = (walletsConfig?.value as string[]) || [];
 
-    // Strategy: Find wallets with high swap activity on popular tokens
-    // We'll look at recent large transactions on known DEX programs
-    const knownProfitablePatterns = [
-      // Search for wallets that recently did profitable swaps
-      // Using Helius enhanced transactions API
+    // Strategy: Use Helius DAS API to search for recent token activity
+    // Find wallets with high recent swap activity by searching known active tokens
+    const knownActiveTokens = [
+      "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", // USDC
+      "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB", // USDT
+      "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263", // BONK
+      "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",  // JUP
     ];
 
-    // 1. Get recent large swaps from Jupiter aggregator
-    const jupiterProgram = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
-    
-    // Fetch recent transactions from Jupiter
-    const txRes = await fetch(
-      `${HELIUS_BASE}/addresses/${jupiterProgram}/transactions?api-key=${heliusKey}&limit=100&type=SWAP`
-    );
-
-    if (!txRes.ok) {
-      return jsonResponse({ success: false, error: "Failed to fetch Jupiter transactions" }, 500);
-    }
-
-    const txns = await txRes.json();
-
-    // 2. Extract unique wallets and count their activity
     const walletActivity: Record<string, { swaps: number; totalValue: number; tokens: Set<string> }> = {};
 
-    for (const tx of txns) {
-      const feePayer = tx.feePayer;
-      if (!feePayer || currentWallets.includes(feePayer)) continue;
+    // Use Helius parsed transaction history for known active wallets from recent signals
+    // Approach: search recent trading_signals for active wallet addresses, then discover new ones nearby
+    const { data: recentSignals } = await supabase
+      .from("trading_signals")
+      .select("wallet_address")
+      .order("created_at", { ascending: false })
+      .limit(20);
 
-      if (!walletActivity[feePayer]) {
-        walletActivity[feePayer] = { swaps: 0, totalValue: 0, tokens: new Set() };
-      }
-      walletActivity[feePayer].swaps++;
+    const seedWallets = [...new Set((recentSignals || []).map(s => s.wallet_address))].slice(0, 5);
 
-      // Track token diversity
-      const transfers = tx.tokenTransfers || [];
-      for (const t of transfers) {
-        if (t.mint) walletActivity[feePayer].tokens.add(t.mint);
-      }
+    // For each seed wallet, look at their recent transaction counterparties
+    for (const seedWallet of seedWallets) {
+      try {
+        const txRes = await fetch(
+          `https://api.helius.xyz/v0/addresses/${seedWallet}/transactions?api-key=${heliusKey}&limit=50&type=SWAP`
+        );
 
-      // Estimate value from native transfers
-      const nativeTransfers = tx.nativeTransfers || [];
-      for (const nt of nativeTransfers) {
-        walletActivity[feePayer].totalValue += Math.abs(nt.amount || 0) / 1e9;
+        if (!txRes.ok) continue;
+
+        const txns = await txRes.json();
+
+        for (const tx of txns) {
+          // Look at other accounts involved in these swaps
+          const feePayer = tx.feePayer;
+          if (!feePayer || feePayer === seedWallet || currentWallets.includes(feePayer)) continue;
+
+          if (!walletActivity[feePayer]) {
+            walletActivity[feePayer] = { swaps: 0, totalValue: 0, tokens: new Set() };
+          }
+          walletActivity[feePayer].swaps++;
+
+          const transfers = tx.tokenTransfers || [];
+          for (const t of transfers) {
+            if (t.mint) walletActivity[feePayer].tokens.add(t.mint);
+            // Also check other user accounts as potential smart wallets
+            for (const account of [t.fromUserAccount, t.toUserAccount]) {
+              if (account && account !== seedWallet && account !== feePayer && !currentWallets.includes(account)) {
+                if (!walletActivity[account]) {
+                  walletActivity[account] = { swaps: 0, totalValue: 0, tokens: new Set() };
+                }
+                walletActivity[account].tokens.add(t.mint);
+              }
+            }
+          }
+
+          const nativeTransfers = tx.nativeTransfers || [];
+          for (const nt of nativeTransfers) {
+            if (nt.fromUserAccount === feePayer) {
+              walletActivity[feePayer].totalValue += Math.abs(nt.amount || 0) / 1e9;
+            }
+          }
+        }
+      } catch (_) {
+        // Skip on error
       }
     }
 
-    // 3. Score and rank wallets
+    // If no seed wallets, use a fallback: search for recent large token holders
+    if (seedWallets.length === 0) {
+      // Use getSignaturesForAddress on a popular token mint as fallback
+      try {
+        const rpcRes = await fetch(`https://mainnet.helius-rpc.com/?api-key=${heliusKey}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            method: "getSignaturesForAddress",
+            params: [knownActiveTokens[3], { limit: 50 }], // JUP token
+          }),
+        });
+
+        if (rpcRes.ok) {
+          const rpcJson = await rpcRes.json();
+          const sigs = (rpcJson.result || []).map((s: any) => s.signature).slice(0, 20);
+
+          // Parse these transactions
+          if (sigs.length > 0) {
+            const parseRes = await fetch(`https://api.helius.xyz/v0/transactions?api-key=${heliusKey}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ transactions: sigs }),
+            });
+
+            if (parseRes.ok) {
+              const parsedTxns = await parseRes.json();
+              for (const tx of parsedTxns) {
+                const feePayer = tx.feePayer;
+                if (!feePayer || currentWallets.includes(feePayer)) continue;
+                if (!walletActivity[feePayer]) {
+                  walletActivity[feePayer] = { swaps: 0, totalValue: 0, tokens: new Set() };
+                }
+                walletActivity[feePayer].swaps++;
+                for (const t of (tx.tokenTransfers || [])) {
+                  if (t.mint) walletActivity[feePayer].tokens.add(t.mint);
+                }
+              }
+            }
+          }
+        }
+      } catch (_) {
+        // Fallback failed, continue with whatever we have
+      }
+    }
+
+    // Score and rank wallets
     const candidates = Object.entries(walletActivity)
       .map(([address, data]) => ({
         address,
@@ -85,13 +153,13 @@ Deno.serve(async (req) => {
         tokenDiversity: data.tokens.size,
         score: data.swaps * 10 + data.tokenDiversity * 5 + Math.min(data.totalValue, 100),
       }))
-      .filter((w) => w.swaps >= 3 && w.tokenDiversity >= 2) // Min 3 swaps, 2 different tokens
+      .filter((w) => w.swaps >= 2 && w.tokenDiversity >= 1)
       .sort((a, b) => b.score - a.score)
-      .slice(0, 10); // Top 10
+      .slice(0, 15);
 
-    // 4. Verify candidates with balance check (filter out bots/low value)
+    // Verify candidates with balance check
     const verifiedCandidates = [];
-    for (const candidate of candidates.slice(0, 15)) {
+    for (const candidate of candidates) {
       try {
         const balRes = await fetch(`https://mainnet.helius-rpc.com/?api-key=${heliusKey}`, {
           method: "POST",
@@ -114,7 +182,6 @@ Deno.serve(async (req) => {
           const solPrice = nativeBal?.price_per_sol || 0;
           const portfolioUsd = solBalance * solPrice;
 
-          // Only keep wallets with meaningful balance (>$500)
           if (portfolioUsd > 500 || solBalance > 2) {
             verifiedCandidates.push({
               ...candidate,
@@ -127,10 +194,10 @@ Deno.serve(async (req) => {
         // Skip on error
       }
 
-      if (verifiedCandidates.length >= 5) break; // Max 5 new discoveries
+      if (verifiedCandidates.length >= 5) break;
     }
 
-    // 5. Save discovered wallets to notifications
+    // Save discovered wallets to notifications
     if (verifiedCandidates.length > 0) {
       await supabase.from("notifications").insert({
         type: "discovery",
