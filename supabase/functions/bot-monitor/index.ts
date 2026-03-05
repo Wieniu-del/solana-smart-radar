@@ -115,6 +115,16 @@ Deno.serve(async (req) => {
     const pScoring = pipelineConfig.scoring ?? { buy_threshold: minScoreThreshold, watch_threshold: 45 };
     const pCorrelation = pipelineConfig.correlation ?? { enabled: true, min_wallets: 2, bonus_per_wallet: 8, max_bonus: 20 };
     const pSentiment = pipelineConfig.sentiment ?? { enabled: true, block_on_avoid: true };
+
+    // Lookback window for wallet activity (default 72h to avoid empty scans)
+    const { data: lookbackConfig } = await supabase
+      .from("bot_config")
+      .select("value")
+      .eq("key", "lookback_hours")
+      .single();
+    const lookbackHours = Math.max(6, Math.min(168, Number(lookbackConfig?.value || 72)));
+    const lookbackSinceTs = Date.now() / 1000 - lookbackHours * 3600;
+
     // Use pipeline scoring thresholds if set, otherwise fall back to global
     const buyThreshold = pScoring.buy_threshold || minScoreThreshold;
     const watchThreshold = pScoring.watch_threshold || 45;
