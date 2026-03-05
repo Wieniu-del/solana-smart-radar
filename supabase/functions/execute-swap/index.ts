@@ -160,28 +160,14 @@ function decodeBase58(str: string): Uint8Array {
   return new Uint8Array(bytes.reverse());
 }
 
-function encodeBase58(bytes: Uint8Array): string {
-  const ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-  const digits: number[] = [0];
-  for (const byte of bytes) {
-    let carry = byte;
-    for (let i = 0; i < digits.length; i++) {
-      carry += digits[i] << 8;
-      digits[i] = carry % 58;
-      carry = (carry / 58) | 0;
-    }
-    while (carry > 0) {
-      digits.push(carry % 58);
-      carry = (carry / 58) | 0;
-    }
+function parsePrivateKey(raw: string): Uint8Array {
+  const trimmed = raw.trim();
+
+  if (trimmed.startsWith("[")) {
+    const parsed = JSON.parse(trimmed);
+    if (!Array.isArray(parsed)) throw new Error("Invalid SOLANA_PRIVATE_KEY JSON format");
+    return new Uint8Array(parsed);
   }
-  let str = "";
-  for (const byte of bytes) {
-    if (byte !== 0) break;
-    str += "1";
-  }
-  for (let i = digits.length - 1; i >= 0; i--) {
-    str += ALPHABET[digits[i]];
-  }
-  return str;
+
+  return decodeBase58(trimmed);
 }
