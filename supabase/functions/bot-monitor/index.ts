@@ -136,6 +136,21 @@ Deno.serve(async (req) => {
     const allCandidates: any[] = [];
     const seenMints = new Set<string>();
 
+    // Avoid re-buying already open/recently executed tokens
+    const blockedMints = new Set<string>();
+    const [{ data: openPositions }, { data: recentSignals }] = await Promise.all([
+      supabase.from("open_positions").select("token_mint").eq("status", "open"),
+      supabase
+        .from("trading_signals")
+        .select("token_mint")
+        .eq("signal_type", "BUY")
+        .in("status", ["pending", "executed"])
+        .gte("created_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
+    ]);
+
+    for (const row of openPositions || []) blockedMints.add(row.token_mint);
+    for (const row of recentSignals || []) blockedMints.add(row.token_mint);
+
     for (const wallet of wallets) {
       try {
         // Fetch transactions
