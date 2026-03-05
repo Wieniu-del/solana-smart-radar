@@ -157,8 +157,12 @@ Deno.serve(async (req) => {
         const txRes = await fetch(
           `${HELIUS_BASE}/addresses/${wallet}/transactions?api-key=${heliusKey}&limit=50`
         );
-        if (!txRes.ok) continue;
+        if (!txRes.ok) {
+          console.error(`[bot] Wallet ${wallet.slice(0,8)} tx fetch failed: ${txRes.status}`);
+          continue;
+        }
         const txns = await txRes.json();
+        console.log(`[bot] Wallet ${wallet.slice(0,8)}: ${txns.length} txns, lookback=${lookbackHours}h`);
 
         // Fetch token balances
         const balRes = await fetch(`${HELIUS_RPC}/?api-key=${heliusKey}`, {
