@@ -333,7 +333,8 @@ Deno.serve(async (req) => {
         status: "pending",
       }));
 
-      const { data: insertedSignals } = await supabase.from("trading_signals").insert(signals).select("id, token_symbol, token_mint, confidence");
+      const { error: insertSignalsError } = await supabase.from("trading_signals").insert(signals);
+      if (insertSignalsError) throw insertSignalsError;
       totalSignals = signals.length;
 
       // Send notifications for each signal
@@ -345,14 +346,16 @@ Deno.serve(async (req) => {
       }));
       await supabase.from("notifications").insert(notifications);
 
-      // 5b. Auto-execute if enabled
+      // 5b. Auto-execute pending BUY signals if enabled (or missing config)
       const { data: autoExecConfig } = await supabase
         .from("bot_config")
         .select("value")
         .eq("key", "auto_execute")
         .single();
 
-      if (autoExecConfig?.value === true) {
+      const autoExecuteEnabled = autoExecConfig?.value !== false;
+
+      if (autoExecuteEnabled) {
         // Check max open positions limit
         const { data: maxPosConfig } = await supabase
           .from("bot_config")
@@ -395,98 +398,42 @@ Deno.serve(async (req) => {
           const slotsAvailable = maxOpenPositions - (currentOpen || 0);
           let executed = 0;
 
-          for (const candidate of finalBuySignals) {
+          // Execute oldest pending BUY signals first (including older pending ones)
+          const { data: pendingSignals } = await supabase
+            .from("trading_signals")
+            .select("id, token_mint, token_symbol, token_name, confidence")
+            .eq("signal_type", "BUY")
+            .eq("status", "pending")
+            .order("created_at", { ascending: true })
+            .limit(100);
+
+          for (const signal of pendingSignals || []) {
             if (executed >= slotsAvailable) {
               console.log(`Max positions reached (${maxOpenPositions}), queuing remaining signals`);
               break;
             }
 
-            // Dynamic sizing: scale position by confidence score
             let positionSol = basePositionSol;
             if (dynamicSizing.enabled) {
-              const scoreNorm = Math.max(0, Math.min(1, (candidate.totalScore - 70) / 30)); // 70=0%, 100=100%
+              const confidence = Number(signal.confidence || 70);
+              const scoreNorm = Math.max(0, Math.min(1, (confidence - 70) / 30));
               positionSol = dynamicSizing.min_sol + scoreNorm * (dynamicSizing.max_sol - dynamicSizing.min_sol);
-              positionSol = Math.round(positionSol * 1000) / 1000; // round to 3 decimals
+              positionSol = Math.round(positionSol * 1000) / 1000;
             }
 
-            try {
-              const swapRes = await fetch(`${supabaseUrl}/functions/v1/execute-swap`, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "Authorization": `Bearer ${supabaseKey}`,
-                },
-                body: JSON.stringify({
-                  action: "BUY",
-                  tokenMint: candidate.mint,
-                  amountSol: positionSol,
-                  slippageBps: 150,
-                }),
-              });
-              const swapData = await swapRes.json();
+            const success = await executeBuySignal({
+              supabase,
+              supabaseUrl,
+              supabaseKey,
+              signal,
+              positionSol,
+              trailingStopPct,
+              takeProfitPct,
+            });
 
-              if (swapData.success) {
-                // Get entry price from Jupiter
-                let entryPrice = 0;
-                try {
-                  const priceRes = await fetch(`https://api.jup.ag/price/v2?ids=${candidate.mint}`);
-                  if (priceRes.ok) {
-                    const priceData = await priceRes.json();
-                    entryPrice = Number(priceData.data?.[candidate.mint]?.price) || 0;
-                  }
-                } catch (_) {}
-
-                // Create open position with trailing stop-loss
-                await supabase.from("open_positions").insert({
-                  token_mint: candidate.mint,
-                  token_symbol: candidate.symbol,
-                  entry_price_usd: entryPrice,
-                  current_price_usd: entryPrice,
-                  highest_price_usd: entryPrice,
-                  amount_sol: positionSol,
-                  token_amount: swapData.outputAmount ? Number(swapData.outputAmount) / 1e6 : 0,
-                  trailing_stop_pct: trailingStopPct,
-                  take_profit_pct: takeProfitPct,
-                  stop_price_usd: entryPrice * (1 - trailingStopPct / 100),
-                  status: "open",
-                });
-
-                await supabase.from("notifications").insert({
-                  type: "swap_success",
-                  title: `✅ Auto-swap: ${candidate.symbol}`,
-                  message: `Kupiono ${candidate.symbol} za ${positionSol} SOL. Trailing SL: ${trailingStopPct}%, TP: ${takeProfitPct}%. TX: ${swapData.txSignature?.slice(0, 12)}...`,
-                  details: { tx: swapData.txSignature, token: candidate.symbol, amount_sol: positionSol, mint: candidate.mint, trailing_stop_pct: trailingStopPct, take_profit_pct: takeProfitPct },
-                });
-
-                // Update signal status to executed
-                const matchingSignal = insertedSignals?.find((s: any) => s.token_symbol === candidate.symbol);
-                if (matchingSignal) {
-                  await supabase.from("trading_signals").update({
-                    status: "executed",
-                    executed_at: new Date().toISOString(),
-                    tx_signature: swapData.txSignature || null,
-                  }).eq("id", matchingSignal.id);
-                }
-
-                executed++;
-              } else {
-                await supabase.from("notifications").insert({
-                  type: "swap_error",
-                  title: `❌ Auto-swap nieudany: ${candidate.symbol}`,
-                  message: `Błąd: ${swapData.error?.slice(0, 100) || "Nieznany błąd"}`,
-                  details: { error: swapData.error, token: candidate.symbol, mint: candidate.mint },
-                });
-              }
-            } catch (swapErr: any) {
-              await supabase.from("notifications").insert({
-                type: "swap_error",
-                title: `❌ Auto-swap błąd: ${candidate.symbol}`,
-                message: `Wyjątek: ${swapErr.message?.slice(0, 100) || "Nieznany błąd"}`,
-                details: { error: swapErr.message, token: candidate.symbol },
-              });
-            }
+            if (success) executed++;
           }
-        } // close else for position limit check
+        }
 
         // After processing buys, also check open positions (trailing stop / TP)
         try {
