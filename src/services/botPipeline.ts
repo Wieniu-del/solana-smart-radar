@@ -108,19 +108,17 @@ export function detectTokensFromWallet(analysis: WalletAnalysis): TokenCandidate
   const candidates: TokenCandidate[] = [];
   const oneDayAgo = Date.now() / 1000 - 86400;
 
-  // Find recent buys from this wallet
-  const recentBuys = analysis.trades.filter(
-    (t) => t.type === "BUY" && t.timestamp > oneDayAgo && t.tokenOut
-  );
+  const recentTrades = analysis.trades.filter((t) => t.timestamp > oneDayAgo);
 
-  for (const trade of recentBuys) {
-    if (!trade.tokenOut) continue;
-    if (trade.tokenOut.mint === SOL_MINT) continue;
+  for (const trade of recentTrades) {
+    if (!shouldConsiderBuyCandidate(trade) || !trade.tokenOut) continue;
+
+    const symbol = normalizeTokenLabel(trade.tokenOut.symbol);
 
     candidates.push({
       mint: trade.tokenOut.mint,
-      symbol: trade.tokenOut.symbol,
-      name: trade.tokenOut.symbol,
+      symbol: symbol || shortMint(trade.tokenOut.mint),
+      name: symbol || shortMint(trade.tokenOut.mint),
       source: "smart_wallet",
       sourceWallet: analysis.address,
       detectedAt: trade.timestamp,
@@ -136,18 +134,17 @@ export function detectWhaleTokens(analysis: WalletAnalysis): TokenCandidate[] {
   const candidates: TokenCandidate[] = [];
   const oneDayAgo = Date.now() / 1000 - 86400;
 
-  const recentBuys = analysis.trades.filter(
-    (t) => t.type === "BUY" && t.timestamp > oneDayAgo && t.tokenOut
-  );
+  const recentTrades = analysis.trades.filter((t) => t.timestamp > oneDayAgo);
 
-  for (const trade of recentBuys) {
-    if (!trade.tokenOut) continue;
-    if (trade.tokenOut.mint === SOL_MINT) continue;
+  for (const trade of recentTrades) {
+    if (!shouldConsiderBuyCandidate(trade) || !trade.tokenOut) continue;
+
+    const symbol = normalizeTokenLabel(trade.tokenOut.symbol);
 
     candidates.push({
       mint: trade.tokenOut.mint,
-      symbol: trade.tokenOut.symbol,
-      name: trade.tokenOut.symbol,
+      symbol: symbol || shortMint(trade.tokenOut.mint),
+      name: symbol || shortMint(trade.tokenOut.mint),
       source: "whale_buy",
       sourceWallet: analysis.address,
       detectedAt: trade.timestamp,
