@@ -390,8 +390,11 @@ function PipelineResultCard({ result }: { result: PipelineResult }) {
       <CardContent className="p-4">
         <div className="flex items-start justify-between">
           <div className="flex-1">
-            <div className="flex items-center gap-2 mb-2">
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
               <span className="font-semibold text-foreground text-lg">{result.token.symbol}</span>
+              {result.token.name && result.token.name !== result.token.symbol && (
+                <span className="text-xs text-muted-foreground">({result.token.name})</span>
+              )}
               <Badge className={decisionColors[result.decision]}>
                 {decisionLabels[result.decision]}
               </Badge>
@@ -404,7 +407,10 @@ function PipelineResultCard({ result }: { result: PipelineResult }) {
               </Badge>
             </div>
 
-            <p className="text-xs font-mono text-muted-foreground mb-3 truncate">{result.token.mint}</p>
+            <p className="text-xs font-mono text-muted-foreground mb-1 truncate">{result.token.mint}</p>
+            <p className="text-[11px] text-muted-foreground mb-3">
+              Sygnał: {new Date(result.timestamp).toLocaleDateString("pl-PL")} · {new Date(result.timestamp).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+            </p>
 
             {/* Score breakdown */}
             <div className="grid grid-cols-3 gap-3 mb-3">
@@ -491,6 +497,10 @@ function SignalCard({
     executed: "bg-secondary/10 text-secondary border-secondary/30",
     expired: "bg-muted text-muted-foreground border-border",
   };
+  const fallbackToken = signal.token_mint ? `${signal.token_mint.slice(0, 4)}...${signal.token_mint.slice(-4)}` : "Nieznany";
+  const normalizedSymbol = signal.token_symbol && signal.token_symbol !== "???" ? signal.token_symbol : "";
+  const normalizedName = signal.token_name && signal.token_name !== "???" ? signal.token_name : "";
+  const displayToken = normalizedSymbol || normalizedName || fallbackToken;
 
   return (
     <Card className="border-border bg-card">
@@ -507,7 +517,7 @@ function SignalCard({
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-foreground">
-                  {signal.signal_type} {signal.token_symbol || signal.token_name || "???"}
+                  {signal.signal_type} {displayToken}
                 </span>
                 <Badge className={statusColors[signal.status] || ""}>
                   {signal.status}
@@ -517,7 +527,7 @@ function SignalCard({
                 Strategia: {signal.strategy}
               </p>
               <p className="text-xs text-foreground/90 mt-1">
-                Token: <span className="font-medium">{signal.token_name || signal.token_symbol || "Nieznany"}</span>
+                Token: <span className="font-medium">{normalizedName || displayToken}</span>
               </p>
               <div className="flex gap-4 mt-2 text-[10px] text-muted-foreground">
                 <span className="flex items-center gap-1">

@@ -3,13 +3,41 @@
  * Token Detection → Security Scan → Liquidity Check → Wallet Analysis → Scoring → Execution → Risk Management
  */
 
-import { analyzeWallet, getTokenBalances, type WalletAnalysis, type HeliusTokenBalance } from "./helius";
+import { analyzeWallet, getTokenBalances, type WalletAnalysis, type HeliusTokenBalance, type ParsedTrade } from "./helius";
 import { analyzeTokenSecurity, analyzeAllTokens, type TokenSecurityReport } from "./tokenSecurity";
 import { calculateSmartScore, type SmartScoreBreakdown } from "./walletScoring";
 import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
+const BASE_ASSET_MINTS = new Set<string>([
+  SOL_MINT,
+  "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", // USDC
+  "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB", // USDT
+]);
+
+function normalizeTokenLabel(value?: string | null): string {
+  const label = (value || "").trim();
+  return label && label !== "???" ? label : "";
+}
+
+function shortMint(mint: string): string {
+  return `${mint.slice(0, 4)}...${mint.slice(-4)}`;
+}
+
+function shouldConsiderBuyCandidate(trade: ParsedTrade): boolean {
+  if (!trade.tokenOut?.mint) return false;
+  const outMint = trade.tokenOut.mint;
+  if (BASE_ASSET_MINTS.has(outMint)) return false;
+
+  if (trade.type === "BUY") return true;
+
+  if (trade.type === "SWAP" && trade.tokenIn?.mint) {
+    return BASE_ASSET_MINTS.has(trade.tokenIn.mint);
+  }
+
+  return false;
+}
 
 // ─── Pipeline Types ───
 
@@ -80,19 +108,17 @@ export function detectTokensFromWallet(analysis: WalletAnalysis): TokenCandidate
   const candidates: TokenCandidate[] = [];
   const oneDayAgo = Date.now() / 1000 - 86400;
 
-  // Find recent buys from this wallet
-  const recentBuys = analysis.trades.filter(
-    (t) => t.type === "BUY" && t.timestamp > oneDayAgo && t.tokenOut
-  );
+  const recentTrades = analysis.trades.filter((t) => t.timestamp > oneDayAgo);
 
-  for (const trade of recentBuys) {
-    if (!trade.tokenOut) continue;
-    if (trade.tokenOut.mint === SOL_MINT) continue;
+  for (const trade of recentTrades) {
+    if (!shouldConsiderBuyCandidate(trade) || !trade.tokenOut) continue;
+
+    const symbol = normalizeTokenLabel(trade.tokenOut.symbol);
 
     candidates.push({
       mint: trade.tokenOut.mint,
-      symbol: trade.tokenOut.symbol,
-      name: trade.tokenOut.symbol,
+      symbol: symbol || shortMint(trade.tokenOut.mint),
+      name: symbol || shortMint(trade.tokenOut.mint),
       source: "smart_wallet",
       sourceWallet: analysis.address,
       detectedAt: trade.timestamp,
@@ -108,18 +134,17 @@ export function detectWhaleTokens(analysis: WalletAnalysis): TokenCandidate[] {
   const candidates: TokenCandidate[] = [];
   const oneDayAgo = Date.now() / 1000 - 86400;
 
-  const recentBuys = analysis.trades.filter(
-    (t) => t.type === "BUY" && t.timestamp > oneDayAgo && t.tokenOut
-  );
+  const recentTrades = analysis.trades.filter((t) => t.timestamp > oneDayAgo);
 
-  for (const trade of recentBuys) {
-    if (!trade.tokenOut) continue;
-    if (trade.tokenOut.mint === SOL_MINT) continue;
+  for (const trade of recentTrades) {
+    if (!shouldConsiderBuyCandidate(trade) || !trade.tokenOut) continue;
+
+    const symbol = normalizeTokenLabel(trade.tokenOut.symbol);
 
     candidates.push({
       mint: trade.tokenOut.mint,
-      symbol: trade.tokenOut.symbol,
-      name: trade.tokenOut.symbol,
+      symbol: symbol || shortMint(trade.tokenOut.mint),
+      name: symbol || shortMint(trade.tokenOut.mint),
       source: "whale_buy",
       sourceWallet: analysis.address,
       detectedAt: trade.timestamp,
@@ -329,6 +354,11 @@ export async function runPipeline(
       };
     }
 
+    const resolvedSymbol = normalizeTokenLabel(tokenData.symbol) || normalizeTokenLabel(candidate.symbol) || shortMint(candidate.mint);
+    const resolvedName = normalizeTokenLabel(tokenData.name) || normalizeTokenLabel(candidate.name) || resolvedSymbol;
+    candidate.symbol = resolvedSymbol;
+    candidate.name = resolvedName;
+
     // Security scan
     const security = runSecurityScan(tokenData);
 
@@ -398,31 +428,37 @@ export function checkRiskLevels(
 // ─── 8. Save Pipeline Results as Signals ───
 
 export async function savePipelineSignals(results: PipelineResult[]) {
-  const buyResults = results.filter((r) => r.decision === "BUY");
+  const buyResults = results.filter((r) => r.decision === "BUY" && r.token.mint !== SOL_MINT);
   if (buyResults.length === 0) return;
 
-  const signals = buyResults.map((r) => ({
-    wallet_address: r.token.sourceWallet || "pipeline",
-    token_mint: r.token.mint,
-    token_symbol: r.token.symbol,
-    token_name: r.token.name,
-    signal_type: "BUY",
-    strategy: `Bot Pipeline (${r.token.source})`,
-    smart_score: r.walletScore,
-    risk_score: 100 - r.securityScore,
-    confidence: r.totalScore,
-    conditions: {
-      security_score: r.securityScore,
-      liquidity_score: r.liquidityScore,
-      wallet_score: r.walletScore,
-      total_score: r.totalScore,
-      reasons: r.reasons,
-      source: r.token.source,
-      smart_wallets_buying: r.walletData.smartWalletsBuying,
-      whale_wallets_buying: r.walletData.whaleWalletsBuying,
-    } as unknown as Json,
-    status: "pending",
-  }));
+  const signals = buyResults.map((r) => {
+    const fallbackLabel = shortMint(r.token.mint);
+    const tokenSymbol = normalizeTokenLabel(r.token.symbol) || fallbackLabel;
+    const tokenName = normalizeTokenLabel(r.token.name) || tokenSymbol;
+
+    return {
+      wallet_address: r.token.sourceWallet || "pipeline",
+      token_mint: r.token.mint,
+      token_symbol: tokenSymbol,
+      token_name: tokenName,
+      signal_type: "BUY",
+      strategy: `Bot Pipeline (${r.token.source})`,
+      smart_score: r.walletScore,
+      risk_score: 100 - r.securityScore,
+      confidence: r.totalScore,
+      conditions: {
+        security_score: r.securityScore,
+        liquidity_score: r.liquidityScore,
+        wallet_score: r.walletScore,
+        total_score: r.totalScore,
+        reasons: r.reasons,
+        source: r.token.source,
+        smart_wallets_buying: r.walletData.smartWalletsBuying,
+        whale_wallets_buying: r.walletData.whaleWalletsBuying,
+      } as unknown as Json,
+      status: "pending",
+    };
+  });
 
   const { error } = await supabase.from("trading_signals").insert(signals);
   if (error) console.error("Error saving pipeline signals:", error);
