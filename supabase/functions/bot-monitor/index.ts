@@ -414,6 +414,14 @@ Deno.serve(async (req) => {
               break;
             }
 
+            if (signal.token_mint === "So11111111111111111111111111111111111111112") {
+              await supabase
+                .from("trading_signals")
+                .update({ status: "rejected" })
+                .eq("id", signal.id);
+              continue;
+            }
+
             let positionSol = basePositionSol;
             if (dynamicSizing.enabled) {
               const confidence = Number(signal.confidence || 70);

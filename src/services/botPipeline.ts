@@ -114,6 +114,8 @@ export function detectWhaleTokens(analysis: WalletAnalysis): TokenCandidate[] {
 
   for (const trade of recentBuys) {
     if (!trade.tokenOut) continue;
+    if (trade.tokenOut.mint === SOL_MINT) continue;
+
     candidates.push({
       mint: trade.tokenOut.mint,
       symbol: trade.tokenOut.symbol,
