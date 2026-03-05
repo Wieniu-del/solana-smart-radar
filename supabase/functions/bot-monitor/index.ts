@@ -8,11 +8,16 @@ const corsHeaders = {
 const HELIUS_BASE = "https://api.helius.xyz/v0";
 const HELIUS_RPC = "https://mainnet.helius-rpc.com";
 
-// Known safe tokens
-const KNOWN_SAFE_MINTS = new Set([
+// Base assets (never BUY these)
+const BASE_ASSET_MINTS = new Set([
   "So11111111111111111111111111111111111111112",
   "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
   "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+]);
+
+// Known safer tokens (used only for safety scoring)
+const KNOWN_SAFE_MINTS = new Set([
+  ...BASE_ASSET_MINTS,
   "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
   "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",
   "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So",
@@ -110,6 +115,16 @@ Deno.serve(async (req) => {
     const pScoring = pipelineConfig.scoring ?? { buy_threshold: minScoreThreshold, watch_threshold: 45 };
     const pCorrelation = pipelineConfig.correlation ?? { enabled: true, min_wallets: 2, bonus_per_wallet: 8, max_bonus: 20 };
     const pSentiment = pipelineConfig.sentiment ?? { enabled: true, block_on_avoid: true };
+
+    // Lookback window for wallet activity (default 72h to avoid empty scans)
+    const { data: lookbackConfig } = await supabase
+      .from("bot_config")
+      .select("value")
+      .eq("key", "lookback_hours")
+      .single();
+    const lookbackHours = Math.max(6, Math.min(168, Number(lookbackConfig?.value || 72)));
+    const lookbackSinceTs = Date.now() / 1000 - lookbackHours * 3600;
+
     // Use pipeline scoring thresholds if set, otherwise fall back to global
     const buyThreshold = pScoring.buy_threshold || minScoreThreshold;
     const watchThreshold = pScoring.watch_threshold || 45;
@@ -120,6 +135,21 @@ Deno.serve(async (req) => {
     let totalBuySignals = 0;
     const allCandidates: any[] = [];
     const seenMints = new Set<string>();
+
+    // Avoid re-buying already open/recently executed tokens
+    const blockedMints = new Set<string>();
+    const [{ data: openPositions }, { data: recentSignals }] = await Promise.all([
+      supabase.from("open_positions").select("token_mint").eq("status", "open"),
+      supabase
+        .from("trading_signals")
+        .select("token_mint")
+        .eq("signal_type", "BUY")
+        .in("status", ["pending", "executed"])
+        .gte("created_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
+    ]);
+
+    for (const row of openPositions || []) blockedMints.add(row.token_mint);
+    for (const row of recentSignals || []) blockedMints.add(row.token_mint);
 
     for (const wallet of wallets) {
       try {
@@ -187,59 +217,127 @@ Deno.serve(async (req) => {
         }
 
         // Parse trades (recent buys)
-        const oneDayAgo = Date.now() / 1000 - 86400;
         for (const tx of txns) {
-          if (tx.timestamp <= oneDayAgo) continue;
-          const tokenTransfers = tx.tokenTransfers || [];
-          const incoming = tokenTransfers.find((t: any) => t.toUserAccount === wallet);
-          const outgoing = tokenTransfers.find((t: any) => t.fromUserAccount === wallet);
+          if (!tx?.timestamp || tx.timestamp <= lookbackSinceTs) continue;
 
-          if (incoming && (!outgoing || tx.type === "SWAP")) {
-            const mint = incoming.mint;
-            if (!seenMints.has(mint) && !KNOWN_SAFE_MINTS.has(mint)) {
-              seenMints.add(mint);
+          const tokenTransfers = Array.isArray(tx.tokenTransfers) ? tx.tokenTransfers : [];
+          const incoming = tokenTransfers.find((t: any) => t?.toUserAccount === wallet && t?.mint);
+          const outgoing = tokenTransfers.find((t: any) => t?.fromUserAccount === wallet && t?.mint);
 
-              // Quick security check
-              const tokenInfo = tokens.find((t: any) => t.mint === mint);
-              const isSafe = KNOWN_SAFE_MINTS.has(mint);
-              const hasPrice = tokenInfo ? tokenInfo.priceUsd > 0 : false;
-              const valueUsd = tokenInfo?.valueUsd || 0;
+          const incomingMint = incoming?.mint as string | undefined;
+          const outgoingMint = outgoing?.mint as string | undefined;
 
-              // Scoring with pipeline config
-              const securityScore = pSecurity.enabled
-                ? (isSafe ? 100 : hasPrice ? 60 : 30)
-                : 70; // neutral if disabled
-              const liquidityScore = pLiquidity.enabled
-                ? (valueUsd > 100000 ? 80 : valueUsd > 10000 ? 60 : valueUsd > 1000 ? 40 : 20)
-                : 60; // neutral if disabled
-              const walletScore = pWallet.enabled
-                ? (totalValueUsd > 100000 ? 80 : totalValueUsd > 10000 ? 60 : 40)
-                : 60; // neutral if disabled
+          if (!incomingMint || BASE_ASSET_MINTS.has(incomingMint) || blockedMints.has(incomingMint)) continue;
 
-              const totalScore = Math.round(
-                securityScore * 0.3 + liquidityScore * 0.25 + walletScore * 0.45
-              );
+          const isDirectBuy = !!incoming && !outgoing;
+          const isBaseToTokenSwap = !!incoming && !!outgoing && !!outgoingMint && BASE_ASSET_MINTS.has(outgoingMint);
+          const isSwapLikeTx = tx.type === "SWAP" || tx.type === "UNKNOWN" || tx.type === "TRANSFER";
 
-              totalTokensFound++;
+          // Accept only probable buy-like movements
+          if (!(isDirectBuy || (isBaseToTokenSwap && isSwapLikeTx))) continue;
 
-              const decision = totalScore >= buyThreshold ? "BUY" : totalScore >= watchThreshold ? "WATCH" : "SKIP";
+          if (!seenMints.has(incomingMint)) {
+            seenMints.add(incomingMint);
 
-              allCandidates.push({
-                mint,
-                symbol: incoming.tokenSymbol || tokenInfo?.symbol || "???",
-                name: tokenInfo?.name || incoming.tokenSymbol || "Unknown",
-                sourceWallet: wallet,
-                securityScore,
-                liquidityScore,
-                walletScore,
-                totalScore,
-                decision,
-                valueUsd,
-                totalValueUsd,
-              });
+            // Quick security check
+            const tokenInfo = tokens.find((t: any) => t.mint === incomingMint);
+            const isSafe = KNOWN_SAFE_MINTS.has(incomingMint);
+            const hasPrice = tokenInfo ? tokenInfo.priceUsd > 0 : false;
+            const valueUsd = tokenInfo?.valueUsd || 0;
 
-              if (decision === "BUY") totalBuySignals++;
-            }
+            // Scoring with pipeline config
+            const securityScore = pSecurity.enabled
+              ? (isSafe ? 100 : hasPrice ? 60 : 30)
+              : 70; // neutral if disabled
+            const liquidityScore = pLiquidity.enabled
+              ? (valueUsd > 100000 ? 80 : valueUsd > 10000 ? 60 : valueUsd > 1000 ? 40 : 20)
+              : 60; // neutral if disabled
+            const walletScore = pWallet.enabled
+              ? (totalValueUsd > 100000 ? 80 : totalValueUsd > 10000 ? 60 : 40)
+              : 60; // neutral if disabled
+
+            const totalScore = Math.round(
+              securityScore * 0.3 + liquidityScore * 0.25 + walletScore * 0.45
+            );
+
+            totalTokensFound++;
+
+            const decision = totalScore >= buyThreshold ? "BUY" : totalScore >= watchThreshold ? "WATCH" : "SKIP";
+
+            const fallbackSymbol = `${incomingMint.slice(0, 4)}...${incomingMint.slice(-4)}`;
+            const resolvedSymbol = incoming?.tokenSymbol || tokenInfo?.symbol || fallbackSymbol;
+            const resolvedName = tokenInfo?.name || incoming?.tokenName || resolvedSymbol;
+
+            allCandidates.push({
+              mint: incomingMint,
+              symbol: resolvedSymbol,
+              name: resolvedName,
+              sourceWallet: wallet,
+              securityScore,
+              liquidityScore,
+              walletScore,
+              totalScore,
+              decision,
+              valueUsd,
+              totalValueUsd,
+            });
+
+            if (decision === "BUY") totalBuySignals++;
+          }
+        }
+
+        // Fallback: if no recent buy-like transfer found, use high-value non-base holdings
+        const walletHasCandidate = allCandidates.some((c) => c.sourceWallet === wallet);
+        if (!walletHasCandidate) {
+          const minLiquidityUsd = Number(pLiquidity.min_value_usd || 1000);
+
+          for (const token of tokens) {
+            const mint = token?.mint as string | undefined;
+            if (!mint || BASE_ASSET_MINTS.has(mint) || seenMints.has(mint) || blockedMints.has(mint)) continue;
+
+            const valueUsd = Number(token?.valueUsd || 0);
+            if (valueUsd < minLiquidityUsd) continue;
+
+            seenMints.add(mint);
+            totalTokensFound++;
+
+            const hasPrice = Number(token?.priceUsd || 0) > 0;
+            const isSafe = KNOWN_SAFE_MINTS.has(mint);
+
+            const securityScore = pSecurity.enabled
+              ? (isSafe ? 100 : hasPrice ? 60 : 30)
+              : 70;
+            const liquidityScore = pLiquidity.enabled
+              ? (valueUsd > 100000 ? 80 : valueUsd > 10000 ? 60 : valueUsd > 1000 ? 40 : 20)
+              : 60;
+            const walletScore = pWallet.enabled
+              ? (totalValueUsd > 100000 ? 80 : totalValueUsd > 10000 ? 60 : 40)
+              : 60;
+
+            const totalScore = Math.round(
+              securityScore * 0.3 + liquidityScore * 0.25 + walletScore * 0.45
+            );
+            const decision = totalScore >= buyThreshold ? "BUY" : totalScore >= watchThreshold ? "WATCH" : "SKIP";
+            const fallbackSymbol = `${mint.slice(0, 4)}...${mint.slice(-4)}`;
+            const resolvedSymbol = token?.symbol || fallbackSymbol;
+            const resolvedName = token?.name || resolvedSymbol;
+
+            allCandidates.push({
+              mint,
+              symbol: resolvedSymbol,
+              name: resolvedName,
+              sourceWallet: wallet,
+              source: "holding_snapshot",
+              securityScore,
+              liquidityScore,
+              walletScore,
+              totalScore,
+              decision,
+              valueUsd,
+              totalValueUsd,
+            });
+
+            if (decision === "BUY") totalBuySignals++;
           }
         }
       } catch (err) {
@@ -471,6 +569,7 @@ Deno.serve(async (req) => {
       details: {
         candidates: allCandidates.length,
         wallets_count: wallets.length,
+        lookback_hours: lookbackHours,
       },
     });
 
