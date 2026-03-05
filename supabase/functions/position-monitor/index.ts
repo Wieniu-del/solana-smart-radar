@@ -29,22 +29,9 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: true, message: "No open positions", checked: 0, closed: 0 });
     }
 
-    // 2. Get current prices for all tokens via Jupiter
+    // 2. Get current prices for all tokens (Jupiter Lite + DexScreener fallback)
     const mints = [...new Set(positions.map((p: any) => p.token_mint))];
-    const priceMap: Record<string, number> = {};
-
-    try {
-      const ids = mints.join(",");
-      const priceRes = await fetch(`https://api.jup.ag/price/v2?ids=${ids}`);
-      if (priceRes.ok) {
-        const priceData = await priceRes.json();
-        for (const [mint, info] of Object.entries(priceData.data || {})) {
-          priceMap[mint] = Number((info as any).price) || 0;
-        }
-      }
-    } catch (e) {
-      console.error("Price fetch error:", e);
-    }
+    const priceMap = await fetchTokenPrices(mints);
 
     let closedCount = 0;
     const updates: any[] = [];

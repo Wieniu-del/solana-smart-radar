@@ -647,16 +647,7 @@ async function executeBuySignal({
       return false;
     }
 
-    let entryPrice = 0;
-    try {
-      const priceRes = await fetch(`https://api.jup.ag/price/v2?ids=${signal.token_mint}`);
-      if (priceRes.ok) {
-        const priceData = await priceRes.json();
-        entryPrice = Number(priceData.data?.[signal.token_mint]?.price) || 0;
-      }
-    } catch (_) {
-      // ignore price lookup failures
-    }
+    const entryPrice = await fetchTokenUsdPrice(signal.token_mint);
 
     await supabase.from("open_positions").insert({
       signal_id: signal.id,
