@@ -54,11 +54,12 @@ serve(async (req) => {
 
     const quoteData = await quoteRes.json();
 
-    // 2. Get swap transaction from Jupiter
-    // Derive public key from private key
-    const keyBytes = decodeBase58(PRIVATE_KEY);
-    const publicKeyBytes = keyBytes.slice(32);
-    const userPublicKey = encodeBase58(publicKeyBytes);
+    // Derive user public key from wallet secret
+    const keyBytes = parsePrivateKey(PRIVATE_KEY);
+    const signer = keyBytes.length === 32
+      ? Keypair.fromSeed(keyBytes)
+      : Keypair.fromSecretKey(keyBytes);
+    const userPublicKey = signer.publicKey.toBase58();
 
     const swapRes = await fetch(JUPITER_SWAP_API, {
       method: "POST",
