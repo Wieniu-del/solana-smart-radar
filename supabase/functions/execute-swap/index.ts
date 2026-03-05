@@ -90,6 +90,11 @@ serve(async (req) => {
     tx.sign([signer]);
     const signedTx = tx.serialize();
 
+    const HELIUS_KEY = Deno.env.get("HELIUS_API_KEY");
+    const rpcUrl = HELIUS_KEY
+      ? `https://mainnet.helius-rpc.com/?api-key=${HELIUS_KEY}`
+      : "https://api.mainnet-beta.solana.com";
+
     const sendRes = await fetch(rpcUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
