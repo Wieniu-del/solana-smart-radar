@@ -1,4 +1,4 @@
-import { BarChart3, Search, Trophy, Activity, Bell, Settings, Brain, ArrowLeftRight, Bot, HandCoins, Newspaper, Wallet, LogOut } from "lucide-react";
+import { BarChart3, Search, Trophy, Activity, Bell, Settings, Brain, ArrowLeftRight, Bot, HandCoins, Newspaper, Wallet, LogOut, BookOpen } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
@@ -27,6 +27,7 @@ const mainItems = [
 const tradingItems = [
   { title: "Auto Trading", url: "/trading", icon: Bot },
   { title: "Handel Ręczny", url: "/manual-trading", icon: HandCoins },
+  { title: "Dziennik Traidera", url: "/journal", icon: BookOpen },
   { title: "Skaner Wiadomości", url: "/news", icon: Newspaper },
 ];
 
