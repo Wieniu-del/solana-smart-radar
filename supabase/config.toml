@@ -23,3 +23,6 @@ verify_jwt = false
 
 [functions.find-active-wallets]
 verify_jwt = false
+
+[functions.bot-health]
+verify_jwt = false
