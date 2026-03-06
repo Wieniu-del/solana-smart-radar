@@ -154,30 +154,25 @@ const Index = () => {
     <div className="space-y-6">
       {/* ═══ HERO BANNER — Wieniu Bot 2026 ═══ */}
       <div className="neon-card rounded-xl p-6 md:p-8 relative overflow-hidden"
-        style={{
-          background: "linear-gradient(135deg, hsl(210, 40%, 12%) 0%, hsl(200, 50%, 15%) 50%, hsl(195, 60%, 10%) 100%)",
-          animation: "hero-pulse 4s ease-in-out infinite",
-          border: "1px solid hsl(200, 80%, 40%, 0.3)",
-          boxShadow: "0 0 30px hsl(200, 80%, 50%, 0.12), inset 0 0 40px hsl(200, 80%, 50%, 0.05)",
-        }}>
-        {/* Animated blue glow */}
-        <div className="absolute top-0 right-0 w-80 h-80 rounded-full opacity-15 blur-3xl pointer-events-none"
-          style={{ background: "hsl(200, 100%, 60%)", animation: "hero-pulse 4s ease-in-out infinite" }} />
-        <div className="absolute bottom-0 left-0 w-48 h-48 rounded-full opacity-10 blur-3xl pointer-events-none"
-          style={{ background: "hsl(210, 100%, 70%)", animation: "hero-pulse 4s ease-in-out infinite 1s" }} />
+        style={{ background: "linear-gradient(135deg, hsl(var(--card)) 0%, hsl(220, 20%, 8%) 50%, hsl(155, 30%, 8%) 100%)" }}>
+        {/* Animated glow */}
+        <div className="absolute top-0 right-0 w-64 h-64 rounded-full opacity-10 blur-3xl pointer-events-none"
+          style={{ background: "hsl(155, 100%, 50%)", animation: "pulse 3s ease-in-out infinite" }} />
 
         <div className="flex items-start justify-between mb-4 relative">
           <div>
-            <h1 className="text-3xl md:text-4xl font-black text-foreground tracking-tight">WIENIU BOT 2026</h1>
+            <h1 className="text-3xl md:text-4xl font-black tracking-tight"
+              style={{ color: "hsl(200, 100%, 70%)", animation: "balance-pulse 3s ease-in-out infinite",
+                textShadow: "0 0 20px hsl(200, 100%, 60%, 0.5), 0 0 40px hsl(200, 100%, 60%, 0.2)" }}>WIENIU BOT 2026</h1>
             <p className="text-xs font-mono text-muted-foreground mt-1">Solana Trading Terminal v3.0.1</p>
           </div>
           <div className="flex items-center gap-2">
-            <Radio className={`h-4 w-4 ${botHero.botActive ? "animate-pulse" : "text-muted-foreground"}`} style={botHero.botActive ? { color: "hsl(200, 100%, 70%)" } : {}} />
+            <Radio className={`h-4 w-4 ${botHero.botActive ? "text-primary animate-pulse" : "text-muted-foreground"}`} />
             <span className={`text-xs font-black uppercase px-3 py-1 rounded border ${
               botHero.botActive
-                ? "border-border bg-muted/30"
+                ? "text-primary border-primary bg-primary/10 shadow-[0_0_12px_hsl(155,100%,50%,0.3)]"
                 : "text-muted-foreground border-border bg-muted/30"
-            }`} style={botHero.botActive ? { color: "hsl(200, 100%, 70%)", borderColor: "hsl(200, 80%, 50%, 0.4)", boxShadow: "0 0 12px hsl(200, 80%, 50%, 0.3)" } : {}}>
+            }`}>
               {botHero.botActive ? "ONLINE" : "OFFLINE"}
             </span>
           </div>
@@ -185,11 +180,10 @@ const Index = () => {
 
         <div className="mb-6 relative">
           <p className="text-xs uppercase tracking-widest text-muted-foreground font-mono mb-1">Wallet Balance</p>
-          <p className="text-5xl md:text-7xl font-black font-mono"
+          <p className="text-5xl md:text-7xl font-black font-mono text-primary"
             style={{
-              color: "hsl(200, 100%, 70%)",
-              textShadow: "0 0 30px hsl(200, 100%, 60%, 0.5), 0 0 60px hsl(200, 100%, 60%, 0.2), 0 0 100px hsl(200, 100%, 60%, 0.1)",
               animation: "balance-pulse 3s ease-in-out infinite",
+              textShadow: "0 0 30px hsl(155, 100%, 50%, 0.4), 0 0 60px hsl(155, 100%, 50%, 0.15)",
             }}>
             {botHero.walletBalance.toFixed(2)} <span className="text-4xl md:text-5xl">SOL</span>
           </p>
