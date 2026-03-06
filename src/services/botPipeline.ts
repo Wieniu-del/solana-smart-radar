@@ -258,10 +258,10 @@ export function calculateBotScore(
 ): { total: number; decision: "BUY" | "SKIP" | "WATCH"; reasons: string[] } {
   const reasons: string[] = [];
 
-  // Weighted scoring
-  const secWeight = 0.30;
-  const liqWeight = 0.25;
-  const walWeight = 0.45;
+  // Weighted scoring — bezpieczeństwo i płynność mają priorytet
+  const secWeight = 0.35;
+  const liqWeight = 0.30;
+  const walWeight = 0.35;
 
   const total = Math.round(
     securityScore * secWeight +
