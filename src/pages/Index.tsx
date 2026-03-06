@@ -9,6 +9,7 @@ import { useSearchHistory } from "@/hooks/useSearchHistory";
 import { supabase } from "@/integrations/supabase/client";
 import { useSolanaLiveStats } from "@/hooks/useSolanaLiveStats";
 import LivePulse from "@/components/LivePulse";
+import BotHealthMonitor from "@/components/BotHealthMonitor";
 import AnimatedCounter from "@/components/AnimatedCounter";
 import {
   AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip, BarChart, Bar
@@ -245,6 +246,9 @@ const Index = () => {
           isProgress
         />
       </div>
+
+      {/* Bot Health Monitor */}
+      <BotHealthMonitor />
 
       {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
