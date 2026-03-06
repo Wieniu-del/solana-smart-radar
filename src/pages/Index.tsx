@@ -152,15 +152,48 @@ const Index = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header with live indicator */}
-      <div className="flex items-center gap-3">
-        <div>
-          <h1 className="text-2xl font-bold mb-1">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">Centrum dowodzenia Smart Money Radar</p>
+      {/* ═══ HERO BANNER — Wieniu Bot 2026 ═══ */}
+      <div className="neon-card rounded-xl p-6 md:p-8 relative overflow-hidden"
+        style={{ background: "linear-gradient(135deg, hsl(var(--card)) 0%, hsl(220, 20%, 8%) 50%, hsl(155, 30%, 8%) 100%)" }}>
+        {/* Animated glow */}
+        <div className="absolute top-0 right-0 w-64 h-64 rounded-full opacity-10 blur-3xl pointer-events-none"
+          style={{ background: "hsl(155, 100%, 50%)", animation: "pulse 3s ease-in-out infinite" }} />
+
+        <div className="flex items-start justify-between mb-4 relative">
+          <div>
+            <h1 className="text-3xl md:text-4xl font-black text-foreground tracking-tight">WIENIU BOT 2026</h1>
+            <p className="text-xs font-mono text-muted-foreground mt-1">Solana Trading Terminal v3.0.1</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Radio className={`h-4 w-4 ${botHero.botActive ? "text-primary animate-pulse" : "text-muted-foreground"}`} />
+            <span className={`text-xs font-black uppercase px-3 py-1 rounded border ${
+              botHero.botActive
+                ? "text-primary border-primary bg-primary/10 shadow-[0_0_12px_hsl(155,100%,50%,0.3)]"
+                : "text-muted-foreground border-border bg-muted/30"
+            }`}>
+              {botHero.botActive ? "ONLINE" : "OFFLINE"}
+            </span>
+          </div>
         </div>
-        <div className="ml-auto flex items-center gap-2 bg-primary/10 border border-primary/30 rounded-full px-3 py-1.5">
-          <LivePulse />
-          <span className="text-[10px] font-bold uppercase tracking-wider text-primary">LIVE</span>
+
+        <div className="mb-6 relative">
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-mono mb-1">Wallet Balance</p>
+          <p className="text-4xl md:text-5xl font-black font-mono text-primary"
+            style={{ textShadow: "0 0 30px hsl(155, 100%, 50%, 0.4), 0 0 60px hsl(155, 100%, 50%, 0.15)" }}>
+            {botHero.walletBalance.toFixed(2)} <span className="text-3xl">SOL</span>
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 relative">
+          <HeroStat icon={TrendingUp} label="Portfolio Value" value={`${botHero.portfolioValue.toFixed(1)} SOL`} />
+          <HeroStat icon={Activity} label="Total PnL"
+            value={`${botHero.totalPnlPct >= 0 ? "+" : ""}${botHero.totalPnlPct.toFixed(1)}%`}
+            valueColor={botHero.totalPnlPct >= 0 ? "text-primary" : "text-destructive"} />
+          <HeroStat icon={Zap} label="Active Positions" value={String(botHero.activePositions)} />
+          <HeroStat icon={Radio} label="Status"
+            value={botHero.botActive ? "ACTIVE" : "INACTIVE"}
+            valueColor={botHero.botActive ? "text-primary" : "text-muted-foreground"}
+            glow={botHero.botActive} />
         </div>
       </div>
 
