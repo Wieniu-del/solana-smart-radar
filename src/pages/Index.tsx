@@ -45,8 +45,8 @@ const Index = () => {
 
   useEffect(() => {
     loadTradingStats();
-    // Auto-refresh trading stats every 30s
-    const interval = setInterval(loadTradingStats, 30_000);
+    loadBotHero();
+    const interval = setInterval(() => { loadTradingStats(); loadBotHero(); }, 30_000);
     return () => clearInterval(interval);
   }, []);
 
