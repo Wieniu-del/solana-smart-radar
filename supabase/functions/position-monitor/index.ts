@@ -109,6 +109,37 @@ Deno.serve(async (req) => {
             updated_at: new Date().toISOString(),
           }).eq("id", pos.id);
 
+          // Calculate PnL in SOL
+          const pnlSol = (pnlPct / 100) * Number(pos.amount_sol);
+
+          // Auto-log to trader journal
+          try {
+            const { data: profile } = await supabase.from("profiles").select("id").limit(1).single();
+            if (profile) {
+              const reasonLabelsJournal: Record<string, string> = {
+                stop_loss: "Stop-Loss",
+                trailing_stop: "Trailing Stop",
+                take_profit: "Take-Profit",
+              };
+              await supabase.from("journal_entries").insert({
+                user_id: profile.id,
+                entry_type: "auto",
+                title: `Auto SELL: ${pos.token_symbol || "???"} (${reasonLabelsJournal[closeReason] || closeReason})`,
+                notes: `Pozycja zamknięta automatycznie: ${closeReason}. Entry: $${entryPrice.toFixed(8)}, Exit: $${currentPrice.toFixed(8)}. Highest: $${highestPrice.toFixed(8)}. TX: ${swapData?.txSignature?.slice(0, 16) || "brak"}`,
+                token_symbol: pos.token_symbol,
+                token_mint: pos.token_mint,
+                action: "SELL",
+                amount_sol: Number(pos.amount_sol),
+                pnl_sol: Math.round(pnlSol * 10000) / 10000,
+                pnl_pct: Math.round(pnlPct * 100) / 100,
+                position_id: pos.id,
+                tags: ["auto", "bot", closeReason],
+              });
+            }
+          } catch (journalErr) {
+            console.warn("Journal auto-log error (SELL):", journalErr);
+          }
+
           // Notify
           const reasonLabels: Record<string, string> = {
             stop_loss: "🔴 Stop-Loss",

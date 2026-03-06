@@ -664,6 +664,26 @@ async function executeBuySignal({
       status: "open",
     });
 
+    // Auto-log to trader journal
+    try {
+      const { data: profile } = await supabase.from("profiles").select("id").limit(1).single();
+      if (profile) {
+        await supabase.from("journal_entries").insert({
+          user_id: profile.id,
+          entry_type: "auto",
+          title: `Auto BUY: ${symbol}`,
+          notes: `Bot automatycznie kupił ${symbol} za ${positionSol} SOL. Confidence: ${signal.confidence}%. Smart Score: ${signal.smart_score}. Strategia: ${signal.strategy}.`,
+          token_symbol: symbol,
+          token_mint: signal.token_mint,
+          action: "BUY",
+          amount_sol: positionSol,
+          tags: ["auto", "bot", signal.strategy?.includes("Pipeline") ? "pipeline" : "manual"].filter(Boolean),
+        });
+      }
+    } catch (journalErr) {
+      console.warn("Journal auto-log error (BUY):", journalErr);
+    }
+
     await supabase.from("notifications").insert({
       type: "swap_success",
       title: `✅ Auto-swap: ${symbol}`,
