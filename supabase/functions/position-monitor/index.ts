@@ -190,6 +190,8 @@ Deno.serve(async (req) => {
       }
     }
 
+    console.log(`[position-monitor] Done: checked=${positions.length}, closed=${closedCount}, prices=${Object.keys(priceMap).length}`);
+
     return jsonResponse({
       success: true,
       checked: positions.length,
