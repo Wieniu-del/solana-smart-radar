@@ -29,6 +29,13 @@ const Index = () => {
   });
 
   const [clockTick, setClockTick] = useState(0);
+  const [botHero, setBotHero] = useState({
+    walletBalance: 0,
+    portfolioValue: 0,
+    totalPnlPct: 0,
+    activePositions: 0,
+    botActive: false,
+  });
 
   // Live clock tick for animated effects
   useEffect(() => {
