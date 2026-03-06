@@ -258,10 +258,10 @@ export function calculateBotScore(
 ): { total: number; decision: "BUY" | "SKIP" | "WATCH"; reasons: string[] } {
   const reasons: string[] = [];
 
-  // Weighted scoring
-  const secWeight = 0.30;
-  const liqWeight = 0.25;
-  const walWeight = 0.45;
+  // Weighted scoring — bezpieczeństwo i płynność mają priorytet
+  const secWeight = 0.35;
+  const liqWeight = 0.30;
+  const walWeight = 0.35;
 
   const total = Math.round(
     securityScore * secWeight +
@@ -283,10 +283,10 @@ export function calculateBotScore(
 
   // Decision
   let decision: "BUY" | "SKIP" | "WATCH";
-  if (total >= 70 && securityScore >= 50 && liquidityScore >= 30) {
+  if (total >= 65 && securityScore >= 55 && liquidityScore >= 40) {
     decision = "BUY";
     reasons.push(`🟢 DECYZJA: KUP (score ${total}/100)`);
-  } else if (total >= 45) {
+  } else if (total >= 40 && securityScore >= 30) {
     decision = "WATCH";
     reasons.push(`🟡 DECYZJA: OBSERWUJ (score ${total}/100)`);
   } else {
