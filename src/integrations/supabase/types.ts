@@ -77,6 +77,87 @@ export type Database = {
         }
         Relationships: []
       }
+      journal_entries: {
+        Row: {
+          action: string | null
+          amount_sol: number | null
+          created_at: string
+          emotion: string | null
+          entry_type: string
+          id: string
+          lesson: string | null
+          notes: string | null
+          pnl_pct: number | null
+          pnl_sol: number | null
+          position_id: string | null
+          rating: number | null
+          tags: string[] | null
+          title: string | null
+          token_mint: string | null
+          token_symbol: string | null
+          trade_execution_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          action?: string | null
+          amount_sol?: number | null
+          created_at?: string
+          emotion?: string | null
+          entry_type?: string
+          id?: string
+          lesson?: string | null
+          notes?: string | null
+          pnl_pct?: number | null
+          pnl_sol?: number | null
+          position_id?: string | null
+          rating?: number | null
+          tags?: string[] | null
+          title?: string | null
+          token_mint?: string | null
+          token_symbol?: string | null
+          trade_execution_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          action?: string | null
+          amount_sol?: number | null
+          created_at?: string
+          emotion?: string | null
+          entry_type?: string
+          id?: string
+          lesson?: string | null
+          notes?: string | null
+          pnl_pct?: number | null
+          pnl_sol?: number | null
+          position_id?: string | null
+          rating?: number | null
+          tags?: string[] | null
+          title?: string | null
+          token_mint?: string | null
+          token_symbol?: string | null
+          trade_execution_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "journal_entries_position_id_fkey"
+            columns: ["position_id"]
+            isOneToOne: false
+            referencedRelation: "open_positions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "journal_entries_trade_execution_id_fkey"
+            columns: ["trade_execution_id"]
+            isOneToOne: false
+            referencedRelation: "trade_executions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notifications: {
         Row: {
           created_at: string
