@@ -38,7 +38,13 @@ Deno.serve(async (req) => {
 
     for (const pos of positions) {
       const currentPrice = priceMap[pos.token_mint] || 0;
-      if (currentPrice <= 0) continue;
+      if (currentPrice <= 0) {
+        console.warn(`[position-monitor] No price for ${pos.token_symbol} (${pos.token_mint.slice(0,8)}), updating timestamp only`);
+        await supabase.from("open_positions").update({
+          updated_at: new Date().toISOString(),
+        }).eq("id", pos.id);
+        continue;
+      }
 
       const trailingStopPct = Number(pos.trailing_stop_pct) || 10;
       const takeProfitPct = Number(pos.take_profit_pct) || 50;
@@ -183,6 +189,8 @@ Deno.serve(async (req) => {
         }).eq("id", pos.id);
       }
     }
+
+    console.log(`[position-monitor] Done: checked=${positions.length}, closed=${closedCount}, prices=${Object.keys(priceMap).length}`);
 
     return jsonResponse({
       success: true,
