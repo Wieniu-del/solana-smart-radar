@@ -283,10 +283,10 @@ export function calculateBotScore(
 
   // Decision
   let decision: "BUY" | "SKIP" | "WATCH";
-  if (total >= 70 && securityScore >= 50 && liquidityScore >= 30) {
+  if (total >= 65 && securityScore >= 55 && liquidityScore >= 40) {
     decision = "BUY";
     reasons.push(`🟢 DECYZJA: KUP (score ${total}/100)`);
-  } else if (total >= 45) {
+  } else if (total >= 40 && securityScore >= 30) {
     decision = "WATCH";
     reasons.push(`🟡 DECYZJA: OBSERWUJ (score ${total}/100)`);
   } else {
