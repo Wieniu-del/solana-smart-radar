@@ -56,13 +56,42 @@ const Journal = () => {
   const loadEntries = useCallback(async () => {
     if (!user) return;
     setLoading(true);
-    const { data } = await supabase
+    
+    // Load journal entries
+    const { data: journalData } = await supabase
       .from("journal_entries")
       .select("*")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
       .limit(200);
-    setEntries((data as JournalEntry[]) || []);
+
+    // Load position statuses for entries that have position_id
+    const positionIds = (journalData || [])
+      .map(e => e.position_id)
+      .filter(Boolean) as string[];
+
+    let positionMap: Record<string, { status: string; close_reason: string | null; pnl_pct: number | null }> = {};
+    
+    if (positionIds.length > 0) {
+      const { data: posData } = await supabase
+        .from("open_positions")
+        .select("id, status, close_reason, pnl_pct")
+        .in("id", positionIds);
+      
+      (posData || []).forEach(p => {
+        positionMap[p.id] = { status: p.status, close_reason: p.close_reason, pnl_pct: p.pnl_pct };
+      });
+    }
+
+    const enriched = (journalData || []).map(e => ({
+      ...e,
+      tags: e.tags || [],
+      pos_status: e.position_id ? positionMap[e.position_id]?.status || null : null,
+      pos_close_reason: e.position_id ? positionMap[e.position_id]?.close_reason || null : null,
+      pos_pnl_pct: e.position_id ? positionMap[e.position_id]?.pnl_pct || null : null,
+    })) as JournalEntry[];
+
+    setEntries(enriched);
     setLoading(false);
   }, [user]);
 
