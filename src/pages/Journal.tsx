@@ -21,6 +21,11 @@ type JournalEntry = {
   lesson: string | null;
   rating: number | null;
   created_at: string;
+  position_id: string | null;
+  // joined from open_positions
+  pos_status?: string | null;
+  pos_close_reason?: string | null;
+  pos_pnl_pct?: number | null;
 };
 
 const EMOTIONS = ["😎 Pewny", "😰 Strach", "🤑 Chciwość", "😤 Frustracja", "🧘 Spokój", "🎯 Skupiony"];
