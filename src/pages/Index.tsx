@@ -522,4 +522,18 @@ function QuickAction({ to, icon: Icon, label, desc, color = "text-primary" }: {
   );
 }
 
+function HeroStat({ icon: Icon, label, value, valueColor = "text-foreground", glow }: {
+  icon: React.ElementType; label: string; value: string; valueColor?: string; glow?: boolean;
+}) {
+  return (
+    <div className={`bg-muted/20 border border-border rounded-lg p-3 hover:bg-muted/40 transition-all duration-300 ${glow ? "shadow-[0_0_12px_hsl(155,100%,50%,0.2)] border-primary/40" : ""}`}>
+      <div className="flex items-center gap-1.5 mb-1">
+        <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-mono">{label}</span>
+      </div>
+      <p className={`text-lg md:text-xl font-black font-mono ${valueColor}`}>{value}</p>
+    </div>
+  );
+}
+
 export default Index;
