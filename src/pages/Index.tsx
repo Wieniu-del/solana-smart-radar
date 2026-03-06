@@ -96,6 +96,36 @@ const Index = () => {
     }
   };
 
+  const loadBotHero = async () => {
+    try {
+      const [posRes, closedRes, configRes] = await Promise.all([
+        supabase.from("open_positions").select("*").eq("status", "open"),
+        supabase.from("open_positions").select("amount_sol, pnl_pct").eq("status", "closed"),
+        supabase.from("bot_config").select("value").eq("key", "bot_enabled").single(),
+      ]);
+      const openPositions = posRes.data || [];
+      const closedPositions = closedRes.data || [];
+
+      const portfolioValue = openPositions.reduce((s, p) => s + p.amount_sol, 0);
+      const totalInvested = [...openPositions, ...closedPositions].reduce((s, p) => s + p.amount_sol, 0);
+      const totalPnlSol = closedPositions.reduce((s, p) => s + ((p.pnl_pct || 0) / 100) * p.amount_sol, 0)
+        + openPositions.reduce((s, p) => s + ((p.pnl_pct || 0) / 100) * p.amount_sol, 0);
+      const totalPnlPct = totalInvested > 0 ? (totalPnlSol / totalInvested) * 100 : 0;
+
+      const botEnabled = configRes.data?.value === true || configRes.data?.value === "true";
+
+      setBotHero({
+        walletBalance: portfolioValue + totalPnlSol,
+        portfolioValue,
+        totalPnlPct,
+        activePositions: openPositions.length,
+        botActive: botEnabled,
+      });
+    } catch (e) {
+      console.warn("Failed to load bot hero:", e);
+    }
+  };
+
   // Top 5 wallets
   const topWallets = useMemo(() =>
     [...mockTopWallets].sort((a, b) => b.smartScore - a.smartScore).slice(0, 5), []);
