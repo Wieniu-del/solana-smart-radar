@@ -21,6 +21,11 @@ type JournalEntry = {
   lesson: string | null;
   rating: number | null;
   created_at: string;
+  position_id: string | null;
+  // joined from open_positions
+  pos_status?: string | null;
+  pos_close_reason?: string | null;
+  pos_pnl_pct?: number | null;
 };
 
 const EMOTIONS = ["😎 Pewny", "😰 Strach", "🤑 Chciwość", "😤 Frustracja", "🧘 Spokój", "🎯 Skupiony"];
@@ -51,13 +56,42 @@ const Journal = () => {
   const loadEntries = useCallback(async () => {
     if (!user) return;
     setLoading(true);
-    const { data } = await supabase
+    
+    // Load journal entries
+    const { data: journalData } = await supabase
       .from("journal_entries")
       .select("*")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
       .limit(200);
-    setEntries((data as JournalEntry[]) || []);
+
+    // Load position statuses for entries that have position_id
+    const positionIds = (journalData || [])
+      .map(e => e.position_id)
+      .filter(Boolean) as string[];
+
+    let positionMap: Record<string, { status: string; close_reason: string | null; pnl_pct: number | null }> = {};
+    
+    if (positionIds.length > 0) {
+      const { data: posData } = await supabase
+        .from("open_positions")
+        .select("id, status, close_reason, pnl_pct")
+        .in("id", positionIds);
+      
+      (posData || []).forEach(p => {
+        positionMap[p.id] = { status: p.status, close_reason: p.close_reason, pnl_pct: p.pnl_pct };
+      });
+    }
+
+    const enriched = (journalData || []).map(e => ({
+      ...e,
+      tags: e.tags || [],
+      pos_status: e.position_id ? positionMap[e.position_id]?.status || null : null,
+      pos_close_reason: e.position_id ? positionMap[e.position_id]?.close_reason || null : null,
+      pos_pnl_pct: e.position_id ? positionMap[e.position_id]?.pnl_pct || null : null,
+    })) as JournalEntry[];
+
+    setEntries(enriched);
     setLoading(false);
   }, [user]);
 
@@ -304,6 +338,18 @@ const Journal = () => {
                     {entry.action && (
                       <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${entry.action === "BUY" ? "bg-primary/15 text-primary" : entry.action === "SELL" ? "bg-destructive/15 text-destructive" : "bg-muted text-muted-foreground"}`}>
                         {entry.action}
+                      </span>
+                    )}
+                    {/* Position status badge */}
+                    {entry.pos_status && (
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
+                        entry.pos_status === "open" 
+                          ? "border-secondary/50 bg-secondary/10 text-secondary" 
+                          : (entry.pos_pnl_pct || 0) >= 0
+                            ? "border-primary/50 bg-primary/10 text-primary"
+                            : "border-destructive/50 bg-destructive/10 text-destructive"
+                      }`}>
+                        {entry.pos_status === "open" ? "🟢 OTWARTA" : entry.pos_close_reason ? `🔴 ZAMKNIĘTA: ${entry.pos_close_reason}` : "🔴 ZAMKNIĘTA"}
                       </span>
                     )}
                     <span className="text-sm font-bold text-foreground">{entry.title || entry.token_symbol || "Bez tytułu"}</span>
