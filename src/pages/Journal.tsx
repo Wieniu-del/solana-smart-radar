@@ -340,6 +340,18 @@ const Journal = () => {
                         {entry.action}
                       </span>
                     )}
+                    {/* Position status badge */}
+                    {entry.pos_status && (
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
+                        entry.pos_status === "open" 
+                          ? "border-secondary/50 bg-secondary/10 text-secondary" 
+                          : (entry.pos_pnl_pct || 0) >= 0
+                            ? "border-primary/50 bg-primary/10 text-primary"
+                            : "border-destructive/50 bg-destructive/10 text-destructive"
+                      }`}>
+                        {entry.pos_status === "open" ? "🟢 OTWARTA" : entry.pos_close_reason ? `🔴 ZAMKNIĘTA: ${entry.pos_close_reason}` : "🔴 ZAMKNIĘTA"}
+                      </span>
+                    )}
                     <span className="text-sm font-bold text-foreground">{entry.title || entry.token_symbol || "Bez tytułu"}</span>
                     {entry.emotion && <span className="text-xs">{entry.emotion}</span>}
                     {entry.rating && (
