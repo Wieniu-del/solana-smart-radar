@@ -11,6 +11,7 @@ import {
   AlertTriangle, Activity, Loader2, Wifi, WifiOff, Settings2,
   Shield, TrendingUp, TrendingDown, Target, Search, Sparkles, Brain
 } from "lucide-react";
+import TradingTerminal from "./TradingTerminal";
 
 interface BotRun {
   id: string;
