@@ -62,26 +62,63 @@ Deno.serve(async (req) => {
       .eq("status", "open");
 
     const openCount = positions?.length || 0;
+    const fifteenMinAgo = new Date(now.getTime() - 15 * 60 * 1000);
     const stalePositions = (positions || []).filter((p: any) => {
       const updatedAt = new Date(p.updated_at);
-      return updatedAt < fiveMinAgo;
+      return updatedAt < fifteenMinAgo;
     });
 
-    // 5. RPC health check
+    // 5. RPC health check + wallet balance
     let rpcHealthy = false;
     let rpcLatency = 0;
+    let walletBalanceSol: number | null = null;
+    let walletPublicKey: string | null = null;
+
     if (heliusKey) {
+      const rpcUrl = `https://mainnet.helius-rpc.com/?api-key=${heliusKey}`;
       try {
+        // Derive public key from private key
+        if (solanaKey) {
+          try {
+            const { Keypair } = await import("https://esm.sh/@solana/web3.js@1.98.4?target=deno");
+            const trimmed = solanaKey.trim();
+            let keyBytes: Uint8Array;
+            if (trimmed.startsWith("[")) {
+              keyBytes = new Uint8Array(JSON.parse(trimmed));
+            } else {
+              const raw = Uint8Array.from(atob(trimmed), c => c.charCodeAt(0));
+              keyBytes = raw;
+            }
+            const kp = keyBytes.length === 32 ? Keypair.fromSeed(keyBytes) : Keypair.fromSecretKey(keyBytes);
+            walletPublicKey = kp.publicKey.toBase58();
+          } catch (_) { /* ignore key parse errors */ }
+        }
+
+        // Batch RPC calls: getHealth + getBalance
+        const rpcBatch = [
+          { jsonrpc: "2.0", id: 1, method: "getHealth" },
+        ];
+        if (walletPublicKey) {
+          rpcBatch.push({ jsonrpc: "2.0", id: 2, method: "getBalance", params: [walletPublicKey] as any });
+        }
+
         const rpcStart = Date.now();
-        const rpcRes = await fetch(`https://mainnet.helius-rpc.com/?api-key=${heliusKey}`, {
+        const rpcRes = await fetch(rpcUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getHealth" }),
+          body: JSON.stringify(rpcBatch),
         });
         rpcLatency = Date.now() - rpcStart;
+
         if (rpcRes.ok) {
-          const rpcData = await rpcRes.json();
-          rpcHealthy = rpcData?.result === "ok";
+          const results = await rpcRes.json();
+          const arr = Array.isArray(results) ? results : [results];
+          for (const r of arr) {
+            if (r.id === 1) rpcHealthy = r?.result === "ok";
+            if (r.id === 2 && r?.result?.value != null) {
+              walletBalanceSol = r.result.value / 1_000_000_000;
+            }
+          }
         }
       } catch (_) {
         rpcHealthy = false;
