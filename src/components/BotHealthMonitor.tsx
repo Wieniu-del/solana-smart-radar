@@ -30,6 +30,8 @@ interface HealthData {
     jupiter_healthy: boolean;
     helius_key_set: boolean;
     wallet_key_set: boolean;
+    wallet_balance_sol: number | null;
+    wallet_public_key: string | null;
   };
   positions: {
     open_count: number;
