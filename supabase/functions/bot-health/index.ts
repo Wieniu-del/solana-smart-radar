@@ -94,12 +94,17 @@ Deno.serve(async (req) => {
         rpcLatency = Date.now() - rpcStart;
 
         if (rpcRes.ok) {
-          const results = await rpcRes.json();
+          const rawText = await rpcRes.text();
+          console.log("[bot-health] RPC batch response:", rawText.substring(0, 500));
+          const results = JSON.parse(rawText);
           const arr = Array.isArray(results) ? results : [results];
           for (const r of arr) {
             if (r.id === 1) rpcHealthy = r?.result === "ok";
-            if (r.id === 2 && r?.result?.value != null) {
-              walletBalanceSol = r.result.value / 1_000_000_000;
+            if (r.id === 2) {
+              console.log("[bot-health] getBalance result:", JSON.stringify(r));
+              if (r?.result?.value != null) {
+                walletBalanceSol = r.result.value / 1_000_000_000;
+              }
             }
           }
         }
