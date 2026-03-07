@@ -99,10 +99,11 @@ const Index = () => {
 
   const loadBotHero = async () => {
     try {
-      const [posRes, closedRes, configRes] = await Promise.all([
+      const [posRes, closedRes, configRes, healthRes] = await Promise.all([
         supabase.from("open_positions").select("*").eq("status", "open"),
         supabase.from("open_positions").select("amount_sol, pnl_pct").eq("status", "closed"),
         supabase.from("bot_config").select("value").eq("key", "bot_enabled").single(),
+        supabase.functions.invoke("bot-health"),
       ]);
       const openPositions = posRes.data || [];
       const closedPositions = closedRes.data || [];
@@ -114,9 +115,13 @@ const Index = () => {
       const totalPnlPct = totalInvested > 0 ? (totalPnlSol / totalInvested) * 100 : 0;
 
       const botEnabled = configRes.data?.value === true || configRes.data?.value === "true";
+      
+      // Real wallet balance from RPC
+      const healthData = healthRes.data;
+      const realBalance = healthData?.infrastructure?.wallet_balance_sol;
 
       setBotHero({
-        walletBalance: portfolioValue + totalPnlSol,
+        walletBalance: realBalance ?? (portfolioValue + totalPnlSol),
         portfolioValue,
         totalPnlPct,
         activePositions: openPositions.length,
