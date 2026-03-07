@@ -14,6 +14,7 @@ Deno.serve(async (req) => {
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const heliusKey = Deno.env.get("HELIUS_API_KEY");
   const solanaKey = Deno.env.get("SOLANA_PRIVATE_KEY");
+  const walletPubKey = Deno.env.get("SOLANA_PUBLIC_KEY");
   const supabase = createClient(supabaseUrl, supabaseKey);
 
   try {
@@ -72,34 +73,16 @@ Deno.serve(async (req) => {
     let rpcHealthy = false;
     let rpcLatency = 0;
     let walletBalanceSol: number | null = null;
-    let walletPublicKey: string | null = null;
+    const walletPublicKey: string | null = walletPubKey || null;
 
     if (heliusKey) {
       const rpcUrl = `https://mainnet.helius-rpc.com/?api-key=${heliusKey}`;
       try {
-        // Derive public key from private key
-        if (solanaKey) {
-          try {
-            const { Keypair } = await import("https://esm.sh/@solana/web3.js@1.98.4?target=deno");
-            const trimmed = solanaKey.trim();
-            let keyBytes: Uint8Array;
-            if (trimmed.startsWith("[")) {
-              keyBytes = new Uint8Array(JSON.parse(trimmed));
-            } else {
-              const raw = Uint8Array.from(atob(trimmed), c => c.charCodeAt(0));
-              keyBytes = raw;
-            }
-            const kp = keyBytes.length === 32 ? Keypair.fromSeed(keyBytes) : Keypair.fromSecretKey(keyBytes);
-            walletPublicKey = kp.publicKey.toBase58();
-          } catch (_) { /* ignore key parse errors */ }
-        }
-
-        // Batch RPC calls: getHealth + getBalance
-        const rpcBatch = [
+        const rpcBatch: any[] = [
           { jsonrpc: "2.0", id: 1, method: "getHealth" },
         ];
         if (walletPublicKey) {
-          rpcBatch.push({ jsonrpc: "2.0", id: 2, method: "getBalance", params: [walletPublicKey] as any });
+          rpcBatch.push({ jsonrpc: "2.0", id: 2, method: "getBalance", params: [walletPublicKey] });
         }
 
         const rpcStart = Date.now();
