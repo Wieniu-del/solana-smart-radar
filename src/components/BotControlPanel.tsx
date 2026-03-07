@@ -335,36 +335,8 @@ export default function BotControlPanel() {
         <MiniStat icon={Clock} label="Śr. czas (ms)" value={avgDuration} />
       </div>
 
-      {/* Open Positions */}
-      <Card className="border-border bg-card">
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Target className="h-4 w-4 text-primary" />
-              Otwarte pozycje ({openPositions.length})
-            </CardTitle>
-            <Button size="sm" variant="outline" onClick={triggerPositionCheck} disabled={saving}>
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shield className="h-4 w-4" />}
-              <span className="ml-1.5 hidden sm:inline">Sprawdź SL/TP</span>
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {openPositions.length === 0 ? (
-            <p className="text-xs text-muted-foreground text-center py-4">
-              Brak otwartych pozycji — bot otworzy je automatycznie po sygnale BUY
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {openPositions.map((pos) => (
-                <PositionRow key={pos.id} position={pos} />
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <div className="grid md:grid-cols-2 gap-6">
+      {/* Trading Terminal — Bybit-style */}
+      <TradingTerminal />
         {/* Tracked Wallets */}
         <Card className="border-border bg-card">
           <CardHeader className="pb-3">
