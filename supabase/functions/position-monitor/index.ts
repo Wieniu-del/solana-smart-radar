@@ -38,11 +38,66 @@ Deno.serve(async (req) => {
 
     for (const pos of positions) {
       const currentPrice = priceMap[pos.token_mint] || 0;
-      if (currentPrice <= 0) {
-        console.warn(`[position-monitor] No price for ${pos.token_symbol} (${pos.token_mint.slice(0,8)}), updating timestamp only`);
-        await supabase.from("open_positions").update({
-          updated_at: new Date().toISOString(),
-        }).eq("id", pos.id);
+    if (currentPrice <= 0) {
+        // ── Martwy token: jeśli cena=0 przez >6h, zamknij pozycję automatycznie ──
+        const lastUpdate = new Date(pos.updated_at).getTime();
+        const hoursSinceUpdate = (Date.now() - lastUpdate) / (1000 * 60 * 60);
+        const entryPrice = Number(pos.entry_price_usd) || 0;
+
+        if (hoursSinceUpdate >= 6 || entryPrice <= 0) {
+          console.warn(`[position-monitor] Dead token: ${pos.token_symbol} (${pos.token_mint.slice(0,8)}) — no price for ${hoursSinceUpdate.toFixed(1)}h, force-closing`);
+
+          await supabase.from("open_positions").update({
+            status: "closed",
+            close_reason: "dead_token",
+            current_price_usd: 0,
+            pnl_pct: entryPrice > 0 ? -100 : 0,
+            closed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }).eq("id", pos.id);
+
+          // Notyfikacja
+          await supabase.from("notifications").insert({
+            type: "position_closed",
+            title: `💀 Martwy token: ${pos.token_symbol || "???"}`,
+            message: `Pozycja zamknięta automatycznie — brak ceny przez ${hoursSinceUpdate.toFixed(0)}h. Token prawdopodobnie utracił płynność.`,
+            details: {
+              position_id: pos.id,
+              token_mint: pos.token_mint,
+              close_reason: "dead_token",
+              hours_no_price: hoursSinceUpdate,
+            },
+          });
+
+          // Journal
+          try {
+            const { data: profile } = await supabase.from("profiles").select("id").limit(1).single();
+            if (profile) {
+              await supabase.from("journal_entries").insert({
+                user_id: profile.id,
+                entry_type: "auto",
+                title: `💀 Dead Token: ${pos.token_symbol || "???"}`,
+                notes: `Token stracił płynność — brak ceny przez ${hoursSinceUpdate.toFixed(0)}h. Pozycja zamknięta automatycznie ze stratą.`,
+                token_symbol: pos.token_symbol,
+                token_mint: pos.token_mint,
+                action: "SELL",
+                amount_sol: Number(pos.amount_sol),
+                pnl_sol: -Number(pos.amount_sol),
+                pnl_pct: -100,
+                position_id: pos.id,
+                tags: ["auto", "bot", "dead_token"],
+              });
+            }
+          } catch (jErr) {
+            console.warn("Journal dead_token error:", jErr);
+          }
+
+          closedCount++;
+          continue;
+        }
+
+        console.warn(`[position-monitor] No price for ${pos.token_symbol} (${pos.token_mint.slice(0,8)}), waiting ${(6 - hoursSinceUpdate).toFixed(1)}h before force-close`);
+        // Don't update timestamp — keep original to track how long price is missing
         continue;
       }
 

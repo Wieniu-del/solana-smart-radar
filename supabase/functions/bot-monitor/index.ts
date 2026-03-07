@@ -621,6 +621,20 @@ async function executeBuySignal({
   const symbol = signal.token_symbol || signal.token_name || fallbackSymbol;
 
   try {
+    // ── Deduplikacja: sprawdź czy nie ma już otwartej pozycji na ten token ──
+    const { data: existingPos } = await supabase
+      .from("open_positions")
+      .select("id")
+      .eq("token_mint", signal.token_mint)
+      .eq("status", "open")
+      .limit(1);
+
+    if (existingPos && existingPos.length > 0) {
+      console.log(`[bot] Skipping BUY ${symbol} — open position already exists (${existingPos[0].id})`);
+      await supabase.from("trading_signals").update({ status: "rejected" }).eq("id", signal.id);
+      return false;
+    }
+
     const swapRes = await fetch(`${supabaseUrl}/functions/v1/execute-swap`, {
       method: "POST",
       headers: {
