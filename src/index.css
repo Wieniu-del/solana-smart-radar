@@ -137,10 +137,14 @@
 @keyframes balance-pulse {
   0%, 100% {
     opacity: 1;
-    text-shadow: 0 0 20px currentColor / 0.3, 0 0 40px currentColor / 0.1;
+    transform: scale(1);
+    text-shadow: 0 0 20px currentColor, 0 0 40px currentColor;
+    filter: brightness(1);
   }
   50% {
-    opacity: 0.88;
-    text-shadow: 0 0 40px currentColor / 0.6, 0 0 80px currentColor / 0.25;
+    opacity: 0.85;
+    transform: scale(1.02);
+    text-shadow: 0 0 50px currentColor, 0 0 100px currentColor, 0 0 150px currentColor;
+    filter: brightness(1.2);
   }
 }
