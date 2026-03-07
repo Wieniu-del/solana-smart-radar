@@ -337,7 +337,8 @@ export default function BotControlPanel() {
 
       {/* Trading Terminal — Bybit-style */}
       <TradingTerminal />
-        {/* Tracked Wallets */}
+
+      <div className="grid md:grid-cols-2 gap-6">
         <Card className="border-border bg-card">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
