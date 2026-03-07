@@ -535,6 +535,7 @@ function MiniStat({ icon: Icon, label, value }: { icon: any; label: string; valu
   );
 }
 
+function RunRow({ run }: { run: BotRun }) {
   const statusConfig: Record<string, { icon: any; color: string }> = {
     completed: { icon: CheckCircle2, color: "text-primary" },
     error: { icon: XCircle, color: "text-destructive" },
