@@ -11,6 +11,7 @@ import {
   AlertTriangle, Activity, Loader2, Wifi, WifiOff, Settings2,
   Shield, TrendingUp, TrendingDown, Target, Search, Sparkles, Brain
 } from "lucide-react";
+import TradingTerminal from "./TradingTerminal";
 
 interface BotRun {
   id: string;
@@ -334,37 +335,10 @@ export default function BotControlPanel() {
         <MiniStat icon={Clock} label="Śr. czas (ms)" value={avgDuration} />
       </div>
 
-      {/* Open Positions */}
-      <Card className="border-border bg-card">
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Target className="h-4 w-4 text-primary" />
-              Otwarte pozycje ({openPositions.length})
-            </CardTitle>
-            <Button size="sm" variant="outline" onClick={triggerPositionCheck} disabled={saving}>
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shield className="h-4 w-4" />}
-              <span className="ml-1.5 hidden sm:inline">Sprawdź SL/TP</span>
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {openPositions.length === 0 ? (
-            <p className="text-xs text-muted-foreground text-center py-4">
-              Brak otwartych pozycji — bot otworzy je automatycznie po sygnale BUY
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {openPositions.map((pos) => (
-                <PositionRow key={pos.id} position={pos} />
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {/* Trading Terminal — Bybit-style */}
+      <TradingTerminal />
 
       <div className="grid md:grid-cols-2 gap-6">
-        {/* Tracked Wallets */}
         <Card className="border-border bg-card">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
@@ -521,26 +495,6 @@ export default function BotControlPanel() {
         </Card>
       </div>
 
-      {/* Closed Positions */}
-      {closedPositions.length > 0 && (
-        <Card className="border-border bg-card">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-primary" />
-              Zamknięte pozycje (ostatnie {closedPositions.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
-              {closedPositions.map((pos) => (
-                <ClosedPositionRow key={pos.id} position={pos} />
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Run History */}
       <Card className="border-border bg-card">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
@@ -578,116 +532,6 @@ function MiniStat({ icon: Icon, label, value }: { icon: any; label: string; valu
         </div>
       </CardContent>
     </Card>
-  );
-}
-
-function PositionRow({ position: pos }: { position: OpenPosition }) {
-  const entry = Number(pos.entry_price_usd) || 0;
-  const current = Number(pos.current_price_usd) || 0;
-  const highest = Number(pos.highest_price_usd) || 0;
-  const stopPrice = Number(pos.stop_price_usd) || 0;
-  const amountSol = Number(pos.amount_sol) || 0;
-  const trailingPct = Number(pos.trailing_stop_pct) || 10;
-  const tpPct = Number(pos.take_profit_pct) || 50;
-
-  const hasPriceData = entry > 0 && current > 0;
-  const pnl = hasPriceData ? ((current - entry) / entry) * 100 : (Number(pos.pnl_pct) || 0);
-  const isPositive = pnl >= 0;
-  const pnlSol = hasPriceData ? (pnl / 100) * amountSol : 0;
-
-  // Time since open
-  const openedDate = new Date(pos.opened_at);
-  const now = new Date();
-  const diffMs = now.getTime() - openedDate.getTime();
-  const diffH = Math.floor(diffMs / 3600000);
-  const diffM = Math.floor((diffMs % 3600000) / 60000);
-  const timeAgo = diffH > 0 ? `${diffH}h ${diffM}m` : `${diffM}m`;
-
-  // Distance to stop loss
-  const distToSL = hasPriceData && stopPrice > 0 ? ((current - stopPrice) / current) * 100 : null;
-
-  const fmtPrice = (v: number) => v > 0 ? (v < 0.001 ? `$${v.toFixed(8)}` : v < 1 ? `$${v.toFixed(6)}` : `$${v.toFixed(4)}`) : "—";
-
-  return (
-    <div className={`rounded-lg px-4 py-3.5 border ${isPositive ? "border-primary/30 bg-primary/5" : "border-destructive/30 bg-destructive/5"}`}>
-      {/* Row 1: Token + PnL */}
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2.5">
-          <div className={`p-1.5 rounded ${isPositive ? "bg-primary/20" : "bg-destructive/20"}`}>
-            {isPositive ? <TrendingUp className="h-5 w-5 text-primary" /> : <TrendingDown className="h-5 w-5 text-destructive" />}
-          </div>
-          <span className="text-base font-bold text-foreground">{pos.token_symbol || "???"}</span>
-          <Badge variant="outline" className="text-[10px] px-2 py-0.5">{amountSol.toFixed(3)} SOL</Badge>
-          <span className="text-[10px] text-muted-foreground">⏱ {timeAgo}</span>
-        </div>
-        <div className="text-right">
-          <span className={`text-xl font-black ${isPositive ? "text-primary" : "text-destructive"}`}>
-            {isPositive ? "+" : ""}{pnl.toFixed(2)}%
-          </span>
-          <span className={`text-xs ml-2 ${isPositive ? "text-primary/80" : "text-destructive/80"}`}>
-            ({isPositive ? "+" : ""}{pnlSol.toFixed(4)} SOL)
-          </span>
-        </div>
-      </div>
-      {/* Row 2: Prices */}
-      <div className="flex items-center justify-between text-xs text-muted-foreground">
-        <div className="flex gap-4">
-          <span>Wejście: <span className="text-foreground font-medium">{fmtPrice(entry)}</span></span>
-          <span>Teraz: <span className={`font-semibold ${isPositive ? "text-primary" : "text-destructive"}`}>{fmtPrice(current)}</span></span>
-          <span>Max: <span className="text-foreground font-medium">{fmtPrice(highest)}</span></span>
-        </div>
-        <div className="flex gap-2.5">
-          <span>SL: <span className="text-foreground">{fmtPrice(stopPrice)}</span></span>
-          {distToSL !== null && (
-            <span className={`font-medium ${distToSL < 3 ? "text-destructive" : "text-muted-foreground"}`}>
-              ({distToSL.toFixed(1)}% do SL)
-            </span>
-          )}
-        </div>
-      </div>
-      {/* Row 3: Progress bar TP */}
-      <div className="mt-2">
-        <div className="flex justify-between text-[10px] text-muted-foreground mb-0.5">
-          <span>SL -{trailingPct}%</span>
-          <span>TP +{tpPct}%</span>
-        </div>
-        <div className="h-1.5 bg-muted/40 rounded-full overflow-hidden">
-          <div
-            className={`h-full rounded-full transition-all ${isPositive ? "bg-primary" : "bg-destructive"}`}
-            style={{ width: `${Math.min(Math.max(((pnl + trailingPct) / (tpPct + trailingPct)) * 100, 0), 100)}%` }}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ClosedPositionRow({ position: pos }: { position: OpenPosition }) {
-  const pnl = pos.pnl_pct || 0;
-  const isPositive = pnl >= 0;
-  const reasonLabels: Record<string, string> = {
-    stop_loss: "🔴 Stop-Loss",
-    trailing_stop: "🟡 Trailing",
-    take_profit: "🟢 Take-Profit",
-    manual: "⚪ Ręczne",
-  };
-  const time = pos.closed_at ? new Date(pos.closed_at).toLocaleString("pl-PL", {
-    day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
-  }) : "";
-
-  return (
-    <div className="flex items-center justify-between bg-muted/20 rounded px-3 py-2 text-xs">
-      <div className="flex items-center gap-2">
-        <span className="font-medium text-foreground">{pos.token_symbol || "???"}</span>
-        <Badge variant="secondary" className="text-[9px] px-1.5 py-0">
-          {reasonLabels[pos.close_reason || ""] || pos.close_reason}
-        </Badge>
-        <span className="text-muted-foreground">{time}</span>
-      </div>
-      <span className={`font-bold ${isPositive ? "text-primary" : "text-destructive"}`}>
-        {isPositive ? "+" : ""}{pnl.toFixed(1)}%
-      </span>
-    </div>
   );
 }
 
