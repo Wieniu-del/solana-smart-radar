@@ -254,6 +254,8 @@ Deno.serve(async (req) => {
         jupiter_healthy: jupiterHealthy,
         helius_key_set: !!heliusKey,
         wallet_key_set: !!solanaKey,
+        wallet_balance_sol: walletBalanceSol,
+        wallet_public_key: walletPublicKey,
       },
       positions: {
         open_count: openCount,
