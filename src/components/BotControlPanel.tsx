@@ -495,26 +495,6 @@ export default function BotControlPanel() {
         </Card>
       </div>
 
-      {/* Closed Positions */}
-      {closedPositions.length > 0 && (
-        <Card className="border-border bg-card">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-primary" />
-              Zamknięte pozycje (ostatnie {closedPositions.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
-              {closedPositions.map((pos) => (
-                <ClosedPositionRow key={pos.id} position={pos} />
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Run History */}
       <Card className="border-border bg-card">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
