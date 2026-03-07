@@ -3,10 +3,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useToast } from "@/hooks/use-toast";
 import {
-  Loader2, X, TrendingUp, TrendingDown, RefreshCw, AlertTriangle,
-} from "lucide-react";
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
+import { useToast } from "@/hooks/use-toast";
+import { Loader2, X, RefreshCw } from "lucide-react";
 
 interface Position {
   id: string;
@@ -88,7 +89,7 @@ export default function TradingTerminal() {
     return () => { supabase.removeChannel(ch); };
   }, []);
 
-  // Auto-refresh prices every 15s
+  // Auto-refresh every 15s
   useEffect(() => {
     const iv = setInterval(async () => {
       const { data } = await supabase.from("open_positions").select("*").eq("status", "open").order("opened_at", { ascending: false });
@@ -100,7 +101,6 @@ export default function TradingTerminal() {
   async function closePositionManually(pos: Position) {
     setClosingId(pos.id);
     try {
-      // 1. Execute SELL via edge function
       const { data: swapData, error: swapErr } = await supabase.functions.invoke("execute-swap", {
         body: {
           action: "SELL",
@@ -115,7 +115,6 @@ export default function TradingTerminal() {
       const current = Number(pos.current_price_usd) || 0;
       const pnlPct = entry > 0 ? ((current - entry) / entry) * 100 : 0;
 
-      // 2. Update position as closed
       await supabase.from("open_positions").update({
         status: "closed",
         close_reason: "manual",
@@ -124,7 +123,6 @@ export default function TradingTerminal() {
         updated_at: new Date().toISOString(),
       }).eq("id", pos.id);
 
-      // 3. Add notification
       await supabase.from("notifications").insert({
         type: "position_closed",
         title: `⚪ Ręczne zamknięcie — ${pos.token_symbol || "???"}`,
@@ -138,7 +136,7 @@ export default function TradingTerminal() {
         },
       });
 
-      toast({ title: `✅ Pozycja ${pos.token_symbol} zamknięta`, description: `PnL: ${pnlPct.toFixed(1)}%` });
+      toast({ title: `✅ ${pos.token_symbol} zamknięta`, description: `PnL: ${pnlPct.toFixed(1)}%` });
     } catch (e: any) {
       toast({ title: "Błąd zamykania", description: e.message, variant: "destructive" });
     } finally {
@@ -154,12 +152,14 @@ export default function TradingTerminal() {
   };
 
   const fmtTime = (iso: string) =>
-    new Date(iso).toLocaleString("pl-PL", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    new Date(iso).toLocaleString("pl-PL", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 
   const timeAgo = (iso: string) => {
     const diff = Date.now() - new Date(iso).getTime();
-    const h = Math.floor(diff / 3600000);
+    const d = Math.floor(diff / 86400000);
+    const h = Math.floor((diff % 86400000) / 3600000);
     const m = Math.floor((diff % 3600000) / 60000);
+    if (d > 0) return `${d}d ${h}h`;
     return h > 0 ? `${h}h ${m}m` : `${m}m`;
   };
 
@@ -179,215 +179,228 @@ export default function TradingTerminal() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center p-8">
-        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      <div className="flex items-center justify-center p-12">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
 
   return (
-    <div className="border border-border rounded-lg bg-card overflow-hidden">
-      {/* Bybit-style tab bar */}
+    <div className="border border-border rounded-xl bg-card overflow-hidden">
       <Tabs defaultValue="positions" className="w-full">
-        <div className="border-b border-border bg-muted/30 px-1">
-          <TabsList className="bg-transparent h-10 gap-0 rounded-none">
-            <TabsTrigger
-              value="positions"
-              className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none text-xs px-4"
-            >
+        {/* Tab bar */}
+        <div className="border-b border-border bg-muted/30 px-2 flex items-center justify-between">
+          <TabsList className="bg-transparent h-12 gap-1 rounded-none">
+            <TabsTrigger value="positions" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none text-sm font-semibold px-5">
               Pozycje ({openPositions.length})
             </TabsTrigger>
-            <TabsTrigger
-              value="closed"
-              className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none text-xs px-4"
-            >
-              Historia pozycji ({closedPositions.length})
+            <TabsTrigger value="closed" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none text-sm font-semibold px-5">
+              Historia ({closedPositions.length})
             </TabsTrigger>
-            <TabsTrigger
-              value="trades"
-              className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none text-xs px-4"
-            >
-              Historia transakcji
+            <TabsTrigger value="trades" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none text-sm font-semibold px-5">
+              Transakcje
             </TabsTrigger>
-            <TabsTrigger
-              value="pnl"
-              className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none text-xs px-4"
-            >
+            <TabsTrigger value="pnl" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none text-sm font-semibold px-5">
               P&L
             </TabsTrigger>
           </TabsList>
-          <div className="absolute right-2 top-1.5">
-            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={loadData}>
-              <RefreshCw className="h-3.5 w-3.5" />
-            </Button>
-          </div>
+          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={loadData}>
+            <RefreshCw className="h-4 w-4" />
+          </Button>
         </div>
 
         {/* ═══ OPEN POSITIONS ═══ */}
         <TabsContent value="positions" className="mt-0">
           {openPositions.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground text-sm">
+            <div className="text-center py-16 text-muted-foreground text-base">
               Brak otwartych pozycji
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              {/* Table header */}
-              <div className="grid grid-cols-[1fr_80px_100px_100px_100px_90px_80px_80px_90px_70px] gap-0 px-3 py-2 text-[10px] font-medium text-muted-foreground uppercase tracking-wider border-b border-border bg-muted/20 min-w-[900px]">
-                <span>Token</span>
-                <span>Wielkość</span>
-                <span>Cena wejścia</span>
-                <span>Cena aktualna</span>
-                <span>Cena max</span>
-                <span>PnL (%)</span>
-                <span>PnL (SOL)</span>
-                <span>SL / TP</span>
-                <span>Czas</span>
-                <span className="text-center">Akcja</span>
-              </div>
-              {/* Rows */}
-              <div className="min-w-[900px]">
-                {openPositions.map((pos) => {
-                  const entry = Number(pos.entry_price_usd) || 0;
-                  const current = Number(pos.current_price_usd) || 0;
-                  const highest = Number(pos.highest_price_usd) || 0;
-                  const stopPrice = Number(pos.stop_price_usd) || 0;
-                  const amountSol = Number(pos.amount_sol) || 0;
-                  const pnl = entry > 0 ? ((current - entry) / entry) * 100 : (Number(pos.pnl_pct) || 0);
-                  const isPos = pnl >= 0;
-                  const pnlSol = entry > 0 ? (pnl / 100) * amountSol : 0;
-                  const distToSL = current > 0 && stopPrice > 0 ? ((current - stopPrice) / current) * 100 : null;
+            <>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/20 hover:bg-muted/20">
+                      <TableHead className="text-xs font-bold uppercase tracking-wider w-[160px]">Token</TableHead>
+                      <TableHead className="text-xs font-bold uppercase tracking-wider text-right">Wielkość</TableHead>
+                      <TableHead className="text-xs font-bold uppercase tracking-wider text-right">Cena wejścia</TableHead>
+                      <TableHead className="text-xs font-bold uppercase tracking-wider text-right">Cena aktualna</TableHead>
+                      <TableHead className="text-xs font-bold uppercase tracking-wider text-right">Cena max</TableHead>
+                      <TableHead className="text-xs font-bold uppercase tracking-wider text-right">PnL (%)</TableHead>
+                      <TableHead className="text-xs font-bold uppercase tracking-wider text-right">PnL (SOL)</TableHead>
+                      <TableHead className="text-xs font-bold uppercase tracking-wider text-center">SL / TP</TableHead>
+                      <TableHead className="text-xs font-bold uppercase tracking-wider text-right">Czas</TableHead>
+                      <TableHead className="text-xs font-bold uppercase tracking-wider text-center">Akcja</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {openPositions.map((pos) => {
+                      const entry = Number(pos.entry_price_usd) || 0;
+                      const current = Number(pos.current_price_usd) || 0;
+                      const highest = Number(pos.highest_price_usd) || 0;
+                      const stopPrice = Number(pos.stop_price_usd) || 0;
+                      const amountSol = Number(pos.amount_sol) || 0;
+                      const pnl = entry > 0 ? ((current - entry) / entry) * 100 : (Number(pos.pnl_pct) || 0);
+                      const isPos = pnl >= 0;
+                      const pnlSol = entry > 0 ? (pnl / 100) * amountSol : 0;
+                      const distToSL = current > 0 && stopPrice > 0 ? ((current - stopPrice) / current) * 100 : null;
 
-                  return (
-                    <div
-                      key={pos.id}
-                      className="grid grid-cols-[1fr_80px_100px_100px_100px_90px_80px_80px_90px_70px] gap-0 px-3 py-2.5 text-xs border-b border-border/50 hover:bg-muted/10 transition-colors items-center"
-                    >
-                      {/* Token */}
-                      <div className="flex items-center gap-2">
-                        <div className={`w-1.5 h-1.5 rounded-full ${isPos ? "bg-primary" : "bg-destructive"} shrink-0`} />
-                        <span className="font-semibold text-foreground text-sm">{pos.token_symbol || "???"}</span>
-                        <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4">LONG</Badge>
-                      </div>
-                      {/* Size */}
-                      <span className="text-foreground font-medium">{amountSol.toFixed(3)} SOL</span>
-                      {/* Entry */}
-                      <span className="text-muted-foreground font-mono text-[11px]">{fmtPrice(entry)}</span>
-                      {/* Current */}
-                      <span className={`font-mono text-[11px] font-semibold ${isPos ? "text-primary" : "text-destructive"}`}>
-                        {fmtPrice(current)}
-                      </span>
-                      {/* Highest */}
-                      <span className="text-muted-foreground font-mono text-[11px]">{fmtPrice(highest)}</span>
-                      {/* PnL % */}
-                      <span className={`font-bold text-sm ${isPos ? "text-primary" : "text-destructive"}`}>
-                        {isPos ? "+" : ""}{pnl.toFixed(2)}%
-                      </span>
-                      {/* PnL SOL */}
-                      <span className={`text-[11px] font-medium ${isPos ? "text-primary" : "text-destructive"}`}>
-                        {isPos ? "+" : ""}{pnlSol.toFixed(4)}
-                      </span>
-                      {/* SL/TP */}
-                      <div className="text-[10px] text-muted-foreground leading-tight">
-                        <div>SL: {pos.trailing_stop_pct}%</div>
-                        <div>TP: {pos.take_profit_pct}%</div>
-                        {distToSL !== null && (
-                          <div className={distToSL < 3 ? "text-destructive font-medium" : ""}>
-                            ({distToSL.toFixed(1)}% do SL)
-                          </div>
-                        )}
-                      </div>
-                      {/* Time */}
-                      <span className="text-[10px] text-muted-foreground">{timeAgo(pos.opened_at)}</span>
-                      {/* Action */}
-                      <div className="text-center">
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          className="h-6 px-2 text-[10px]"
-                          disabled={closingId === pos.id}
-                          onClick={() => {
-                            if (confirm(`Zamknąć pozycję ${pos.token_symbol}?`)) {
-                              closePositionManually(pos);
-                            }
-                          }}
-                        >
-                          {closingId === pos.id ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <X className="h-3 w-3" />
-                          )}
-                          <span className="ml-0.5">Zamknij</span>
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })}
+                      return (
+                        <TableRow key={pos.id} className="hover:bg-muted/10">
+                          {/* Token */}
+                          <TableCell className="py-3">
+                            <div className="flex items-center gap-2">
+                              <div className={`w-2 h-2 rounded-full shrink-0 ${isPos ? "bg-primary" : "bg-destructive"}`} />
+                              <span className="font-bold text-foreground text-base">{pos.token_symbol || "???"}</span>
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 font-semibold">LONG</Badge>
+                            </div>
+                          </TableCell>
+                          {/* Size */}
+                          <TableCell className="text-right py-3">
+                            <span className="text-foreground font-semibold text-sm">{amountSol.toFixed(3)} SOL</span>
+                          </TableCell>
+                          {/* Entry */}
+                          <TableCell className="text-right py-3">
+                            <span className="text-muted-foreground font-mono text-sm">{fmtPrice(entry)}</span>
+                          </TableCell>
+                          {/* Current */}
+                          <TableCell className="text-right py-3">
+                            <span className={`font-mono text-sm font-bold ${isPos ? "text-primary" : "text-destructive"}`}>
+                              {fmtPrice(current)}
+                            </span>
+                          </TableCell>
+                          {/* Highest */}
+                          <TableCell className="text-right py-3">
+                            <span className="text-muted-foreground font-mono text-sm">{fmtPrice(highest)}</span>
+                          </TableCell>
+                          {/* PnL % */}
+                          <TableCell className="text-right py-3">
+                            <span className={`font-black text-lg ${isPos ? "text-primary" : "text-destructive"}`}>
+                              {isPos ? "+" : ""}{pnl.toFixed(2)}%
+                            </span>
+                          </TableCell>
+                          {/* PnL SOL */}
+                          <TableCell className="text-right py-3">
+                            <span className={`font-semibold text-sm ${isPos ? "text-primary" : "text-destructive"}`}>
+                              {isPos ? "+" : ""}{pnlSol.toFixed(4)}
+                            </span>
+                          </TableCell>
+                          {/* SL/TP */}
+                          <TableCell className="text-center py-3">
+                            <div className="text-xs text-muted-foreground leading-relaxed">
+                              <div>SL: <span className="text-foreground font-medium">{pos.trailing_stop_pct}%</span></div>
+                              <div>TP: <span className="text-foreground font-medium">{pos.take_profit_pct}%</span></div>
+                              {distToSL !== null && (
+                                <div className={`text-[11px] mt-0.5 ${distToSL < 3 ? "text-destructive font-bold" : "text-muted-foreground"}`}>
+                                  ({distToSL.toFixed(1)}% do SL)
+                                </div>
+                              )}
+                            </div>
+                          </TableCell>
+                          {/* Time */}
+                          <TableCell className="text-right py-3">
+                            <span className="text-sm text-muted-foreground">{timeAgo(pos.opened_at)}</span>
+                          </TableCell>
+                          {/* Action */}
+                          <TableCell className="text-center py-3">
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              className="h-8 px-3 text-xs font-semibold"
+                              disabled={closingId === pos.id}
+                              onClick={() => {
+                                if (confirm(`Zamknąć pozycję ${pos.token_symbol}?`)) {
+                                  closePositionManually(pos);
+                                }
+                              }}
+                            >
+                              {closingId === pos.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <X className="h-3.5 w-3.5 mr-1" />
+                              )}
+                              Zamknij
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
               </div>
-              {/* Footer summary */}
-              <div className="px-3 py-2 border-t border-border bg-muted/20 flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">
-                  Razem: <span className="text-foreground font-medium">{openPositions.length}</span> pozycji
+              {/* Footer */}
+              <div className="px-4 py-3 border-t border-border bg-muted/20 flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">
+                  Razem: <span className="text-foreground font-bold">{openPositions.length}</span> pozycji
                 </span>
-                <span className={`font-bold ${totalPnlSol >= 0 ? "text-primary" : "text-destructive"}`}>
+                <span className={`text-base font-black ${totalPnlSol >= 0 ? "text-primary" : "text-destructive"}`}>
                   Σ PnL: {totalPnlSol >= 0 ? "+" : ""}{totalPnlSol.toFixed(4)} SOL
                 </span>
               </div>
-            </div>
+            </>
           )}
         </TabsContent>
 
         {/* ═══ CLOSED POSITIONS ═══ */}
         <TabsContent value="closed" className="mt-0">
           {closedPositions.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground text-sm">
+            <div className="text-center py-16 text-muted-foreground text-base">
               Brak zamkniętych pozycji
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <div className="grid grid-cols-[1fr_80px_100px_100px_90px_80px_120px_100px] gap-0 px-3 py-2 text-[10px] font-medium text-muted-foreground uppercase tracking-wider border-b border-border bg-muted/20 min-w-[800px]">
-                <span>Token</span>
-                <span>Wielkość</span>
-                <span>Cena wejścia</span>
-                <span>Cena wyjścia</span>
-                <span>PnL (%)</span>
-                <span>PnL (SOL)</span>
-                <span>Powód zamknięcia</span>
-                <span>Data zamknięcia</span>
-              </div>
-              <div className="min-w-[800px] max-h-[400px] overflow-y-auto">
-                {closedPositions.map((pos) => {
-                  const pnl = Number(pos.pnl_pct) || 0;
-                  const isPos = pnl >= 0;
-                  const pnlSol = (pnl / 100) * Number(pos.amount_sol);
-
-                  return (
-                    <div
-                      key={pos.id}
-                      className="grid grid-cols-[1fr_80px_100px_100px_90px_80px_120px_100px] gap-0 px-3 py-2 text-xs border-b border-border/30 hover:bg-muted/10 items-center"
-                    >
-                      <div className="flex items-center gap-2">
-                        <div className={`w-1.5 h-1.5 rounded-full ${isPos ? "bg-primary" : "bg-destructive"} shrink-0`} />
-                        <span className="font-medium text-foreground">{pos.token_symbol || "???"}</span>
-                      </div>
-                      <span className="text-muted-foreground">{Number(pos.amount_sol).toFixed(3)} SOL</span>
-                      <span className="text-muted-foreground font-mono text-[11px]">{fmtPrice(Number(pos.entry_price_usd))}</span>
-                      <span className="text-muted-foreground font-mono text-[11px]">{fmtPrice(Number(pos.current_price_usd))}</span>
-                      <span className={`font-bold ${isPos ? "text-primary" : "text-destructive"}`}>
-                        {isPos ? "+" : ""}{pnl.toFixed(2)}%
-                      </span>
-                      <span className={`text-[11px] ${isPos ? "text-primary" : "text-destructive"}`}>
-                        {isPos ? "+" : ""}{pnlSol.toFixed(4)}
-                      </span>
-                      <Badge variant="secondary" className="text-[9px] px-1.5 py-0 w-fit">
-                        {reasonLabels[pos.close_reason || ""] || pos.close_reason || "—"}
-                      </Badge>
-                      <span className="text-[10px] text-muted-foreground">
-                        {pos.closed_at ? fmtTime(pos.closed_at) : "—"}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/20 hover:bg-muted/20">
+                    <TableHead className="text-xs font-bold uppercase tracking-wider">Token</TableHead>
+                    <TableHead className="text-xs font-bold uppercase tracking-wider text-right">Wielkość</TableHead>
+                    <TableHead className="text-xs font-bold uppercase tracking-wider text-right">Cena wejścia</TableHead>
+                    <TableHead className="text-xs font-bold uppercase tracking-wider text-right">Cena wyjścia</TableHead>
+                    <TableHead className="text-xs font-bold uppercase tracking-wider text-right">PnL (%)</TableHead>
+                    <TableHead className="text-xs font-bold uppercase tracking-wider text-right">PnL (SOL)</TableHead>
+                    <TableHead className="text-xs font-bold uppercase tracking-wider text-center">Powód</TableHead>
+                    <TableHead className="text-xs font-bold uppercase tracking-wider text-right">Data</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {closedPositions.map((pos) => {
+                    const pnl = Number(pos.pnl_pct) || 0;
+                    const isPos = pnl >= 0;
+                    const pnlSol = (pnl / 100) * Number(pos.amount_sol);
+                    return (
+                      <TableRow key={pos.id} className="hover:bg-muted/10">
+                        <TableCell className="py-3">
+                          <div className="flex items-center gap-2">
+                            <div className={`w-2 h-2 rounded-full shrink-0 ${isPos ? "bg-primary" : "bg-destructive"}`} />
+                            <span className="font-bold text-foreground text-sm">{pos.token_symbol || "???"}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right text-sm text-muted-foreground">{Number(pos.amount_sol).toFixed(3)} SOL</TableCell>
+                        <TableCell className="text-right font-mono text-sm text-muted-foreground">{fmtPrice(Number(pos.entry_price_usd))}</TableCell>
+                        <TableCell className="text-right font-mono text-sm text-muted-foreground">{fmtPrice(Number(pos.current_price_usd))}</TableCell>
+                        <TableCell className="text-right">
+                          <span className={`font-bold text-base ${isPos ? "text-primary" : "text-destructive"}`}>
+                            {isPos ? "+" : ""}{pnl.toFixed(2)}%
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <span className={`text-sm font-semibold ${isPos ? "text-primary" : "text-destructive"}`}>
+                            {isPos ? "+" : ""}{pnlSol.toFixed(4)}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant="secondary" className="text-xs px-2 py-0.5">
+                            {reasonLabels[pos.close_reason || ""] || pos.close_reason || "—"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right text-sm text-muted-foreground">
+                          {pos.closed_at ? fmtTime(pos.closed_at) : "—"}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
             </div>
           )}
         </TabsContent>
@@ -395,57 +408,63 @@ export default function TradingTerminal() {
         {/* ═══ TRADE HISTORY ═══ */}
         <TabsContent value="trades" className="mt-0">
           {tradeHistory.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground text-sm">
+            <div className="text-center py-16 text-muted-foreground text-base">
               Brak historii transakcji
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <div className="grid grid-cols-[1fr_70px_80px_100px_80px_80px_140px_100px] gap-0 px-3 py-2 text-[10px] font-medium text-muted-foreground uppercase tracking-wider border-b border-border bg-muted/20 min-w-[800px]">
-                <span>Token</span>
-                <span>Kierunek</span>
-                <span>Wielkość</span>
-                <span>Cena</span>
-                <span>Ilość</span>
-                <span>Status</span>
-                <span>TX</span>
-                <span>Data</span>
-              </div>
-              <div className="min-w-[800px] max-h-[400px] overflow-y-auto">
-                {tradeHistory.map((tx) => {
-                  const isBuy = tx.action === "BUY";
-                  return (
-                    <div
-                      key={tx.id}
-                      className="grid grid-cols-[1fr_70px_80px_100px_80px_80px_140px_100px] gap-0 px-3 py-2 text-xs border-b border-border/30 hover:bg-muted/10 items-center"
-                    >
-                      <span className="font-medium text-foreground">{tx.token_symbol || tx.token_mint.slice(0, 8) + "..."}</span>
-                      <Badge
-                        variant="outline"
-                        className={`text-[9px] px-1.5 py-0 w-fit ${isBuy ? "text-primary border-primary/40" : "text-destructive border-destructive/40"}`}
-                      >
-                        {isBuy ? "KUP" : "SPRZEDAJ"}
-                      </Badge>
-                      <span className="text-muted-foreground">{Number(tx.amount_sol).toFixed(3)} SOL</span>
-                      <span className="text-muted-foreground font-mono text-[11px]">
-                        {tx.price_usd ? fmtPrice(Number(tx.price_usd)) : "—"}
-                      </span>
-                      <span className="text-muted-foreground text-[11px]">
-                        {tx.token_amount ? Number(tx.token_amount).toLocaleString("pl-PL", { maximumFractionDigits: 2 }) : "—"}
-                      </span>
-                      <Badge
-                        variant={tx.status === "completed" ? "default" : tx.status === "failed" ? "destructive" : "secondary"}
-                        className="text-[9px] px-1.5 py-0 w-fit"
-                      >
-                        {tx.status === "completed" ? "Wykonano" : tx.status === "failed" ? "Błąd" : tx.status === "pending" ? "Oczekuje" : tx.status}
-                      </Badge>
-                      <span className="text-[10px] text-muted-foreground font-mono truncate">
-                        {tx.tx_signature ? tx.tx_signature.slice(0, 16) + "..." : tx.error_message?.slice(0, 20) || "—"}
-                      </span>
-                      <span className="text-[10px] text-muted-foreground">{fmtTime(tx.created_at)}</span>
-                    </div>
-                  );
-                })}
-              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/20 hover:bg-muted/20">
+                    <TableHead className="text-xs font-bold uppercase tracking-wider">Token</TableHead>
+                    <TableHead className="text-xs font-bold uppercase tracking-wider text-center">Kierunek</TableHead>
+                    <TableHead className="text-xs font-bold uppercase tracking-wider text-right">Wielkość</TableHead>
+                    <TableHead className="text-xs font-bold uppercase tracking-wider text-right">Cena</TableHead>
+                    <TableHead className="text-xs font-bold uppercase tracking-wider text-right">Ilość</TableHead>
+                    <TableHead className="text-xs font-bold uppercase tracking-wider text-center">Status</TableHead>
+                    <TableHead className="text-xs font-bold uppercase tracking-wider">TX</TableHead>
+                    <TableHead className="text-xs font-bold uppercase tracking-wider text-right">Data</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {tradeHistory.map((tx) => {
+                    const isBuy = tx.action === "BUY";
+                    return (
+                      <TableRow key={tx.id} className="hover:bg-muted/10">
+                        <TableCell className="py-3">
+                          <span className="font-bold text-foreground text-sm">{tx.token_symbol || tx.token_mint.slice(0, 8) + "..."}</span>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant="outline" className={`text-xs px-2 py-0.5 font-semibold ${isBuy ? "text-primary border-primary/40" : "text-destructive border-destructive/40"}`}>
+                            {isBuy ? "KUP" : "SPRZEDAJ"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right text-sm text-muted-foreground">{Number(tx.amount_sol).toFixed(3)} SOL</TableCell>
+                        <TableCell className="text-right font-mono text-sm text-muted-foreground">
+                          {tx.price_usd ? fmtPrice(Number(tx.price_usd)) : "—"}
+                        </TableCell>
+                        <TableCell className="text-right text-sm text-muted-foreground">
+                          {tx.token_amount ? Number(tx.token_amount).toLocaleString("pl-PL", { maximumFractionDigits: 2 }) : "—"}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge
+                            variant={tx.status === "completed" ? "default" : tx.status === "failed" ? "destructive" : "secondary"}
+                            className="text-xs px-2 py-0.5"
+                          >
+                            {tx.status === "completed" ? "OK" : tx.status === "failed" ? "Błąd" : tx.status === "pending" ? "..." : tx.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-xs text-muted-foreground font-mono">
+                            {tx.tx_signature ? tx.tx_signature.slice(0, 16) + "..." : tx.error_message?.slice(0, 20) || "—"}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-right text-sm text-muted-foreground">{fmtTime(tx.created_at)}</TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
             </div>
           )}
         </TabsContent>
@@ -459,7 +478,6 @@ export default function TradingTerminal() {
   );
 }
 
-// ─── P&L Summary ───
 function PnLSummary({ open, closed }: { open: Position[]; closed: Position[] }) {
   const totalClosedPnl = closed.reduce((s, p) => s + ((Number(p.pnl_pct) || 0) / 100) * Number(p.amount_sol), 0);
   const totalOpenPnl = open.reduce((s, p) => {
@@ -471,7 +489,6 @@ function PnLSummary({ open, closed }: { open: Position[]; closed: Position[] }) 
   const wins = closed.filter(p => (Number(p.pnl_pct) || 0) > 0).length;
   const losses = closed.filter(p => (Number(p.pnl_pct) || 0) < 0).length;
   const winRate = closed.length > 0 ? (wins / closed.length * 100) : 0;
-
   const totalInvested = [...open, ...closed].reduce((s, p) => s + Number(p.amount_sol), 0);
 
   const stats = [
@@ -486,11 +503,11 @@ function PnLSummary({ open, closed }: { open: Position[]; closed: Position[] }) 
   ];
 
   return (
-    <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+    <div className="p-5 grid grid-cols-2 md:grid-cols-4 gap-4">
       {stats.map((s, i) => (
-        <div key={i} className="bg-muted/20 rounded-lg p-3 border border-border/50">
-          <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">{s.label}</p>
-          <p className={`text-lg font-bold ${s.color}`}>{s.value}</p>
+        <div key={i} className="bg-muted/20 rounded-lg p-4 border border-border/50">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1.5 font-medium">{s.label}</p>
+          <p className={`text-xl font-black ${s.color}`}>{s.value}</p>
         </div>
       ))}
     </div>
