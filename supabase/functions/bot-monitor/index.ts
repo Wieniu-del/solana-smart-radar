@@ -258,10 +258,25 @@ Deno.serve(async (req) => {
             const hasPrice = tokenInfo ? tokenInfo.priceUsd > 0 : false;
             const valueUsd = tokenInfo?.valueUsd || 0;
 
-            // FIX #2: Hard reject tokens with liquidity < $5000
-            if (pLiquidity.enabled && valueUsd < 5000) {
-              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: liquidity $${valueUsd.toFixed(2)} < $5000 minimum`);
+            // FIX #2: Real liquidity check via DexScreener API
+            const minLiquidityUsd = Number(pLiquidity.min_value_usd || 5000);
+            let realLiquidityUsd = 0;
+            try {
+              const dexRes = await fetch(`https://api.dexscreener.com/tokens/v1/solana/${incomingMint}`);
+              if (dexRes.ok) {
+                const dexPairs = await dexRes.json();
+                const pairs = Array.isArray(dexPairs) ? dexPairs : [];
+                realLiquidityUsd = pairs.reduce((max: number, p: any) => Math.max(max, Number(p?.liquidity?.usd || 0)), 0);
+              }
+            } catch (_) { /* DexScreener unreachable — fallback to wallet value */ }
+
+            const effectiveLiquidity = realLiquidityUsd > 0 ? realLiquidityUsd : valueUsd;
+            if (pLiquidity.enabled && effectiveLiquidity < minLiquidityUsd) {
+              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: liquidity $${effectiveLiquidity.toFixed(0)} (dex: $${realLiquidityUsd.toFixed(0)}, wallet: $${valueUsd.toFixed(0)}) < $${minLiquidityUsd} min`);
               continue;
+            }
+            if (realLiquidityUsd > 0) {
+              console.log(`[bot] PASS ${incomingMint.slice(0,8)}: DexScreener liquidity $${realLiquidityUsd.toFixed(0)}`);
             }
 
             // Scoring with pipeline config
@@ -269,7 +284,7 @@ Deno.serve(async (req) => {
               ? (isSafe ? 100 : hasPrice ? 60 : 30)
               : 70; // neutral if disabled
             const liquidityScore = pLiquidity.enabled
-              ? (valueUsd > 100000 ? 80 : valueUsd > 10000 ? 60 : valueUsd > 1000 ? 40 : 20)
+              ? (effectiveLiquidity > 100000 ? 80 : effectiveLiquidity > 10000 ? 60 : effectiveLiquidity > 1000 ? 40 : 20)
               : 60; // neutral if disabled
             const walletScore = pWallet.enabled
               ? (totalValueUsd > 100000 ? 80 : totalValueUsd > 10000 ? 60 : 40)
@@ -308,15 +323,27 @@ Deno.serve(async (req) => {
         // Fallback: if no recent buy-like transfer found, use high-value non-base holdings
         const walletHasCandidate = allCandidates.some((c) => c.sourceWallet === wallet);
         if (!walletHasCandidate) {
-          // FIX #2: Use hard minimum $5000 for holding snapshot too
           const minLiquidityUsd = Math.max(5000, Number(pLiquidity.min_value_usd || 5000));
 
           for (const token of tokens) {
             const mint = token?.mint as string | undefined;
             if (!mint || BASE_ASSET_MINTS.has(mint) || seenMints.has(mint) || blockedMints.has(mint)) continue;
 
-            const valueUsd = Number(token?.valueUsd || 0);
-            if (valueUsd < minLiquidityUsd) continue;
+            const walletValueUsd = Number(token?.valueUsd || 0);
+            
+            // Real liquidity check via DexScreener
+            let realLiquidityUsd = 0;
+            try {
+              const dexRes = await fetch(`https://api.dexscreener.com/tokens/v1/solana/${mint}`);
+              if (dexRes.ok) {
+                const dexPairs = await dexRes.json();
+                const pairs = Array.isArray(dexPairs) ? dexPairs : [];
+                realLiquidityUsd = pairs.reduce((max: number, p: any) => Math.max(max, Number(p?.liquidity?.usd || 0)), 0);
+              }
+            } catch (_) { /* fallback */ }
+
+            const effectiveLiquidity = realLiquidityUsd > 0 ? realLiquidityUsd : walletValueUsd;
+            if (effectiveLiquidity < minLiquidityUsd) continue;
 
             seenMints.add(mint);
             totalTokensFound++;
@@ -328,7 +355,7 @@ Deno.serve(async (req) => {
               ? (isSafe ? 100 : hasPrice ? 60 : 30)
               : 70;
             const liquidityScore = pLiquidity.enabled
-              ? (valueUsd > 100000 ? 80 : valueUsd > 10000 ? 60 : valueUsd > 1000 ? 40 : 20)
+              ? (effectiveLiquidity > 100000 ? 80 : effectiveLiquidity > 10000 ? 60 : effectiveLiquidity > 1000 ? 40 : 20)
               : 60;
             const walletScore = pWallet.enabled
               ? (totalValueUsd > 100000 ? 80 : totalValueUsd > 10000 ? 60 : 40)
