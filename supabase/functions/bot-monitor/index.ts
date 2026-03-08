@@ -380,7 +380,7 @@ Deno.serve(async (req) => {
               walletScore,
               totalScore,
               decision,
-              valueUsd,
+              valueUsd: walletValueUsd,
               totalValueUsd,
             });
 
