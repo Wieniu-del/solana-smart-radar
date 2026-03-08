@@ -138,8 +138,10 @@ Deno.serve(async (req) => {
 
     // Avoid re-buying already open/recently executed tokens
     // FIX #1: Also block ALL pending signals (no time limit) to prevent spam
+    // FIX #3: Cooldown — block tokens that hit SL in last 48h
     const blockedMints = new Set<string>();
-    const [{ data: openPositions }, { data: recentSignals }, { data: pendingSignalMints }] = await Promise.all([
+    const COOLDOWN_HOURS = 48;
+    const [{ data: openPositions }, { data: recentSignals }, { data: pendingSignalMints }, { data: slCooldownMints }] = await Promise.all([
       supabase.from("open_positions").select("token_mint").eq("status", "open"),
       supabase
         .from("trading_signals")
@@ -153,12 +155,20 @@ Deno.serve(async (req) => {
         .select("token_mint")
         .eq("signal_type", "BUY")
         .eq("status", "pending"),
+      // Cooldown: block tokens closed by stop_loss in last 48h
+      supabase
+        .from("open_positions")
+        .select("token_mint")
+        .eq("status", "closed")
+        .eq("close_reason", "stop_loss")
+        .gte("closed_at", new Date(Date.now() - COOLDOWN_HOURS * 60 * 60 * 1000).toISOString()),
     ]);
 
     for (const row of openPositions || []) blockedMints.add(row.token_mint);
     for (const row of recentSignals || []) blockedMints.add(row.token_mint);
     for (const row of pendingSignalMints || []) blockedMints.add(row.token_mint);
-    console.log(`[bot] Blocked mints: ${blockedMints.size} (open=${openPositions?.length || 0}, executed=${recentSignals?.length || 0}, pending=${pendingSignalMints?.length || 0})`);
+    for (const row of slCooldownMints || []) blockedMints.add(row.token_mint);
+    console.log(`[bot] Blocked mints: ${blockedMints.size} (open=${openPositions?.length || 0}, executed=${recentSignals?.length || 0}, pending=${pendingSignalMints?.length || 0}, sl_cooldown=${slCooldownMints?.length || 0})`);
 
     for (const wallet of wallets) {
       try {
