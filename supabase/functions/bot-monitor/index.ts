@@ -137,19 +137,28 @@ Deno.serve(async (req) => {
     const seenMints = new Set<string>();
 
     // Avoid re-buying already open/recently executed tokens
+    // FIX #1: Also block ALL pending signals (no time limit) to prevent spam
     const blockedMints = new Set<string>();
-    const [{ data: openPositions }, { data: recentSignals }] = await Promise.all([
+    const [{ data: openPositions }, { data: recentSignals }, { data: pendingSignalMints }] = await Promise.all([
       supabase.from("open_positions").select("token_mint").eq("status", "open"),
       supabase
         .from("trading_signals")
         .select("token_mint")
         .eq("signal_type", "BUY")
-        .in("status", ["pending", "executed"])
+        .eq("status", "executed")
         .gte("created_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
+      // Block ALL pending signal mints — prevents duplicate spam
+      supabase
+        .from("trading_signals")
+        .select("token_mint")
+        .eq("signal_type", "BUY")
+        .eq("status", "pending"),
     ]);
 
     for (const row of openPositions || []) blockedMints.add(row.token_mint);
     for (const row of recentSignals || []) blockedMints.add(row.token_mint);
+    for (const row of pendingSignalMints || []) blockedMints.add(row.token_mint);
+    console.log(`[bot] Blocked mints: ${blockedMints.size} (open=${openPositions?.length || 0}, executed=${recentSignals?.length || 0}, pending=${pendingSignalMints?.length || 0})`);
 
     for (const wallet of wallets) {
       try {
@@ -249,6 +258,12 @@ Deno.serve(async (req) => {
             const hasPrice = tokenInfo ? tokenInfo.priceUsd > 0 : false;
             const valueUsd = tokenInfo?.valueUsd || 0;
 
+            // FIX #2: Hard reject tokens with liquidity < $5000
+            if (pLiquidity.enabled && valueUsd < 5000) {
+              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: liquidity $${valueUsd.toFixed(2)} < $5000 minimum`);
+              continue;
+            }
+
             // Scoring with pipeline config
             const securityScore = pSecurity.enabled
               ? (isSafe ? 100 : hasPrice ? 60 : 30)
@@ -293,7 +308,8 @@ Deno.serve(async (req) => {
         // Fallback: if no recent buy-like transfer found, use high-value non-base holdings
         const walletHasCandidate = allCandidates.some((c) => c.sourceWallet === wallet);
         if (!walletHasCandidate) {
-          const minLiquidityUsd = Number(pLiquidity.min_value_usd || 1000);
+          // FIX #2: Use hard minimum $5000 for holding snapshot too
+          const minLiquidityUsd = Math.max(5000, Number(pLiquidity.min_value_usd || 5000));
 
           for (const token of tokens) {
             const mint = token?.mint as string | undefined;
@@ -510,10 +526,25 @@ Deno.serve(async (req) => {
             .order("created_at", { ascending: true })
             .limit(100);
 
+          // FIX #3: Deduplicate pending signals — only execute first per token_mint
+          const executedMints = new Set<string>();
           for (const signal of pendingSignals || []) {
             if (executed >= slotsAvailable) {
               console.log(`Max positions reached (${maxOpenPositions}), queuing remaining signals`);
               break;
+            }
+
+            // Skip if we already tried this token_mint in this batch
+            if (executedMints.has(signal.token_mint)) {
+              await supabase.from("trading_signals").update({ status: "rejected" }).eq("id", signal.id);
+              continue;
+            }
+
+            // FIX #3b: Min confidence ≥65 for auto-execute
+            if ((signal.confidence || 0) < 65) {
+              console.log(`[bot] Skipping signal ${signal.id}: confidence ${signal.confidence} < 65`);
+              await supabase.from("trading_signals").update({ status: "rejected" }).eq("id", signal.id);
+              continue;
             }
 
             if (signal.token_mint === "So11111111111111111111111111111111111111112") {
@@ -542,7 +573,26 @@ Deno.serve(async (req) => {
               takeProfitPct,
             });
 
-            if (success) executed++;
+            if (success) {
+              executed++;
+              executedMints.add(signal.token_mint);
+            }
+          }
+
+          // FIX #5: Cleanup old pending signals (>6h old) — reject them to prevent infinite accumulation
+          try {
+            const cutoff = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+            const { count } = await supabase
+              .from("trading_signals")
+              .update({ status: "expired" })
+              .eq("status", "pending")
+              .lt("created_at", cutoff)
+              .select("*", { count: "exact", head: true });
+            if (count && count > 0) {
+              console.log(`[bot] Expired ${count} old pending signals (>6h)`);
+            }
+          } catch (cleanupErr) {
+            console.warn("Pending signals cleanup error:", cleanupErr);
           }
         }
 

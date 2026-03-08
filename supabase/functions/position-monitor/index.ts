@@ -234,6 +234,62 @@ Deno.serve(async (req) => {
           });
         }
       } else {
+        // FIX #4: Auto-close stale positions (PnL ~0%, price unchanged >12h)
+        const lastUpdate = new Date(pos.updated_at).getTime();
+        const hoursSinceUpdate = (Date.now() - lastUpdate) / (1000 * 60 * 60);
+        const priceUnchanged = Math.abs(currentPrice - entryPrice) / Math.max(entryPrice, 0.000001) < 0.005; // <0.5% change
+        
+        if (priceUnchanged && hoursSinceUpdate >= 12 && Math.abs(pnlPct) < 1) {
+          console.warn(`[position-monitor] Stale position: ${pos.token_symbol} — price unchanged for ${hoursSinceUpdate.toFixed(1)}h, auto-closing`);
+          
+          await supabase.from("open_positions").update({
+            status: "closed",
+            close_reason: "stale_position",
+            current_price_usd: currentPrice,
+            pnl_pct: Math.round(pnlPct * 100) / 100,
+            closed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }).eq("id", pos.id);
+
+          await supabase.from("notifications").insert({
+            type: "position_closed",
+            title: `⏸️ Stale pozycja: ${pos.token_symbol || "???"}`,
+            message: `Zamknięta automatycznie — cena bez zmian przez ${hoursSinceUpdate.toFixed(0)}h. Token prawdopodobnie nieaktywny.`,
+            details: {
+              position_id: pos.id,
+              token_mint: pos.token_mint,
+              close_reason: "stale_position",
+              hours_stale: hoursSinceUpdate,
+            },
+          });
+
+          // Journal entry
+          try {
+            const { data: profile } = await supabase.from("profiles").select("id").limit(1).single();
+            if (profile) {
+              await supabase.from("journal_entries").insert({
+                user_id: profile.id,
+                entry_type: "auto",
+                title: `⏸️ Stale: ${pos.token_symbol || "???"}`,
+                notes: `Pozycja zamknięta — cena tokena nie zmieniła się przez ${hoursSinceUpdate.toFixed(0)}h. PnL: ${pnlPct.toFixed(2)}%.`,
+                token_symbol: pos.token_symbol,
+                token_mint: pos.token_mint,
+                action: "SELL",
+                amount_sol: Number(pos.amount_sol),
+                pnl_sol: (pnlPct / 100) * Number(pos.amount_sol),
+                pnl_pct: Math.round(pnlPct * 100) / 100,
+                position_id: pos.id,
+                tags: ["auto", "bot", "stale_position"],
+              });
+            }
+          } catch (jErr) {
+            console.warn("Journal stale_position error:", jErr);
+          }
+
+          closedCount++;
+          continue;
+        }
+
         // Just update tracking data
         await supabase.from("open_positions").update({
           current_price_usd: currentPrice,
