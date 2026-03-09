@@ -53,22 +53,19 @@ const Index = () => {
 
   const loadTradingStats = async () => {
     try {
-      const [execRes, sigRes] = await Promise.all([
-        supabase.from("trade_executions").select("*").order("created_at", { ascending: false }).limit(100),
+      const [closedRes, sigRes, execRes] = await Promise.all([
+        supabase.from("open_positions").select("*").eq("status", "closed").order("closed_at", { ascending: false }),
         supabase.from("trading_signals").select("*").order("created_at", { ascending: false }).limit(200),
+        supabase.from("trade_executions").select("*").order("created_at", { ascending: false }).limit(10),
       ]);
 
-      const executions = execRes.data || [];
+      const closed = (closedRes.data || []).filter((p: any) => p.close_reason !== "dead_token");
       const signals = sigRes.data || [];
+      const executions = execRes.data || [];
 
-      const successful = executions.filter(e => e.status === "success");
-      const totalPnl = executions.reduce((sum, e) => {
-        if (e.action === "SELL" && e.status === "success") return sum + e.amount_sol;
-        if (e.action === "BUY" && e.status === "success") return sum - e.amount_sol;
-        return sum;
-      }, 0);
-
-      const best = successful.sort((a, b) => b.amount_sol - a.amount_sol)[0] || null;
+      const wins = closed.filter((p: any) => (p.pnl_pct || 0) > 0);
+      const totalPnl = closed.reduce((sum: number, p: any) => sum + ((p.pnl_pct || 0) / 100) * p.amount_sol, 0);
+      const best = wins.sort((a: any, b: any) => (b.pnl_pct || 0) - (a.pnl_pct || 0))[0] || null;
 
       const dayMap = new Map<string, number>();
       const now = new Date();
@@ -84,10 +81,10 @@ const Index = () => {
       }
 
       setTradingStats({
-        totalTrades: executions.length,
-        successfulTrades: successful.length,
+        totalTrades: closed.length,
+        successfulTrades: wins.length,
         totalPnlSol: totalPnl,
-        winRate: executions.length > 0 ? (successful.length / executions.length) * 100 : 0,
+        winRate: closed.length > 0 ? (wins.length / closed.length) * 100 : 0,
         bestTrade: best,
         recentExecutions: executions.slice(0, 5),
         signalsByDay: Array.from(dayMap, ([day, count]) => ({ day, count })),
