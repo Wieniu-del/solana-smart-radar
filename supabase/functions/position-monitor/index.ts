@@ -249,12 +249,15 @@ Deno.serve(async (req) => {
           });
         }
       } else {
-        // FIX #4: Auto-close stale positions (PnL ~0%, price unchanged >12h)
+        // FIX: Auto-close stale positions faster (6h instead of 12h)
         const lastUpdate = new Date(pos.updated_at).getTime();
         const hoursSinceUpdate = (Date.now() - lastUpdate) / (1000 * 60 * 60);
-        const priceUnchanged = Math.abs(currentPrice - entryPrice) / Math.max(entryPrice, 0.000001) < 0.005; // <0.5% change
+        const hoursOpen = (Date.now() - new Date(pos.opened_at).getTime()) / (1000 * 60 * 60);
+        const priceUnchanged = Math.abs(currentPrice - entryPrice) / Math.max(entryPrice, 0.000001) < 0.005;
         
-        if (priceUnchanged && hoursSinceUpdate >= 12 && Math.abs(pnlPct) < 1) {
+        // Stagnation: close if price unchanged >6h OR if open >8h with <2% gain
+        if ((priceUnchanged && hoursSinceUpdate >= 6 && Math.abs(pnlPct) < 1) ||
+            (hoursOpen >= 8 && pnlPct < 2 && pnlPct > -5)) {
           console.warn(`[position-monitor] Stale position: ${pos.token_symbol} — price unchanged for ${hoursSinceUpdate.toFixed(1)}h, auto-closing`);
           
           await supabase.from("open_positions").update({
