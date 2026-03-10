@@ -101,13 +101,13 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      const trailingStopPct = Number(pos.trailing_stop_pct) || 10;
+      const baseTrailingStopPct = Number(pos.trailing_stop_pct) || 10;
       const takeProfitPct = Number(pos.take_profit_pct) || 50;
 
       let entryPrice = Number(pos.entry_price_usd) || 0;
       if (entryPrice <= 0) {
         const highestPriceSeed = Math.max(Number(pos.highest_price_usd) || 0, currentPrice);
-        const seededStopPrice = highestPriceSeed * (1 - trailingStopPct / 100);
+        const seededStopPrice = highestPriceSeed * (1 - baseTrailingStopPct / 100);
 
         await supabase.from("open_positions").update({
           entry_price_usd: currentPrice,
@@ -123,6 +123,21 @@ Deno.serve(async (req) => {
 
       const highestPrice = Math.max(Number(pos.highest_price_usd) || 0, currentPrice);
       const pnlPct = ((currentPrice - entryPrice) / entryPrice) * 100;
+
+      // ── Dynamic Trailing Stop: tighten when in quick profit ──
+      const hoursHeld = (Date.now() - new Date(pos.opened_at).getTime()) / (1000 * 60 * 60);
+      let trailingStopPct = baseTrailingStopPct;
+
+      if (pnlPct >= 15 && hoursHeld < 1) {
+        // Rocket mode: 15%+ in <1h → lock with 4% trail
+        trailingStopPct = 4;
+      } else if (pnlPct >= 10 && hoursHeld < 2) {
+        // Quick profit: 10%+ in <2h → tighten to 5%
+        trailingStopPct = 5;
+      } else if (pnlPct >= 8) {
+        // Any 8%+ profit → tighten to 7%
+        trailingStopPct = 7;
+      }
 
       // Trailing stop price = highest price * (1 - trailing%)
       const stopPrice = highestPrice * (1 - trailingStopPct / 100);
@@ -234,12 +249,15 @@ Deno.serve(async (req) => {
           });
         }
       } else {
-        // FIX #4: Auto-close stale positions (PnL ~0%, price unchanged >12h)
+        // FIX: Auto-close stale positions faster (6h instead of 12h)
         const lastUpdate = new Date(pos.updated_at).getTime();
         const hoursSinceUpdate = (Date.now() - lastUpdate) / (1000 * 60 * 60);
-        const priceUnchanged = Math.abs(currentPrice - entryPrice) / Math.max(entryPrice, 0.000001) < 0.005; // <0.5% change
+        const hoursOpen = (Date.now() - new Date(pos.opened_at).getTime()) / (1000 * 60 * 60);
+        const priceUnchanged = Math.abs(currentPrice - entryPrice) / Math.max(entryPrice, 0.000001) < 0.005;
         
-        if (priceUnchanged && hoursSinceUpdate >= 12 && Math.abs(pnlPct) < 1) {
+        // Stagnation: close if price unchanged >6h OR if open >8h with <2% gain
+        if ((priceUnchanged && hoursSinceUpdate >= 6 && Math.abs(pnlPct) < 1) ||
+            (hoursOpen >= 8 && pnlPct < 2 && pnlPct > -5)) {
           console.warn(`[position-monitor] Stale position: ${pos.token_symbol} — price unchanged for ${hoursSinceUpdate.toFixed(1)}h, auto-closing`);
           
           await supabase.from("open_positions").update({
