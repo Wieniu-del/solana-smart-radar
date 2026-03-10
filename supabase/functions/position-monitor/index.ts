@@ -40,8 +40,9 @@ Deno.serve(async (req) => {
         const entryPrice = Number(pos.entry_price_usd) || 0;
 
         if (hoursSinceUpdate >= 3 || entryPrice <= 0) {
-          console.warn(`[position-monitor] Dead token: ${pos.token_symbol} — no price ${hoursSinceUpdate.toFixed(1)}h, force-closing`);
-          await closePosition(supabase, supabaseUrl, supabaseKey, pos, 0, "dead_token", -100);
+          const deadPnl = entryPrice > 0 ? -100 : -100; // Always -100% for dead tokens
+          console.warn(`[position-monitor] Dead token: ${pos.token_symbol} — no price ${hoursSinceUpdate.toFixed(1)}h, force-closing as -100%`);
+          await closePosition(supabase, supabaseUrl, supabaseKey, pos, 0, "dead_token", deadPnl);
           closedCount++;
           continue;
         }
