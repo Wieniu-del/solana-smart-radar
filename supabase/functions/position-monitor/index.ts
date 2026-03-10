@@ -101,13 +101,13 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      const trailingStopPct = Number(pos.trailing_stop_pct) || 10;
+      const baseTrailingStopPct = Number(pos.trailing_stop_pct) || 10;
       const takeProfitPct = Number(pos.take_profit_pct) || 50;
 
       let entryPrice = Number(pos.entry_price_usd) || 0;
       if (entryPrice <= 0) {
         const highestPriceSeed = Math.max(Number(pos.highest_price_usd) || 0, currentPrice);
-        const seededStopPrice = highestPriceSeed * (1 - trailingStopPct / 100);
+        const seededStopPrice = highestPriceSeed * (1 - baseTrailingStopPct / 100);
 
         await supabase.from("open_positions").update({
           entry_price_usd: currentPrice,
@@ -123,6 +123,21 @@ Deno.serve(async (req) => {
 
       const highestPrice = Math.max(Number(pos.highest_price_usd) || 0, currentPrice);
       const pnlPct = ((currentPrice - entryPrice) / entryPrice) * 100;
+
+      // ── Dynamic Trailing Stop: tighten when in quick profit ──
+      const hoursHeld = (Date.now() - new Date(pos.opened_at).getTime()) / (1000 * 60 * 60);
+      let trailingStopPct = baseTrailingStopPct;
+
+      if (pnlPct >= 15 && hoursHeld < 1) {
+        // Rocket mode: 15%+ in <1h → lock with 4% trail
+        trailingStopPct = 4;
+      } else if (pnlPct >= 10 && hoursHeld < 2) {
+        // Quick profit: 10%+ in <2h → tighten to 5%
+        trailingStopPct = 5;
+      } else if (pnlPct >= 8) {
+        // Any 8%+ profit → tighten to 7%
+        trailingStopPct = 7;
+      }
 
       // Trailing stop price = highest price * (1 - trailing%)
       const stopPrice = highestPrice * (1 - trailingStopPct / 100);
