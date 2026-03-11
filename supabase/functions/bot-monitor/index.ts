@@ -360,6 +360,7 @@ Deno.serve(async (req) => {
               decision,
               valueUsd,
               totalValueUsd,
+              ta_strategies: taTriggered,
             });
 
             if (decision === "BUY") totalBuySignals++;
