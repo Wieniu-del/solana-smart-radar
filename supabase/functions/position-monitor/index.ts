@@ -68,7 +68,7 @@ Deno.serve(async (req) => {
       const pnlPct = ((currentPrice - entryPrice) / entryPrice) * 100;
       const hoursHeld = (Date.now() - new Date(pos.opened_at).getTime()) / (1000 * 60 * 60);
       const baseTrailingStopPct = Number(pos.trailing_stop_pct) || 4;
-      const takeProfitPct = Number(pos.take_profit_pct) || 15;
+      const takeProfitPct = Number(pos.take_profit_pct) || 999; // TP disabled — trailing stop manages exits
 
       // ── AGGRESSIVE DYNAMIC TRAILING STOP (base 4%) ──
       let trailingStopPct = baseTrailingStopPct;
