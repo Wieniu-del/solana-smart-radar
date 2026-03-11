@@ -135,25 +135,8 @@ const Index = () => {
   const topWallets = useMemo(() =>
     [...mockTopWallets].sort((a, b) => b.smartScore - a.smartScore).slice(0, 5), []);
 
-  // Simulated live network chart that updates
-  const [networkChart, setNetworkChart] = useState(() =>
-    Array.from({ length: 24 }, (_, i) => ({
-      hour: `${i}:00`,
-      tx: Math.floor(100000 + Math.random() * 200000),
-      wallets: Math.floor(8000 + Math.random() * 15000),
-    }))
-  );
 
-  // Update current hour bar live
-  useEffect(() => {
-    if (!stats) return;
-    const currentHour = new Date().getHours();
-    setNetworkChart(prev => prev.map((d, i) =>
-      i === currentHour
-        ? { ...d, tx: d.tx + Math.floor(Math.random() * 3000 - 1000) }
-        : d
-    ));
-  }, [clockTick, stats]);
+
 
   return (
     <div className="space-y-6">
