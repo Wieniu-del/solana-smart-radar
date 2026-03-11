@@ -5,6 +5,23 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// ─── TRAILING STOP TABLE ───
+// PnL% → Trailing Stop %
+const TRAILING_TABLE = [
+  { minPnl: 80, trailing: 2 },
+  { minPnl: 40, trailing: 2.5 },
+  { minPnl: 20, trailing: 3 },
+  { minPnl: 10, trailing: 3.5 },
+  { minPnl: 0, trailing: 4 },
+];
+
+function getTrailingStopPct(pnlPct: number): number {
+  for (const tier of TRAILING_TABLE) {
+    if (pnlPct >= tier.minPnl) return tier.trailing;
+  }
+  return 4; // base
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -28,21 +45,28 @@ Deno.serve(async (req) => {
     const mints = [...new Set(positions.map((p: any) => p.token_mint))];
     const priceMap = await fetchTokenPrices(mints);
 
+    // Load stop loss config
+    const { data: slConfig } = await supabase
+      .from("bot_config")
+      .select("value")
+      .eq("key", "stop_loss_pct")
+      .single();
+    const STOP_LOSS_PCT = Number(slConfig?.value) || 22;
+
     let closedCount = 0;
 
     for (const pos of positions) {
       const currentPrice = priceMap[pos.token_mint] || 0;
 
-      // ── DEAD TOKEN: brak ceny przez >3h → zamknij (skrócone z 6h) ──
+      // ── DEAD TOKEN: no price for >3h → close ──
       if (currentPrice <= 0) {
         const lastUpdate = new Date(pos.updated_at).getTime();
         const hoursSinceUpdate = (Date.now() - lastUpdate) / (1000 * 60 * 60);
         const entryPrice = Number(pos.entry_price_usd) || 0;
 
         if (hoursSinceUpdate >= 3 || entryPrice <= 0) {
-          const deadPnl = entryPrice > 0 ? -100 : -100; // Always -100% for dead tokens
           console.warn(`[position-monitor] Dead token: ${pos.token_symbol} — no price ${hoursSinceUpdate.toFixed(1)}h, force-closing as -100%`);
-          await closePosition(supabase, supabaseUrl, supabaseKey, pos, 0, "dead_token", deadPnl);
+          await closePosition(supabase, supabaseUrl, supabaseKey, pos, 0, "dead_token", -100);
           closedCount++;
           continue;
         }
@@ -57,7 +81,7 @@ Deno.serve(async (req) => {
           entry_price_usd: currentPrice,
           current_price_usd: currentPrice,
           highest_price_usd: currentPrice,
-          stop_price_usd: currentPrice * 0.96, // 4% trailing stop default
+          stop_price_usd: currentPrice * (1 - 4 / 100),
           pnl_pct: 0,
           updated_at: new Date().toISOString(),
         }).eq("id", pos.id);
@@ -67,27 +91,12 @@ Deno.serve(async (req) => {
       const highestPrice = Math.max(Number(pos.highest_price_usd) || 0, currentPrice);
       const pnlPct = ((currentPrice - entryPrice) / entryPrice) * 100;
       const hoursHeld = (Date.now() - new Date(pos.opened_at).getTime()) / (1000 * 60 * 60);
-      const baseTrailingStopPct = Number(pos.trailing_stop_pct) || 4;
-      const takeProfitPct = Number(pos.take_profit_pct) || 999; // TP disabled — trailing stop manages exits
 
-      // ── AGGRESSIVE DYNAMIC TRAILING STOP (base 4%) ──
-      let trailingStopPct = baseTrailingStopPct;
-      if (pnlPct >= 20 && hoursHeld < 0.5) {
-        trailingStopPct = 2; // Moon shot: lock ultra-hard
-      } else if (pnlPct >= 15 && hoursHeld < 1) {
-        trailingStopPct = 3; // Rocket: lock hard
-      } else if (pnlPct >= 10 && hoursHeld < 2) {
-        trailingStopPct = 3.5;
-      } else if (pnlPct >= 8) {
-        trailingStopPct = 4;
-      } else if (pnlPct >= 5) {
-        trailingStopPct = 4;
-      }
-      // Base case: 4% trailing stop (tighter than before)
-
+      // ── DYNAMIC TRAILING STOP from table ──
+      const trailingStopPct = getTrailingStopPct(pnlPct);
       const stopPrice = highestPrice * (1 - trailingStopPct / 100);
 
-      // ── EARLY PROFIT LOCK: jeśli zysk spadł z >5% do <2% → zamknij (oddajemy zyski!) ──
+      // ── EARLY PROFIT LOCK: profit faded from >5% to <2% → lock ──
       const prevHighPnl = ((highestPrice - entryPrice) / entryPrice) * 100;
       if (prevHighPnl >= 5 && pnlPct < 2 && pnlPct >= 0) {
         console.warn(`[position-monitor] Profit fade: ${pos.token_symbol} was +${prevHighPnl.toFixed(1)}% now +${pnlPct.toFixed(1)}% — locking gains`);
@@ -99,22 +108,23 @@ Deno.serve(async (req) => {
       // ── CHECK CLOSE CONDITIONS ──
       let closeReason: string | null = null;
 
-      if (currentPrice <= stopPrice && pnlPct < 0) {
+      // Hard stop loss at -22%
+      if (pnlPct <= -STOP_LOSS_PCT) {
+        closeReason = "stop_loss";
+      }
+      // Trailing stop hit
+      else if (currentPrice <= stopPrice && pnlPct < 0) {
         closeReason = "stop_loss";
       } else if (currentPrice <= stopPrice && pnlPct >= 0) {
         closeReason = "trailing_stop";
       }
 
-      if (pnlPct >= takeProfitPct) {
-        closeReason = "take_profit";
-      }
-
-      // ── FAST LOSS CUT: jeśli -5% w pierwszych 30min → od razu tnij ──
+      // ── FAST LOSS CUT: -5% in first 30min ──
       if (pnlPct <= -5 && hoursHeld < 0.5) {
         closeReason = "fast_loss_cut";
       }
 
-      // ── TIME-BASED DECAY: po 4h z zyskiem <3% → zamknij (nie warto trzymać) ──
+      // ── TIME DECAY: after 4h with <3% profit ──
       if (hoursHeld >= 4 && pnlPct < 3 && pnlPct > -3) {
         closeReason = "time_decay";
       }
@@ -151,7 +161,7 @@ async function closePosition(
   const highestPrice = Math.max(Number(pos.highest_price_usd) || 0, currentPrice);
   const pnlSol = (pnlPct / 100) * Number(pos.amount_sol);
 
-  // Try to execute SELL (skip for dead tokens with no price)
+  // Try to execute SELL
   let txSignature: string | null = null;
   if (currentPrice > 0 && closeReason !== "dead_token") {
     try {
@@ -165,7 +175,7 @@ async function closePosition(
           action: "SELL",
           tokenMint: pos.token_mint,
           amountSol: pos.token_amount || pos.amount_sol,
-          slippageBps: 300, // Higher slippage for faster exits
+          slippageBps: 300,
         }),
       });
       const swapData = await swapRes.json();
@@ -194,14 +204,13 @@ async function closePosition(
 
   // Notification
   const reasonLabels: Record<string, string> = {
-    stop_loss: "🔴 Stop-Loss",
+    stop_loss: "🔴 Stop-Loss (-22%)",
     trailing_stop: "🟡 Trailing Stop",
     take_profit: "🟢 Take-Profit",
     dead_token: "💀 Dead Token",
     profit_fade: "🟠 Profit Fade Lock",
     fast_loss_cut: "⚡ Fast Loss Cut",
     time_decay: "⏰ Time Decay",
-    stale_position: "⏸️ Stale",
   };
   await supabase.from("notifications").insert({
     type: "position_closed",
