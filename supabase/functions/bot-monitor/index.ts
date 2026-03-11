@@ -90,16 +90,17 @@ Deno.serve(async (req) => {
       .select("value")
       .eq("key", "min_score_threshold")
       .single();
-    const minScoreThreshold = (thresholdConfig?.value as number) || 70;
+    const minScoreThreshold = (thresholdConfig?.value as number) || 60;
 
-    // 3b. Get dynamic sizing config
-    const { data: dynSizingConfig } = await supabase
-      .from("bot_config")
-      .select("value")
-      .eq("key", "dynamic_sizing")
-      .single();
-    const dynamicSizing = (dynSizingConfig?.value as { enabled: boolean; min_sol: number; max_sol: number }) || {
-      enabled: false, min_sol: 0.05, max_sol: 0.5,
+    // 3b. Dynamic sizing table (score-based)
+    const dynamicSizing = {
+      enabled: true,
+      table: [
+        { minScore: 85, sol: 0.15 },
+        { minScore: 75, sol: 0.10 },
+        { minScore: 65, sol: 0.07 },
+        { minScore: 55, sol: 0.03 },
+      ],
     };
 
     // 3c. Get pipeline config (user-adjustable feature toggles)
