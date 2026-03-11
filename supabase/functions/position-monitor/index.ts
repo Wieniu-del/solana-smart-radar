@@ -6,7 +6,6 @@ const corsHeaders = {
 };
 
 // ─── TRAILING STOP TABLE ───
-// PnL% → Trailing Stop %
 const TRAILING_TABLE = [
   { minPnl: 80, trailing: 2 },
   { minPnl: 40, trailing: 2.5 },
@@ -19,7 +18,7 @@ function getTrailingStopPct(pnlPct: number): number {
   for (const tier of TRAILING_TABLE) {
     if (pnlPct >= tier.minPnl) return tier.trailing;
   }
-  return 4; // base
+  return 4;
 }
 
 Deno.serve(async (req) => {
@@ -45,13 +44,21 @@ Deno.serve(async (req) => {
     const mints = [...new Set(positions.map((p: any) => p.token_mint))];
     const priceMap = await fetchTokenPrices(mints);
 
-    // Load stop loss config
+    // Load stop loss config (default -15%)
     const { data: slConfig } = await supabase
       .from("bot_config")
       .select("value")
       .eq("key", "stop_loss_pct")
       .single();
-    const STOP_LOSS_PCT = Number(slConfig?.value) || 22;
+    const STOP_LOSS_PCT = Number(slConfig?.value) || 15;
+
+    // Load trailing start threshold (default 8%)
+    const { data: trailingStartConfig } = await supabase
+      .from("bot_config")
+      .select("value")
+      .eq("key", "trailing_start_pct")
+      .maybeSingle();
+    const TRAILING_START_PCT = Number(trailingStartConfig?.value) || 8;
 
     let closedCount = 0;
 
@@ -76,7 +83,6 @@ Deno.serve(async (req) => {
 
       let entryPrice = Number(pos.entry_price_usd) || 0;
       if (entryPrice <= 0) {
-        // Seed entry price
         await supabase.from("open_positions").update({
           entry_price_usd: currentPrice,
           current_price_usd: currentPrice,
@@ -93,8 +99,12 @@ Deno.serve(async (req) => {
       const hoursHeld = (Date.now() - new Date(pos.opened_at).getTime()) / (1000 * 60 * 60);
 
       // ── DYNAMIC TRAILING STOP from table ──
+      // Only activate trailing if pnl >= trailing start threshold (8%)
+      const trailingActive = pnlPct >= TRAILING_START_PCT;
       const trailingStopPct = getTrailingStopPct(pnlPct);
-      const stopPrice = highestPrice * (1 - trailingStopPct / 100);
+      const stopPrice = trailingActive
+        ? highestPrice * (1 - trailingStopPct / 100)
+        : entryPrice * (1 - STOP_LOSS_PCT / 100); // hard SL before trailing activates
 
       // ── EARLY PROFIT LOCK: profit faded from >5% to <2% → lock ──
       const prevHighPnl = ((highestPrice - entryPrice) / entryPrice) * 100;
@@ -108,14 +118,12 @@ Deno.serve(async (req) => {
       // ── CHECK CLOSE CONDITIONS ──
       let closeReason: string | null = null;
 
-      // Hard stop loss at -22%
+      // Hard stop loss at -15%
       if (pnlPct <= -STOP_LOSS_PCT) {
         closeReason = "stop_loss";
       }
-      // Trailing stop hit
-      else if (currentPrice <= stopPrice && pnlPct < 0) {
-        closeReason = "stop_loss";
-      } else if (currentPrice <= stopPrice && pnlPct >= 0) {
+      // Trailing stop hit (only when trailing is active)
+      else if (trailingActive && currentPrice <= stopPrice) {
         closeReason = "trailing_stop";
       }
 
@@ -133,7 +141,6 @@ Deno.serve(async (req) => {
         await closePosition(supabase, supabaseUrl, supabaseKey, pos, currentPrice, closeReason, pnlPct);
         closedCount++;
       } else {
-        // Update tracking
         await supabase.from("open_positions").update({
           current_price_usd: currentPrice,
           highest_price_usd: highestPrice,
@@ -204,7 +211,7 @@ async function closePosition(
 
   // Notification
   const reasonLabels: Record<string, string> = {
-    stop_loss: "🔴 Stop-Loss (-22%)",
+    stop_loss: "🔴 Stop-Loss (-15%)",
     trailing_stop: "🟡 Trailing Stop",
     take_profit: "🟢 Take-Profit",
     dead_token: "💀 Dead Token",
@@ -253,7 +260,6 @@ async function fetchTokenPrices(mints: string[]): Promise<Record<string, number>
   const prices: Record<string, number> = {};
   if (mints.length === 0) return prices;
 
-  // Jupiter Lite
   try {
     const ids = encodeURIComponent(mints.join(","));
     const priceRes = await fetch(`https://lite-api.jup.ag/price/v2?ids=${ids}`);
@@ -268,7 +274,6 @@ async function fetchTokenPrices(mints: string[]): Promise<Record<string, number>
     console.error("Jupiter price fetch error:", e);
   }
 
-  // DexScreener fallback
   const missing = mints.filter((mint) => !prices[mint]);
   await Promise.all(
     missing.map(async (mint) => {
