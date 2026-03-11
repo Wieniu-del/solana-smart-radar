@@ -12,6 +12,7 @@ import LivePulse from "@/components/LivePulse";
 import BotHealthMonitor from "@/components/BotHealthMonitor";
 import PortfolioHealth from "@/components/PortfolioHealth";
 import AnimatedCounter from "@/components/AnimatedCounter";
+import PositionDetailModal from "@/components/PositionDetailModal";
 import {
   AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip, BarChart, Bar
 } from "recharts";
