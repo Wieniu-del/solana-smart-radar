@@ -273,6 +273,11 @@ export default function AutoTrading() {
           <BotControlPanel />
         </TabsContent>
 
+        {/* ─── Technical Strategies Tab ─── */}
+        <TabsContent value="tech-strategies">
+          <TechnicalStrategiesPanel />
+        </TabsContent>
+
         {/* ─── Pipeline Config Tab ─── */}
         <TabsContent value="pipeline-config">
           <PipelineConfigPanel />
