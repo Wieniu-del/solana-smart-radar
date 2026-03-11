@@ -10,6 +10,7 @@ import BotControlPanel from "@/components/BotControlPanel";
 import PnLDashboard from "@/components/PnLDashboard";
 import SystemStatusPanel from "@/components/SystemStatusPanel";
 import PipelineConfigPanel from "@/components/PipelineConfigPanel";
+import TechnicalStrategiesPanel from "@/components/TechnicalStrategiesPanel";
 import {
   Bot, Zap, ShieldAlert, TrendingUp, TrendingDown, Clock, AlertTriangle,
   CheckCircle2, XCircle, Activity, Target, DollarSign, Play, Square,
