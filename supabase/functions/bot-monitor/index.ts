@@ -677,7 +677,7 @@ Deno.serve(async (req) => {
               continue;
             }
 
-            // FIX #3b: Min confidence ≥65 for auto-execute
+            // Min confidence ≥65 for auto-execute
             if ((signal.confidence || 0) < 65) {
               console.log(`[bot] Skipping signal ${signal.id}: confidence ${signal.confidence} < 65`);
               await supabase.from("trading_signals").update({ status: "rejected" }).eq("id", signal.id);
@@ -692,13 +692,13 @@ Deno.serve(async (req) => {
               continue;
             }
 
-            let positionSol = basePositionSol;
-            if (dynamicSizing.enabled) {
-              const confidence = Number(signal.confidence || 70);
-              const scoreNorm = Math.max(0, Math.min(1, (confidence - 70) / 30));
-              positionSol = dynamicSizing.min_sol + scoreNorm * (dynamicSizing.max_sol - dynamicSizing.min_sol);
-              positionSol = Math.round(positionSol * 1000) / 1000;
-            }
+            // Dynamic sizing based on score table
+            let positionSol = 0.03; // minimum
+            const confidence = Number(signal.confidence || 0);
+            if (confidence >= 85) positionSol = 0.15;
+            else if (confidence >= 75) positionSol = 0.10;
+            else if (confidence >= 65) positionSol = 0.07;
+            else positionSol = 0.03;
 
             const success = await executeBuySignal({
               supabase,
