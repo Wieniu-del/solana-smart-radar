@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import {
   BarChart3, Search, TrendingUp, Activity, Zap, Clock, ArrowUpRight,
-  Brain, Trophy, DollarSign, Target, PieChart, Layers, Timer, Radio, Cpu, Gauge
+  Brain, Trophy, DollarSign, Target, PieChart, Layers, Timer, Radio, Cpu, Gauge, Coins
 } from "lucide-react";
 import { mockTopWallets } from "@/types/wallet";
 import { useSearchHistory } from "@/hooks/useSearchHistory";
