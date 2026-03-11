@@ -588,7 +588,7 @@ Deno.serve(async (req) => {
             .select("value")
             .eq("key", "take_profit_pct")
             .single();
-          const takeProfitPct = (tpConfig?.value as number) || 50;
+          const takeProfitPct = (tpConfig?.value as number) || 15;
 
           const slotsAvailable = maxOpenPositions - (currentOpen || 0);
           let executed = 0;
