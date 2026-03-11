@@ -9,7 +9,7 @@ const SOL_MINT = "So11111111111111111111111111111111111111112";
 const JUPITER_QUOTE_API = "https://lite-api.jup.ag/swap/v1/quote";
 const JUPITER_SWAP_API = "https://lite-api.jup.ag/swap/v1/swap";
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
