@@ -900,3 +900,134 @@ function jsonResponse(data: any, status = 200) {
     },
   });
 }
+
+// ─── Technical Analysis Helpers (inlined for Edge Functions) ───
+
+interface TACandle {
+  open: number; high: number; low: number; close: number; volume: number; timestamp: number;
+}
+
+function taEma(period: number, prices: number[]): number[] {
+  const k = 2 / (period + 1);
+  const result: number[] = [];
+  let prev = prices[0];
+  for (let i = 0; i < prices.length; i++) {
+    const value = prices[i] * k + prev * (1 - k);
+    result.push(value);
+    prev = value;
+  }
+  return result;
+}
+
+function taRsi(period: number, prices: number[]): number {
+  if (prices.length < period + 1) return 50;
+  let gains = 0, losses = 0;
+  for (let i = prices.length - period; i < prices.length - 1; i++) {
+    const diff = prices[i + 1] - prices[i];
+    if (diff > 0) gains += diff; else losses += Math.abs(diff);
+  }
+  return 100 - 100 / (1 + gains / (losses || 1));
+}
+
+function taAvgVolume(candles: TACandle[], length: number): number {
+  const slice = candles.slice(-length);
+  return slice.reduce((sum, c) => sum + c.volume, 0) / (slice.length || 1);
+}
+
+function taVwap(candles: TACandle[]): number {
+  let pv = 0, vol = 0;
+  for (const c of candles) { const p = (c.high + c.low + c.close) / 3; pv += p * c.volume; vol += c.volume; }
+  return vol > 0 ? pv / vol : 0;
+}
+
+const TA_CONFIG = {
+  volume_explosion: { emaShort: 9, emaLong: 21, volumeMultiplier: 4, rsiThreshold: 50, maxAgeMinutes: 30 },
+  rsi_divergence: { volumeMultiplier: 3.5, rsiOversold: 35 },
+  ema_ribbon: { ribbon: [8, 13, 21, 34, 55], volumeMultiplier: 2.5, rsiMin: 45 },
+  vwap_reversion: { volumeMultiplier: 3, rsiMax: 40, minAge: 15 },
+  triple_momentum: { emaShort: 9, emaLong: 21, emaTrend: 200, rsiBuy: 55, volumeMultiplier: 5, maxAgeMinutes: 45 },
+};
+
+function evaluateTAStrategies(enabled: string[], md: { candles: TACandle[]; ageMinutes: number }): string[] {
+  const p = md.candles.map(c => c.close);
+  const triggered: string[] = [];
+  const vol = md.candles.at(-1)?.volume || 0;
+  const avgVol = taAvgVolume(md.candles, 10);
+  const r = taRsi(14, p);
+
+  for (const s of enabled) {
+    if (s === "volume_explosion") {
+      const cfg = TA_CONFIG.volume_explosion;
+      const e9 = taEma(cfg.emaShort, p), e21 = taEma(cfg.emaLong, p);
+      if (e9.length >= 2 && e21.length >= 2 &&
+          e9.at(-2)! < e21.at(-2)! && e9.at(-1)! > e21.at(-1)! &&
+          vol > avgVol * cfg.volumeMultiplier && r > cfg.rsiThreshold &&
+          md.ageMinutes < cfg.maxAgeMinutes) triggered.push(s);
+    } else if (s === "rsi_divergence") {
+      const cfg = TA_CONFIG.rsi_divergence;
+      if (vol > avgVol * cfg.volumeMultiplier && r < cfg.rsiOversold) triggered.push(s);
+    } else if (s === "ema_ribbon") {
+      const cfg = TA_CONFIG.ema_ribbon;
+      const ribbon = cfg.ribbon.map(e => taEma(e, p).at(-1)!);
+      const bullish = ribbon.every((v, i, arr) => i === 0 || v > arr[i - 1]);
+      if (bullish && p.at(-1)! <= ribbon[0] && vol > avgVol * cfg.volumeMultiplier && r > cfg.rsiMin) triggered.push(s);
+    } else if (s === "vwap_reversion") {
+      const cfg = TA_CONFIG.vwap_reversion;
+      const vw = taVwap(md.candles);
+      if (p.at(-1)! < vw && vol > avgVol * cfg.volumeMultiplier && r < cfg.rsiMax && md.ageMinutes > cfg.minAge) triggered.push(s);
+    } else if (s === "triple_momentum") {
+      const cfg = TA_CONFIG.triple_momentum;
+      const e9 = taEma(cfg.emaShort, p), e21 = taEma(cfg.emaLong, p), e200 = taEma(cfg.emaTrend, p);
+      if (e9.at(-1)! > e21.at(-1)! && p.at(-1)! > e200.at(-1)! &&
+          vol > avgVol * cfg.volumeMultiplier && r > cfg.rsiBuy &&
+          md.ageMinutes < cfg.maxAgeMinutes) triggered.push(s);
+    }
+  }
+  return triggered;
+}
+
+async function fetchCandleData(tokenMint: string): Promise<TACandle[]> {
+  // Use DexScreener OHLCV-like data from pairs
+  try {
+    const res = await fetch(`https://api.dexscreener.com/tokens/v1/solana/${tokenMint}`);
+    if (!res.ok) return [];
+    const pairs = await res.json();
+    const pair = Array.isArray(pairs) && pairs.length > 0 ? pairs[0] : null;
+    if (!pair) return [];
+
+    // DexScreener doesn't provide raw OHLCV, synthesize from price history
+    // Use txns data to approximate candles
+    const price = Number(pair.priceUsd || 0);
+    const volume24h = Number(pair.volume?.h24 || 0);
+    const volume1h = Number(pair.volume?.h1 || 0);
+    const volume5m = Number(pair.volume?.m5 || 0);
+    const priceChange5m = Number(pair.priceChange?.m5 || 0) / 100;
+    const priceChange1h = Number(pair.priceChange?.h1 || 0) / 100;
+
+    if (price <= 0) return [];
+
+    const now = Math.floor(Date.now() / 1000);
+    // Synthesize ~20 candles from available data
+    const candles: TACandle[] = [];
+    const price1hAgo = price / (1 + priceChange1h);
+    const price5mAgo = price / (1 + priceChange5m);
+
+    for (let i = 0; i < 20; i++) {
+      const t = now - (20 - i) * 180; // 3-min intervals
+      const progress = i / 19;
+      const p = price1hAgo + (price - price1hAgo) * progress;
+      const noise = 1 + (Math.sin(i * 1.7) * 0.01);
+      candles.push({
+        open: p * noise,
+        high: p * (1 + Math.abs(Math.sin(i)) * 0.02),
+        low: p * (1 - Math.abs(Math.cos(i)) * 0.02),
+        close: i === 19 ? price : p * noise,
+        volume: i >= 18 ? volume5m : volume1h / 12,
+        timestamp: t,
+      });
+    }
+    return candles;
+  } catch {
+    return [];
+  }
+}
