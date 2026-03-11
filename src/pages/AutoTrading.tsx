@@ -10,6 +10,7 @@ import BotControlPanel from "@/components/BotControlPanel";
 import PnLDashboard from "@/components/PnLDashboard";
 import SystemStatusPanel from "@/components/SystemStatusPanel";
 import PipelineConfigPanel from "@/components/PipelineConfigPanel";
+import TechnicalStrategiesPanel from "@/components/TechnicalStrategiesPanel";
 import {
   Bot, Zap, ShieldAlert, TrendingUp, TrendingDown, Clock, AlertTriangle,
   CheckCircle2, XCircle, Activity, Target, DollarSign, Play, Square,
@@ -253,6 +254,10 @@ export default function AutoTrading() {
             <BarChart3 className="h-3.5 w-3.5 mr-1" />
             PnL
           </TabsTrigger>
+          <TabsTrigger value="tech-strategies">
+            <TrendingUp className="h-3.5 w-3.5 mr-1" />
+            Strategie TA
+          </TabsTrigger>
           <TabsTrigger value="pipeline-config">
             <Filter className="h-3.5 w-3.5 mr-1" />
             Pipeline
@@ -266,6 +271,11 @@ export default function AutoTrading() {
         {/* ─── Bot 24/7 Control Panel ─── */}
         <TabsContent value="bot247">
           <BotControlPanel />
+        </TabsContent>
+
+        {/* ─── Technical Strategies Tab ─── */}
+        <TabsContent value="tech-strategies">
+          <TechnicalStrategiesPanel />
         </TabsContent>
 
         {/* ─── Pipeline Config Tab ─── */}
