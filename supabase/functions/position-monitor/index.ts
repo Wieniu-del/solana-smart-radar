@@ -57,7 +57,7 @@ Deno.serve(async (req) => {
           entry_price_usd: currentPrice,
           current_price_usd: currentPrice,
           highest_price_usd: currentPrice,
-          stop_price_usd: currentPrice * 0.93,
+          stop_price_usd: currentPrice * 0.96, // 4% trailing stop default
           pnl_pct: 0,
           updated_at: new Date().toISOString(),
         }).eq("id", pos.id);
@@ -67,20 +67,23 @@ Deno.serve(async (req) => {
       const highestPrice = Math.max(Number(pos.highest_price_usd) || 0, currentPrice);
       const pnlPct = ((currentPrice - entryPrice) / entryPrice) * 100;
       const hoursHeld = (Date.now() - new Date(pos.opened_at).getTime()) / (1000 * 60 * 60);
-      const baseTrailingStopPct = Number(pos.trailing_stop_pct) || 7;
-      const takeProfitPct = Number(pos.take_profit_pct) || 12;
+      const baseTrailingStopPct = Number(pos.trailing_stop_pct) || 4;
+      const takeProfitPct = Number(pos.take_profit_pct) || 15;
 
-      // ── AGGRESSIVE DYNAMIC TRAILING STOP ──
+      // ── AGGRESSIVE DYNAMIC TRAILING STOP (base 4%) ──
       let trailingStopPct = baseTrailingStopPct;
-      if (pnlPct >= 15 && hoursHeld < 1) {
+      if (pnlPct >= 20 && hoursHeld < 0.5) {
+        trailingStopPct = 2; // Moon shot: lock ultra-hard
+      } else if (pnlPct >= 15 && hoursHeld < 1) {
         trailingStopPct = 3; // Rocket: lock hard
       } else if (pnlPct >= 10 && hoursHeld < 2) {
-        trailingStopPct = 4;
+        trailingStopPct = 3.5;
       } else if (pnlPct >= 8) {
-        trailingStopPct = 5;
+        trailingStopPct = 4;
       } else if (pnlPct >= 5) {
-        trailingStopPct = 6;
+        trailingStopPct = 4;
       }
+      // Base case: 4% trailing stop (tighter than before)
 
       const stopPrice = highestPrice * (1 - trailingStopPct / 100);
 

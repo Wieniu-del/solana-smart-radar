@@ -581,14 +581,14 @@ Deno.serve(async (req) => {
             .select("value")
             .eq("key", "trailing_stop_pct")
             .single();
-          const trailingStopPct = (tsConfig?.value as number) || 10;
+          const trailingStopPct = (tsConfig?.value as number) || 4;
 
           const { data: tpConfig } = await supabase
             .from("bot_config")
             .select("value")
             .eq("key", "take_profit_pct")
             .single();
-          const takeProfitPct = (tpConfig?.value as number) || 50;
+          const takeProfitPct = (tpConfig?.value as number) || 15;
 
           const slotsAvailable = maxOpenPositions - (currentOpen || 0);
           let executed = 0;
@@ -944,11 +944,11 @@ function taVwap(candles: TACandle[]): number {
 }
 
 const TA_CONFIG = {
-  volume_explosion: { emaShort: 9, emaLong: 21, volumeMultiplier: 4, rsiThreshold: 50, maxAgeMinutes: 30 },
-  rsi_divergence: { volumeMultiplier: 3.5, rsiOversold: 35 },
-  ema_ribbon: { ribbon: [8, 13, 21, 34, 55], volumeMultiplier: 2.5, rsiMin: 45 },
-  vwap_reversion: { volumeMultiplier: 3, rsiMax: 40, minAge: 15 },
-  triple_momentum: { emaShort: 9, emaLong: 21, emaTrend: 200, rsiBuy: 55, volumeMultiplier: 5, maxAgeMinutes: 45 },
+  volume_explosion: { emaShort: 9, emaLong: 21, volumeMultiplier: 2.5, rsiThreshold: 45, maxAgeMinutes: 45 },
+  rsi_divergence: { volumeMultiplier: 2.5, rsiOversold: 40 },
+  ema_ribbon: { ribbon: [8, 13, 21, 34, 55], volumeMultiplier: 2, rsiMin: 40 },
+  vwap_reversion: { volumeMultiplier: 2, rsiMax: 45, minAge: 10 },
+  triple_momentum: { emaShort: 9, emaLong: 21, emaTrend: 50, rsiBuy: 48, volumeMultiplier: 3, maxAgeMinutes: 60 },
 };
 
 // Age-based phase selection
