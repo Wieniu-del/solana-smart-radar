@@ -57,7 +57,7 @@ Deno.serve(async (req) => {
           entry_price_usd: currentPrice,
           current_price_usd: currentPrice,
           highest_price_usd: currentPrice,
-          stop_price_usd: currentPrice * 0.93,
+          stop_price_usd: currentPrice * 0.96, // 4% trailing stop default
           pnl_pct: 0,
           updated_at: new Date().toISOString(),
         }).eq("id", pos.id);
