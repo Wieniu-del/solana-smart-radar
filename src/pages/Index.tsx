@@ -38,6 +38,7 @@ const Index = () => {
     activePositions: 0,
     botActive: false,
   });
+  const [openPositions, setOpenPositions] = useState<any[]>([]);
 
   // Live clock tick for animated effects
   useEffect(() => {
