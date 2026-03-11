@@ -281,40 +281,81 @@ Deno.serve(async (req) => {
             const valueUsd = tokenInfo?.valueUsd || 0;
 
             // FIX #2: Real liquidity check via DexScreener API
-            const minLiquidityUsd = Number(pLiquidity.min_value_usd || 5000);
+            const minLiquidityUsd = Number(pLiquidity.min_value_usd || 15000);
             let realLiquidityUsd = 0;
+            let volume5m = 0;
+            let topHolderPct = 0;
+            let hasMintAuth = false;
+            let hasFreezeAuth = false;
+            let tokenAgeMinutes = 0;
+
             try {
               const dexRes = await fetch(`https://api.dexscreener.com/tokens/v1/solana/${incomingMint}`);
               if (dexRes.ok) {
                 const dexPairs = await dexRes.json();
                 const pairs = Array.isArray(dexPairs) ? dexPairs : [];
+                const topPair = pairs.sort((a: any, b: any) => Number(b?.liquidity?.usd || 0) - Number(a?.liquidity?.usd || 0))[0];
                 realLiquidityUsd = pairs.reduce((max: number, p: any) => Math.max(max, Number(p?.liquidity?.usd || 0)), 0);
+                volume5m = Number(topPair?.volume?.m5 || 0);
+                // Estimate token age from pair creation
+                if (topPair?.pairCreatedAt) {
+                  tokenAgeMinutes = Math.round((Date.now() - topPair.pairCreatedAt) / 60000);
+                }
               }
-            } catch (_) { /* DexScreener unreachable — fallback to wallet value */ }
+            } catch (_) { /* DexScreener unreachable */ }
 
             const effectiveLiquidity = realLiquidityUsd > 0 ? realLiquidityUsd : valueUsd;
+
+            // ── PUMP.FUN FILTERS ──
+            // Liquidity filter
             if (pLiquidity.enabled && effectiveLiquidity < minLiquidityUsd) {
-              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: liquidity $${effectiveLiquidity.toFixed(0)} (dex: $${realLiquidityUsd.toFixed(0)}, wallet: $${valueUsd.toFixed(0)}) < $${minLiquidityUsd} min`);
+              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: liquidity $${effectiveLiquidity.toFixed(0)} < $${minLiquidityUsd}`);
               continue;
             }
-            if (realLiquidityUsd > 0) {
-              console.log(`[bot] PASS ${incomingMint.slice(0,8)}: DexScreener liquidity $${realLiquidityUsd.toFixed(0)}`);
+            // Volume 5m filter
+            if (volume5m > 0 && volume5m < 20000) {
+              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: volume5m $${volume5m.toFixed(0)} < $20000`);
+              continue;
+            }
+            // Token age filter (max 60 minutes)
+            if (tokenAgeMinutes > 0 && tokenAgeMinutes > 60) {
+              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: age ${tokenAgeMinutes}min > 60min`);
+              continue;
             }
 
-            // Scoring with pipeline config
-            const securityScore = pSecurity.enabled
-              ? (isSafe ? 100 : hasPrice ? 60 : 30)
-              : 70; // neutral if disabled
-            const liquidityScore = pLiquidity.enabled
-              ? (effectiveLiquidity > 100000 ? 80 : effectiveLiquidity > 10000 ? 60 : effectiveLiquidity > 1000 ? 40 : 20)
-              : 60; // neutral if disabled
-            const walletScore = pWallet.enabled
-              ? (totalValueUsd > 100000 ? 80 : totalValueUsd > 10000 ? 60 : 40)
-              : 60; // neutral if disabled
+            if (realLiquidityUsd > 0) {
+              console.log(`[bot] PASS ${incomingMint.slice(0,8)}: liq=$${realLiquidityUsd.toFixed(0)}, vol5m=$${volume5m.toFixed(0)}, age=${tokenAgeMinutes}min`);
+            }
 
-            let totalScore = Math.round(
-              securityScore * 0.3 + liquidityScore * 0.25 + walletScore * 0.45
-            );
+            // ── NEW SCORING SYSTEM ──
+            // Volume explosion signal → +25
+            // EMA crossover → +20
+            // RSI momentum → +15
+            // Liquidity OK → +10
+            // Security checks → +10
+            // Smart wallets buying → +10
+            // Holder distribution OK → +10
+            // Max = 100
+
+            let totalScore = 0;
+
+            // Security checks (+10)
+            const securityScore = pSecurity.enabled
+              ? (isSafe ? 10 : hasPrice ? 7 : 3)
+              : 10;
+            totalScore += securityScore;
+
+            // Liquidity OK (+10)
+            const liquidityScore = pLiquidity.enabled
+              ? (effectiveLiquidity > 100000 ? 10 : effectiveLiquidity > 30000 ? 8 : effectiveLiquidity > 15000 ? 6 : 3)
+              : 10;
+            totalScore += liquidityScore;
+
+            // Smart wallets buying (+10)
+            const walletScore = pWallet.enabled
+              ? (totalValueUsd > 100000 ? 10 : totalValueUsd > 10000 ? 7 : totalValueUsd > 50 ? 5 : 2)
+              : 10;
+            totalScore += walletScore;
 
             // ── Technical Strategy Bonus ──
             // If user has enabled TA strategies, fetch candle data and evaluate
