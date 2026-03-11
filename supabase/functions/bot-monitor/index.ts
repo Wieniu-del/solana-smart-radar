@@ -520,6 +520,7 @@ Deno.serve(async (req) => {
         sentiment: c.sentiment?.sentiment || "unknown",
         sentiment_score: c.sentiment?.sentiment_score || 0,
         sentiment_adjust: c.sentimentAdjust || 0,
+        ta_strategies: c.ta_strategies || [],
       },
       status: "pending",
     }));
