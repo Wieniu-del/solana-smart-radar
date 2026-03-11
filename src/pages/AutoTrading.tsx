@@ -254,6 +254,10 @@ export default function AutoTrading() {
             <BarChart3 className="h-3.5 w-3.5 mr-1" />
             PnL
           </TabsTrigger>
+          <TabsTrigger value="tech-strategies">
+            <TrendingUp className="h-3.5 w-3.5 mr-1" />
+            Strategie TA
+          </TabsTrigger>
           <TabsTrigger value="pipeline-config">
             <Filter className="h-3.5 w-3.5 mr-1" />
             Pipeline
