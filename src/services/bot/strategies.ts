@@ -16,9 +16,9 @@ export function volumeExplosionStrategy(data: MarketData): boolean {
   const r = rsi(14, p);
 
   const cross = ema9.at(-2)! < ema21.at(-2)! && ema9.at(-1)! > ema21.at(-1)!;
-  const volumeOk = currentVolume > avgVol * config.volumeExplosion.volumeMultiplier;
-  const rsiOk = r > config.volumeExplosion.rsiThreshold;
-  const ageOk = data.ageMinutes < config.volumeExplosion.maxAgeMinutes;
+  const volumeOk = currentVolume > avgVol * config.volumeExplosion.volumeMultiplier; // 3x
+  const rsiOk = r > config.volumeExplosion.rsiThreshold; // > 48
+  const ageOk = data.ageMinutes < config.volumeExplosion.maxAgeMinutes; // < 45min
 
   return cross && volumeOk && rsiOk && ageOk;
 }
