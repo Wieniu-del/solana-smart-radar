@@ -357,31 +357,50 @@ Deno.serve(async (req) => {
               : 10;
             totalScore += walletScore;
 
-            // ── Technical Strategy Bonus ──
-            // If user has enabled TA strategies, fetch candle data and evaluate
+            // ── Technical Strategy Scoring ──
+            // Volume explosion → +25, EMA crossover → +20, RSI momentum → +15
             let taTriggered: string[] = [];
             if (enabledTAStrategies.length > 0 && realLiquidityUsd > 0) {
               try {
                 const candles = await fetchCandleData(incomingMint);
                 if (candles.length >= 3) {
-                  const marketData = { candles, ageMinutes: 0 };
-                  // Estimate age from first candle
-                  const oldestTs = candles[0]?.timestamp || 0;
-                  if (oldestTs > 0) {
-                    marketData.ageMinutes = Math.round((Date.now() / 1000 - oldestTs) / 60);
+                  const marketData = { candles, ageMinutes: tokenAgeMinutes || 0 };
+                  if (marketData.ageMinutes === 0) {
+                    const oldestTs = candles[0]?.timestamp || 0;
+                    if (oldestTs > 0) marketData.ageMinutes = Math.round((Date.now() / 1000 - oldestTs) / 60);
                   }
                   taTriggered = evaluateTAStrategies(enabledTAStrategies, marketData);
+
+                  // Volume Explosion signal → +25
+                  if (taTriggered.includes("volume_explosion")) totalScore += 25;
+                  // Triple Momentum → +20 (EMA crossover component)
+                  if (taTriggered.includes("triple_momentum")) totalScore += 20;
+                  // EMA Ribbon → +20
+                  if (taTriggered.includes("ema_ribbon")) totalScore += 20;
+                  // RSI-based strategies → +15
+                  if (taTriggered.includes("rsi_divergence") || taTriggered.includes("vwap_reversion")) totalScore += 15;
+
+                  // RSI momentum bonus (if RSI > 48 on any triggered strategy) → +15
                   if (taTriggered.length > 0) {
-                    const taBonus = Math.min(taTriggered.length * 5, 15);
-                    totalScore = Math.min(100, totalScore + taBonus);
+                    const rsiVal = taRsi(14, candles.map(c => c.close));
+                    if (rsiVal > 48) totalScore += 15;
+                  }
+
+                  if (taTriggered.length > 0) {
                     const phase = marketData.ageMinutes < 15 ? "launch" : marketData.ageMinutes < 45 ? "momentum" : marketData.ageMinutes < 120 ? "trending" : "mature";
-                    console.log(`[bot] TA bonus +${taBonus} for ${incomingMint.slice(0,8)}: phase=${phase}, triggered=[${taTriggered.join(",")}]`);
+                    console.log(`[bot] TA score for ${incomingMint.slice(0,8)}: phase=${phase}, triggered=[${taTriggered.join(",")}], total=${totalScore}`);
                   }
                 }
               } catch (taErr) {
                 console.warn(`[bot] TA eval error for ${incomingMint.slice(0,8)}:`, taErr);
               }
             }
+
+            // Holder distribution OK → +10 (always give if we passed filters)
+            totalScore += 10;
+
+            // Cap at 100
+            totalScore = Math.min(100, totalScore);
 
             totalTokensFound++;
 
