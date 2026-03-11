@@ -90,7 +90,7 @@ Deno.serve(async (req) => {
       .select("value")
       .eq("key", "min_score_threshold")
       .single();
-    const minScoreThreshold = (thresholdConfig?.value as number) || 60;
+    const minScoreThreshold = (thresholdConfig?.value as number) || 70;
 
     // 3b. Dynamic sizing table (score-based)
     const dynamicSizing = {
@@ -111,7 +111,7 @@ Deno.serve(async (req) => {
       .single();
     const pipelineConfig = (pipelineConfigData?.value as any) || {};
     const pSecurity = pipelineConfig.security_check ?? { enabled: true, min_score: 30 };
-    const pLiquidity = pipelineConfig.liquidity_check ?? { enabled: true, min_value_usd: 15000 };
+    const pLiquidity = pipelineConfig.liquidity_check ?? { enabled: true, min_value_usd: 30000 };
     const pWallet = pipelineConfig.wallet_analysis ?? { enabled: true, min_wallet_value_usd: 50 };
     const pScoring = pipelineConfig.scoring ?? { buy_threshold: 60, watch_threshold: 40 };
     const pCorrelation = pipelineConfig.correlation ?? { enabled: true, min_wallets: 2, bonus_per_wallet: 10, max_bonus: 20 };
@@ -138,8 +138,74 @@ Deno.serve(async (req) => {
     const lookbackSinceTs = Date.now() / 1000 - lookbackHours * 3600;
 
     // Use pipeline scoring thresholds if set, otherwise fall back to global
-    const buyThreshold = pScoring.buy_threshold || 60;
+    const buyThreshold = pScoring.buy_threshold || 70;
     const watchThreshold = pScoring.watch_threshold || 40;
+
+    // ── COOLDOWN: check if 2+ consecutive losses in last hour → pause 10 min ──
+    let cooldownActive = false;
+    try {
+      const { data: recentClosedLosses } = await supabase
+        .from("open_positions")
+        .select("close_reason, closed_at, pnl_pct")
+        .eq("status", "closed")
+        .in("close_reason", ["stop_loss", "fast_loss_cut"])
+        .order("closed_at", { ascending: false })
+        .limit(2);
+
+      if (recentClosedLosses && recentClosedLosses.length >= 2) {
+        const lastLossTime = new Date(recentClosedLosses[0].closed_at).getTime();
+        const secondLossTime = new Date(recentClosedLosses[1].closed_at).getTime();
+        const bothRecent = (Date.now() - lastLossTime) < 60 * 60 * 1000; // within 1h
+        const bothConsecutive = (lastLossTime - secondLossTime) < 30 * 60 * 1000; // within 30min of each other
+        const cooldownExpiry = lastLossTime + 10 * 60 * 1000; // 10 min cooldown
+        
+        if (bothRecent && bothConsecutive && Date.now() < cooldownExpiry) {
+          cooldownActive = true;
+          const remainingMin = Math.round((cooldownExpiry - Date.now()) / 60000);
+          console.warn(`[bot] 🧊 COOLDOWN ACTIVE — 2 consecutive losses, ${remainingMin}min remaining`);
+          await supabase.from("notifications").insert({
+            type: "cooldown",
+            title: "🧊 Cooldown aktywny — 2 straty z rzędu",
+            message: `Bot pauzuje kupno na ${remainingMin} min po 2 kolejnych stratach.`,
+            details: { remaining_min: remainingMin },
+          });
+        }
+      }
+    } catch (cooldownErr) {
+      console.warn("[bot] Cooldown check error:", cooldownErr);
+    }
+
+    // ── DAILY LOSS LIMIT: check if daily losses > 0.1 SOL ──
+    let dailyLossExceeded = false;
+    try {
+      const todayStart = new Date();
+      todayStart.setUTCHours(0, 0, 0, 0);
+      const { data: todayClosedPositions } = await supabase
+        .from("open_positions")
+        .select("pnl_pct, amount_sol")
+        .eq("status", "closed")
+        .gte("closed_at", todayStart.toISOString());
+
+      if (todayClosedPositions) {
+        const dailyLossSol = todayClosedPositions.reduce((sum: number, p: any) => {
+          const pnlSol = (Number(p.pnl_pct) / 100) * Number(p.amount_sol);
+          return pnlSol < 0 ? sum + Math.abs(pnlSol) : sum;
+        }, 0);
+        
+        if (dailyLossSol >= 0.1) {
+          dailyLossExceeded = true;
+          console.warn(`[bot] 🚫 DAILY LOSS LIMIT — lost ${dailyLossSol.toFixed(4)} SOL today (limit: 0.1 SOL)`);
+          await supabase.from("notifications").insert({
+            type: "daily_loss",
+            title: "🚫 Dzienny limit strat osiągnięty",
+            message: `Strata dzisiaj: ${dailyLossSol.toFixed(4)} SOL ≥ 0.1 SOL. Kupno zablokowane do jutra.`,
+            details: { daily_loss_sol: dailyLossSol, limit: 0.1 },
+          });
+        }
+      }
+    } catch (dlErr) {
+      console.warn("[bot] Daily loss check error:", dlErr);
+    }
 
     // 4. Analyze each wallet
     let totalTokensFound = 0;
@@ -312,14 +378,14 @@ Deno.serve(async (req) => {
               console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: liquidity $${effectiveLiquidity.toFixed(0)} < $${minLiquidityUsd}`);
               continue;
             }
-            // Volume 5m filter
-            if (volume5m > 0 && volume5m < 20000) {
-              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: volume5m $${volume5m.toFixed(0)} < $20000`);
+            // Volume 5m filter ($40k minimum)
+            if (volume5m > 0 && volume5m < 40000) {
+              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: volume5m $${volume5m.toFixed(0)} < $40000`);
               continue;
             }
-            // Token age filter (max 60 minutes)
-            if (tokenAgeMinutes > 0 && tokenAgeMinutes > 60) {
-              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: age ${tokenAgeMinutes}min > 60min`);
+            // Token age filter (max 30 minutes)
+            if (tokenAgeMinutes > 0 && tokenAgeMinutes > 30) {
+              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: age ${tokenAgeMinutes}min > 30min`);
               continue;
             }
 
@@ -661,9 +727,9 @@ Deno.serve(async (req) => {
         console.warn("[bot] Balance check error:", balErr);
       }
 
-      const buyBlocked = sellOnlyMode || balanceTooLow;
+      const buyBlocked = sellOnlyMode || balanceTooLow || cooldownActive || dailyLossExceeded;
       if (buyBlocked) {
-        console.log(`[bot] 🚫 BUY BLOCKED — sell_only=${sellOnlyMode}, balance_low=${balanceTooLow}`);
+        console.log(`[bot] 🚫 BUY BLOCKED — sell_only=${sellOnlyMode}, balance_low=${balanceTooLow}, cooldown=${cooldownActive}, daily_loss=${dailyLossExceeded}`);
         // Reject all pending signals
         await supabase.from("trading_signals").update({ status: "rejected" }).eq("status", "pending").eq("signal_type", "BUY");
       }
@@ -734,9 +800,9 @@ Deno.serve(async (req) => {
               continue;
             }
 
-            // Min confidence ≥65 for auto-execute
-            if ((signal.confidence || 0) < 65) {
-              console.log(`[bot] Skipping signal ${signal.id}: confidence ${signal.confidence} < 65`);
+            // Min confidence ≥70 for auto-execute
+            if ((signal.confidence || 0) < 70) {
+              console.log(`[bot] Skipping signal ${signal.id}: confidence ${signal.confidence} < 70`);
               await supabase.from("trading_signals").update({ status: "rejected" }).eq("id", signal.id);
               continue;
             }
@@ -1062,11 +1128,11 @@ function taVwap(candles: TACandle[]): number {
 }
 
 const TA_CONFIG = {
-  volume_explosion: { emaShort: 9, emaLong: 21, volumeMultiplier: 3, rsiThreshold: 48, maxAgeMinutes: 45 },
+  volume_explosion: { emaShort: 9, emaLong: 21, volumeMultiplier: 2.5, rsiThreshold: 45, maxAgeMinutes: 30 },
   rsi_divergence: { volumeMultiplier: 3.5, rsiOversold: 35 },
   ema_ribbon: { ribbon: [8, 13, 21, 34, 55], volumeMultiplier: 2.5, rsiMin: 45 },
   vwap_reversion: { volumeMultiplier: 3, rsiMax: 40, minAge: 10 },
-  triple_momentum: { emaShort: 9, emaLong: 21, emaTrend: 200, rsiBuy: 50, volumeMultiplier: 3.5, maxAgeMinutes: 60 },
+  triple_momentum: { emaShort: 9, emaLong: 21, emaTrend: 50, rsiBuy: 48, volumeMultiplier: 3, maxAgeMinutes: 30 },
 };
 
 // Age-based phase selection
