@@ -253,6 +253,9 @@ const Index = () => {
       {/* Bot Health Monitor */}
       <BotHealthMonitor />
 
+      {/* Portfolio Health Widget */}
+      <PortfolioHealth />
+
       {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Network Activity Chart */}
