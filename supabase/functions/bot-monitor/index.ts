@@ -332,7 +332,8 @@ Deno.serve(async (req) => {
                   if (taTriggered.length > 0) {
                     const taBonus = Math.min(taTriggered.length * 5, 15);
                     totalScore = Math.min(100, totalScore + taBonus);
-                    console.log(`[bot] TA bonus +${taBonus} for ${incomingMint.slice(0,8)}: ${taTriggered.join(", ")}`);
+                    const phase = marketData.ageMinutes < 15 ? "launch" : marketData.ageMinutes < 45 ? "momentum" : marketData.ageMinutes < 120 ? "trending" : "mature";
+                    console.log(`[bot] TA bonus +${taBonus} for ${incomingMint.slice(0,8)}: phase=${phase}, triggered=[${taTriggered.join(",")}]`);
                   }
                 }
               } catch (taErr) {
