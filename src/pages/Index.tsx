@@ -40,6 +40,10 @@ const Index = () => {
     botActive: false,
   });
   const [openPositions, setOpenPositions] = useState<any[]>([]);
+  const [closedPositions, setClosedPositions] = useState<any[]>([]);
+  const [selectedPosition, setSelectedPosition] = useState<any>(null);
+  const [showPositionModal, setShowPositionModal] = useState(false);
+  const [positionsTab, setPositionsTab] = useState<"open" | "closed">("open");
 
   // Live clock tick for animated effects
   useEffect(() => {
