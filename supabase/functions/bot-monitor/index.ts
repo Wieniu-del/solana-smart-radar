@@ -729,7 +729,7 @@ Deno.serve(async (req) => {
 
       const buyBlocked = sellOnlyMode || balanceTooLow || cooldownActive || dailyLossExceeded;
       if (buyBlocked) {
-        console.log(`[bot] 🚫 BUY BLOCKED — sell_only=${sellOnlyMode}, balance_low=${balanceTooLow}`);
+        console.log(`[bot] 🚫 BUY BLOCKED — sell_only=${sellOnlyMode}, balance_low=${balanceTooLow}, cooldown=${cooldownActive}, daily_loss=${dailyLossExceeded}`);
         // Reject all pending signals
         await supabase.from("trading_signals").update({ status: "rejected" }).eq("status", "pending").eq("signal_type", "BUY");
       }
