@@ -19,6 +19,8 @@ export type Strategy =
   | "vwap_reversion"
   | "triple_momentum";
 
+export type MarketPhase = "launch" | "momentum" | "trending" | "mature";
+
 export interface StrategyMeta {
   id: Strategy;
   name: string;
@@ -27,17 +29,23 @@ export interface StrategyMeta {
   riskLevel: "low" | "medium" | "high";
   timeframe: string;
   indicators: string[];
+  phase: MarketPhase;
+  phaseLabel: string;
+  phaseRange: string;
 }
 
 export const STRATEGY_META: StrategyMeta[] = [
   {
     id: "volume_explosion",
     name: "Volume Explosion",
-    description: "Wykrywa nagły wzrost wolumenu (4x średnia) + przecięcie EMA 9/21 + RSI > 50. Idealny do łapania początku pompek na młodych tokenach (<30 min).",
+    description: "Wykrywa nagły wzrost wolumenu (4x średnia) + przecięcie EMA 9/21 + RSI > 50. Idealny do łapania początku pompek na młodych tokenach.",
     icon: "🔥",
     riskLevel: "high",
     timeframe: "1-5 min",
     indicators: ["EMA 9/21", "RSI 14", "Volume 4x"],
+    phase: "launch",
+    phaseLabel: "Launch",
+    phaseRange: "0–15 min",
   },
   {
     id: "rsi_divergence",
@@ -47,6 +55,9 @@ export const STRATEGY_META: StrategyMeta[] = [
     riskLevel: "medium",
     timeframe: "5-15 min",
     indicators: ["RSI 14", "Volume 3.5x"],
+    phase: "mature",
+    phaseLabel: "Mature",
+    phaseRange: "120+ min",
   },
   {
     id: "ema_ribbon",
@@ -56,23 +67,39 @@ export const STRATEGY_META: StrategyMeta[] = [
     riskLevel: "low",
     timeframe: "15-60 min",
     indicators: ["EMA 8/13/21/34/55", "RSI 14", "Volume 2.5x"],
+    phase: "trending",
+    phaseLabel: "Trending",
+    phaseRange: "45–120 min",
   },
   {
     id: "vwap_reversion",
     name: "VWAP Reversion",
-    description: "Mean-reversion: cena poniżej VWAP + RSI < 40 + wolumen 3x. Kupuj dip do średniej ważonej wolumenem. Wymaga tokena >15 min.",
+    description: "Mean-reversion: cena poniżej VWAP + RSI < 40 + wolumen 3x. Kupuj dip do średniej ważonej wolumenem.",
     icon: "🔄",
     riskLevel: "medium",
     timeframe: "15-60 min",
     indicators: ["VWAP", "RSI 14", "Volume 3x"],
+    phase: "mature",
+    phaseLabel: "Mature",
+    phaseRange: "120+ min",
   },
   {
     id: "triple_momentum",
     name: "Triple Momentum",
-    description: "Potrójne potwierdzenie: EMA 9 > EMA 21, cena > EMA 200, RSI > 55, wolumen 5x. Najsilniejszy sygnał — wymaga konsensusu wszystkich wskaźników.",
+    description: "Potrójne potwierdzenie: EMA 9 > EMA 21, cena > EMA 200, RSI > 55, wolumen 5x. Najsilniejszy sygnał — wymaga konsensusu.",
     icon: "⚡",
     riskLevel: "high",
     timeframe: "5-15 min",
     indicators: ["EMA 9/21/200", "RSI 14", "Volume 5x"],
+    phase: "momentum",
+    phaseLabel: "Momentum",
+    phaseRange: "15–45 min",
   },
 ];
+
+export const PHASE_INFO: Record<MarketPhase, { label: string; range: string; strategies: Strategy[]; color: string }> = {
+  launch: { label: "Launch", range: "0–15 min", strategies: ["volume_explosion"], color: "destructive" },
+  momentum: { label: "Momentum", range: "15–45 min", strategies: ["volume_explosion", "triple_momentum"], color: "primary" },
+  trending: { label: "Trending", range: "45–120 min", strategies: ["ema_ribbon", "triple_momentum"], color: "secondary" },
+  mature: { label: "Mature", range: "120+ min", strategies: ["rsi_divergence", "vwap_reversion"], color: "muted" },
+};

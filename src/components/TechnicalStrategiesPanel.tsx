@@ -5,11 +5,11 @@ import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { STRATEGY_META, type Strategy } from "@/services/bot/types";
+import { STRATEGY_META, PHASE_INFO, type Strategy, type MarketPhase } from "@/services/bot/types";
 import { config } from "@/services/bot/config";
 import {
-  TrendingUp, Activity, BarChart3, Zap, AlertTriangle,
-  Shield, Clock, ChevronDown, ChevronUp
+  Activity, Zap, AlertTriangle, Shield, Clock,
+  ChevronDown, ChevronUp, ArrowDown, ArrowRight,
 } from "lucide-react";
 
 const riskColors = {
@@ -17,7 +17,6 @@ const riskColors = {
   medium: "bg-neon-amber/10 text-neon-amber border-neon-amber/30",
   high: "bg-destructive/10 text-destructive border-destructive/30",
 };
-
 const riskLabels = { low: "Niskie", medium: "Średnie", high: "Wysokie" };
 
 const configDetails: Record<Strategy, Record<string, number | number[]>> = {
@@ -53,15 +52,15 @@ const configDetails: Record<Strategy, Record<string, number | number[]>> = {
   },
 };
 
+const phases: MarketPhase[] = ["launch", "momentum", "trending", "mature"];
+
 export default function TechnicalStrategiesPanel() {
   const [enabledStrategies, setEnabledStrategies] = useState<Strategy[]>([]);
   const [expandedStrategy, setExpandedStrategy] = useState<Strategy | null>(null);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
-  useEffect(() => {
-    loadEnabledStrategies();
-  }, []);
+  useEffect(() => { loadEnabledStrategies(); }, []);
 
   async function loadEnabledStrategies() {
     setLoading(true);
@@ -71,21 +70,14 @@ export default function TechnicalStrategiesPanel() {
         .select("value")
         .eq("key", "technical_strategies")
         .maybeSingle();
-      
-      const stored = (data?.value as Strategy[]) || [];
-      setEnabledStrategies(stored);
-    } catch {
-      // defaults
-    } finally {
-      setLoading(false);
-    }
+      setEnabledStrategies((data?.value as Strategy[]) || []);
+    } catch {} finally { setLoading(false); }
   }
 
   async function toggleStrategy(strategyId: Strategy, enabled: boolean) {
     const updated = enabled
       ? [...enabledStrategies, strategyId]
       : enabledStrategies.filter((s) => s !== strategyId);
-
     setEnabledStrategies(updated);
 
     const { error } = await supabase
@@ -94,11 +86,9 @@ export default function TechnicalStrategiesPanel() {
 
     if (error) {
       toast({ title: "Błąd zapisu", description: error.message, variant: "destructive" });
-      setEnabledStrategies(enabledStrategies); // rollback
+      setEnabledStrategies(enabledStrategies);
     } else {
-      toast({
-        title: enabled ? `✅ ${strategyId} aktywowana` : `⏸️ ${strategyId} wyłączona`,
-      });
+      toast({ title: enabled ? `✅ ${strategyId} aktywowana` : `⏸️ ${strategyId} wyłączona` });
     }
   }
 
@@ -112,7 +102,7 @@ export default function TechnicalStrategiesPanel() {
             Strategie Techniczne
           </h3>
           <p className="text-xs text-muted-foreground mt-1">
-            Wskaźniki analizy technicznej używane przez bota do podejmowania decyzji BUY.
+            Strategie są automatycznie dobierane na podstawie wieku tokena.
             Aktywne: {enabledStrategies.length}/{STRATEGY_META.length}
           </p>
         </div>
@@ -121,6 +111,49 @@ export default function TechnicalStrategiesPanel() {
           {enabledStrategies.length} aktywnych
         </Badge>
       </div>
+
+      {/* Pipeline Flow Diagram */}
+      <Card className="border-border bg-card">
+        <CardContent className="p-4">
+          <h4 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2">
+            <ArrowDown className="h-4 w-4 text-primary" />
+            Pipeline: Faza Rynkowa → Strategia
+          </h4>
+          <div className="flex flex-col sm:flex-row gap-2 items-stretch">
+            {phases.map((phase, idx) => {
+              const info = PHASE_INFO[phase];
+              const phaseStrategies = STRATEGY_META.filter((m) => info.strategies.includes(m.id));
+              const activeInPhase = phaseStrategies.filter((m) => enabledStrategies.includes(m.id));
+              return (
+                <div key={phase} className="flex-1 flex items-center gap-2">
+                  <div className={`flex-1 rounded-lg border border-border p-3 ${
+                    activeInPhase.length > 0 ? "bg-primary/5 border-primary/30" : "bg-muted/20"
+                  }`}>
+                    <div className="text-[10px] text-muted-foreground font-mono">{info.range}</div>
+                    <div className="text-xs font-bold text-foreground">{info.label}</div>
+                    <div className="mt-1 space-y-0.5">
+                      {phaseStrategies.map((s) => (
+                        <div key={s.id} className="flex items-center gap-1">
+                          <span className="text-xs">{s.icon}</span>
+                          <span className={`text-[10px] ${enabledStrategies.includes(s.id) ? "text-primary font-semibold" : "text-muted-foreground"}`}>
+                            {s.name}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground mt-1">
+                      {activeInPhase.length}/{phaseStrategies.length} aktywne
+                    </div>
+                  </div>
+                  {idx < phases.length - 1 && (
+                    <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0 hidden sm:block" />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Strategy Cards */}
       {STRATEGY_META.map((meta) => {
@@ -131,18 +164,12 @@ export default function TechnicalStrategiesPanel() {
         return (
           <Card
             key={meta.id}
-            className={`border-border bg-card transition-all ${
-              isEnabled ? "ring-1 ring-primary/30" : "opacity-80"
-            }`}
+            className={`border-border bg-card transition-all ${isEnabled ? "ring-1 ring-primary/30" : "opacity-80"}`}
           >
             <CardContent className="p-4">
-              {/* Main row */}
               <div className="flex items-start justify-between gap-3">
-                <div
-                  className="flex-1 cursor-pointer"
-                  onClick={() => setExpandedStrategy(isExpanded ? null : meta.id)}
-                >
-                  <div className="flex items-center gap-2 mb-1">
+                <div className="flex-1 cursor-pointer" onClick={() => setExpandedStrategy(isExpanded ? null : meta.id)}>
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <span className="text-xl">{meta.icon}</span>
                     <span className="font-bold text-foreground">{meta.name}</span>
                     <Badge className={`text-[10px] ${riskColors[meta.riskLevel]}`}>
@@ -150,33 +177,23 @@ export default function TechnicalStrategiesPanel() {
                     </Badge>
                     <Badge variant="outline" className="text-[10px]">
                       <Clock className="h-2.5 w-2.5 mr-0.5" />
-                      {meta.timeframe}
+                      {meta.phaseRange}
                     </Badge>
-                    {isExpanded ? (
-                      <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" />
-                    ) : (
-                      <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-                    )}
+                    <Badge variant="secondary" className="text-[10px]">
+                      Faza: {meta.phaseLabel}
+                    </Badge>
+                    {isExpanded ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
                   </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    {meta.description}
-                  </p>
+                  <p className="text-xs text-muted-foreground leading-relaxed">{meta.description}</p>
                   <div className="flex flex-wrap gap-1.5 mt-2">
                     {meta.indicators.map((ind) => (
-                      <Badge key={ind} variant="secondary" className="text-[10px] px-2 py-0.5">
-                        {ind}
-                      </Badge>
+                      <Badge key={ind} variant="secondary" className="text-[10px] px-2 py-0.5">{ind}</Badge>
                     ))}
                   </div>
                 </div>
-                <Switch
-                  checked={isEnabled}
-                  onCheckedChange={(checked) => toggleStrategy(meta.id, checked)}
-                  disabled={loading}
-                />
+                <Switch checked={isEnabled} onCheckedChange={(c) => toggleStrategy(meta.id, c)} disabled={loading} />
               </div>
 
-              {/* Expanded config details */}
               {isExpanded && (
                 <>
                   <Separator className="my-3" />
@@ -195,16 +212,11 @@ export default function TechnicalStrategiesPanel() {
                       <Shield className="h-4 w-4 text-primary mt-0.5 shrink-0" />
                       <div className="text-xs text-muted-foreground">
                         <strong className="text-foreground">Jak to działa:</strong>{" "}
-                        {meta.id === "volume_explosion" &&
-                          "Bot czeka na przecięcie EMA 9 powyżej EMA 21 (golden cross) z jednoczesnym wolumenem 4x powyżej średniej. RSI musi być powyżej 50 (momentum bycze). Token musi mieć < 30 min."}
-                        {meta.id === "rsi_divergence" &&
-                          "Bot szuka tokenów z RSI < 35 (silna wyprzedaż) i jednocześnie rosnącym wolumenem 3.5x. To sugeruje akumulację — smart money kupują gdy inni panikują."}
-                        {meta.id === "ema_ribbon" &&
-                          "Wstęga 5 EMA (8/13/21/34/55) musi być w formacji byczej (krótsze > dłuższych). Cena musi dotykać najkrótszej EMA (pullback). To klasyczny setup trend-following."}
-                        {meta.id === "vwap_reversion" &&
-                          "Cena poniżej VWAP + RSI < 40 + wolumen 3x = token jest tańszy niż średnia ważona wolumenem. Mean-reversion trade z oczekiwaniem powrotu do VWAP."}
-                        {meta.id === "triple_momentum" &&
-                          "Najsilniejszy sygnał: EMA 9 > 21 (short-term momentum), cena > EMA 200 (long-term trend), RSI > 55 (siła), wolumen 5x (potwierdzenie). Wymaga konsensusu."}
+                        {meta.id === "volume_explosion" && "Bot czeka na przecięcie EMA 9 powyżej EMA 21 (golden cross) z wolumenem 4x powyżej średniej. RSI > 50 (bycze momentum). Używana w fazie Launch (0–15 min) i Momentum (15–45 min)."}
+                        {meta.id === "rsi_divergence" && "RSI < 35 (silna wyprzedaż) + wolumen 3.5x. Smart money kupują gdy inni panikują. Używana w fazie Mature (120+ min)."}
+                        {meta.id === "ema_ribbon" && "Wstęga 5 EMA w formacji byczej + pullback do najkrótszej EMA. Klasyczny trend-following. Używana w fazie Trending (45–120 min)."}
+                        {meta.id === "vwap_reversion" && "Cena < VWAP + RSI < 40 + wolumen 3x. Mean-reversion trade. Używana w fazie Mature (120+ min)."}
+                        {meta.id === "triple_momentum" && "Potrójne potwierdzenie: EMA cross + trend + RSI + wolumen. Najsilniejszy sygnał. Używana w fazach Momentum i Trending."}
                       </div>
                     </div>
                   </div>
@@ -215,15 +227,15 @@ export default function TechnicalStrategiesPanel() {
         );
       })}
 
-      {/* Info */}
+      {/* Confirmation Layer Info */}
       <Card className="border-border bg-muted/20">
         <CardContent className="p-4">
           <div className="flex items-start gap-3">
             <AlertTriangle className="h-5 w-5 text-neon-amber shrink-0 mt-0.5" />
             <div className="text-xs text-muted-foreground space-y-1">
-              <p><strong className="text-foreground">Jak strategie współpracują z pipeline:</strong></p>
-              <p>Aktywne strategie techniczne są uruchamiane po przejściu tokena przez filtry bezpieczeństwa i płynności. Jeśli którakolwiek aktywna strategia zwróci sygnał BUY, token otrzymuje bonus do score (+10 pkt).</p>
-              <p>Jeśli żadna strategia nie jest aktywna, bot używa domyślnego scoringu (bezpieczeństwo + płynność + smart money).</p>
+              <p><strong className="text-foreground">Confirmation Layer:</strong></p>
+              <p>Bot automatycznie wybiera strategię na podstawie wieku tokena. W fazach z 2 strategiami (Momentum, Trending, Mature) wystarczy potwierdzenie 1 z 2 strategii. To daje podwójne zabezpieczenie bez wymuszania rygorystycznego konsensusu.</p>
+              <p><strong className="text-foreground">Bonus do score:</strong> +5 pkt za każdą potwierdzoną strategię (max +15 pkt).</p>
             </div>
           </div>
         </CardContent>
