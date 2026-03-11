@@ -300,9 +300,34 @@ Deno.serve(async (req) => {
               ? (totalValueUsd > 100000 ? 80 : totalValueUsd > 10000 ? 60 : 40)
               : 60; // neutral if disabled
 
-            const totalScore = Math.round(
+            let totalScore = Math.round(
               securityScore * 0.3 + liquidityScore * 0.25 + walletScore * 0.45
             );
+
+            // ── Technical Strategy Bonus ──
+            // If user has enabled TA strategies, fetch candle data and evaluate
+            let taTriggered: string[] = [];
+            if (enabledTAStrategies.length > 0 && realLiquidityUsd > 0) {
+              try {
+                const candles = await fetchCandleData(incomingMint);
+                if (candles.length >= 3) {
+                  const marketData = { candles, ageMinutes: 0 };
+                  // Estimate age from first candle
+                  const oldestTs = candles[0]?.timestamp || 0;
+                  if (oldestTs > 0) {
+                    marketData.ageMinutes = Math.round((Date.now() / 1000 - oldestTs) / 60);
+                  }
+                  taTriggered = evaluateTAStrategies(enabledTAStrategies, marketData);
+                  if (taTriggered.length > 0) {
+                    const taBonus = Math.min(taTriggered.length * 5, 15);
+                    totalScore = Math.min(100, totalScore + taBonus);
+                    console.log(`[bot] TA bonus +${taBonus} for ${incomingMint.slice(0,8)}: ${taTriggered.join(", ")}`);
+                  }
+                }
+              } catch (taErr) {
+                console.warn(`[bot] TA eval error for ${incomingMint.slice(0,8)}:`, taErr);
+              }
+            }
 
             totalTokensFound++;
 
