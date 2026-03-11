@@ -122,6 +122,13 @@ const Index = () => {
 
       const botEnabled = configRes.data?.value === true || configRes.data?.value === "true";
       
+      // Auto-select tab based on data
+      if (openPos.length === 0 && closedPos.length > 0) {
+        setPositionsTab("closed");
+      } else if (openPos.length > 0) {
+        setPositionsTab("open");
+      }
+      
       // Real wallet balance from RPC
       const healthData = healthRes.data;
       const realBalance = healthData?.infrastructure?.wallet_balance_sol;
