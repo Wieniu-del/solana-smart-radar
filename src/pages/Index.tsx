@@ -114,10 +114,10 @@ const Index = () => {
       setOpenPositions(openPos);
       setClosedPositions(closedPos.slice(0, 10));
 
-      const portfolioValue = openPositions.reduce((s, p) => s + p.amount_sol, 0);
-      const totalInvested = [...openPositions, ...closedPositions].reduce((s, p) => s + p.amount_sol, 0);
-      const totalPnlSol = closedPositions.reduce((s, p) => s + ((p.pnl_pct || 0) / 100) * p.amount_sol, 0)
-        + openPositions.reduce((s, p) => s + ((p.pnl_pct || 0) / 100) * p.amount_sol, 0);
+      const portfolioValue = openPos.reduce((s: number, p: any) => s + p.amount_sol, 0);
+      const totalInvested = [...openPos, ...closedPos].reduce((s: number, p: any) => s + p.amount_sol, 0);
+      const totalPnlSol = closedPos.reduce((s: number, p: any) => s + ((p.pnl_pct || 0) / 100) * p.amount_sol, 0)
+        + openPos.reduce((s: number, p: any) => s + ((p.pnl_pct || 0) / 100) * p.amount_sol, 0);
       const totalPnlPct = totalInvested > 0 ? (totalPnlSol / totalInvested) * 100 : 0;
 
       const botEnabled = configRes.data?.value === true || configRes.data?.value === "true";
