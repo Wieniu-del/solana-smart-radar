@@ -332,7 +332,8 @@ Deno.serve(async (req) => {
                   if (taTriggered.length > 0) {
                     const taBonus = Math.min(taTriggered.length * 5, 15);
                     totalScore = Math.min(100, totalScore + taBonus);
-                    console.log(`[bot] TA bonus +${taBonus} for ${incomingMint.slice(0,8)}: ${taTriggered.join(", ")}`);
+                    const phase = marketData.ageMinutes < 15 ? "launch" : marketData.ageMinutes < 45 ? "momentum" : marketData.ageMinutes < 120 ? "trending" : "mature";
+                    console.log(`[bot] TA bonus +${taBonus} for ${incomingMint.slice(0,8)}: phase=${phase}, triggered=[${taTriggered.join(",")}]`);
                   }
                 }
               } catch (taErr) {
@@ -950,41 +951,69 @@ const TA_CONFIG = {
   triple_momentum: { emaShort: 9, emaLong: 21, emaTrend: 200, rsiBuy: 55, volumeMultiplier: 5, maxAgeMinutes: 45 },
 };
 
+// Age-based phase selection
+function selectPhase(ageMinutes: number): string {
+  if (ageMinutes < 15) return "launch";
+  if (ageMinutes < 45) return "momentum";
+  if (ageMinutes < 120) return "trending";
+  return "mature";
+}
+
+function getPhaseStrategies(phase: string): string[] {
+  switch (phase) {
+    case "launch": return ["volume_explosion"];
+    case "momentum": return ["volume_explosion", "triple_momentum"];
+    case "trending": return ["ema_ribbon", "triple_momentum"];
+    case "mature": return ["rsi_divergence", "vwap_reversion"];
+    default: return [];
+  }
+}
+
+function evaluateStrategy(s: string, p: number[], vol: number, avgVol: number, r: number, md: { candles: TACandle[]; ageMinutes: number }): boolean {
+  if (s === "volume_explosion") {
+    const cfg = TA_CONFIG.volume_explosion;
+    const e9 = taEma(cfg.emaShort, p), e21 = taEma(cfg.emaLong, p);
+    return e9.length >= 2 && e21.length >= 2 &&
+      e9.at(-2)! < e21.at(-2)! && e9.at(-1)! > e21.at(-1)! &&
+      vol > avgVol * cfg.volumeMultiplier && r > cfg.rsiThreshold &&
+      md.ageMinutes < cfg.maxAgeMinutes;
+  } else if (s === "rsi_divergence") {
+    const cfg = TA_CONFIG.rsi_divergence;
+    return vol > avgVol * cfg.volumeMultiplier && r < cfg.rsiOversold;
+  } else if (s === "ema_ribbon") {
+    const cfg = TA_CONFIG.ema_ribbon;
+    const ribbon = cfg.ribbon.map(e => taEma(e, p).at(-1)!);
+    const bullish = ribbon.every((v, i, arr) => i === 0 || v > arr[i - 1]);
+    return bullish && p.at(-1)! <= ribbon[0] && vol > avgVol * cfg.volumeMultiplier && r > cfg.rsiMin;
+  } else if (s === "vwap_reversion") {
+    const cfg = TA_CONFIG.vwap_reversion;
+    const vw = taVwap(md.candles);
+    return p.at(-1)! < vw && vol > avgVol * cfg.volumeMultiplier && r < cfg.rsiMax && md.ageMinutes > cfg.minAge;
+  } else if (s === "triple_momentum") {
+    const cfg = TA_CONFIG.triple_momentum;
+    const e9 = taEma(cfg.emaShort, p), e21 = taEma(cfg.emaLong, p), e200 = taEma(cfg.emaTrend, p);
+    return e9.at(-1)! > e21.at(-1)! && p.at(-1)! > e200.at(-1)! &&
+      vol > avgVol * cfg.volumeMultiplier && r > cfg.rsiBuy &&
+      md.ageMinutes < cfg.maxAgeMinutes;
+  }
+  return false;
+}
+
 function evaluateTAStrategies(enabled: string[], md: { candles: TACandle[]; ageMinutes: number }): string[] {
   const p = md.candles.map(c => c.close);
-  const triggered: string[] = [];
   const vol = md.candles.at(-1)?.volume || 0;
   const avgVol = taAvgVolume(md.candles, 10);
   const r = taRsi(14, p);
 
-  for (const s of enabled) {
-    if (s === "volume_explosion") {
-      const cfg = TA_CONFIG.volume_explosion;
-      const e9 = taEma(cfg.emaShort, p), e21 = taEma(cfg.emaLong, p);
-      if (e9.length >= 2 && e21.length >= 2 &&
-          e9.at(-2)! < e21.at(-2)! && e9.at(-1)! > e21.at(-1)! &&
-          vol > avgVol * cfg.volumeMultiplier && r > cfg.rsiThreshold &&
-          md.ageMinutes < cfg.maxAgeMinutes) triggered.push(s);
-    } else if (s === "rsi_divergence") {
-      const cfg = TA_CONFIG.rsi_divergence;
-      if (vol > avgVol * cfg.volumeMultiplier && r < cfg.rsiOversold) triggered.push(s);
-    } else if (s === "ema_ribbon") {
-      const cfg = TA_CONFIG.ema_ribbon;
-      const ribbon = cfg.ribbon.map(e => taEma(e, p).at(-1)!);
-      const bullish = ribbon.every((v, i, arr) => i === 0 || v > arr[i - 1]);
-      if (bullish && p.at(-1)! <= ribbon[0] && vol > avgVol * cfg.volumeMultiplier && r > cfg.rsiMin) triggered.push(s);
-    } else if (s === "vwap_reversion") {
-      const cfg = TA_CONFIG.vwap_reversion;
-      const vw = taVwap(md.candles);
-      if (p.at(-1)! < vw && vol > avgVol * cfg.volumeMultiplier && r < cfg.rsiMax && md.ageMinutes > cfg.minAge) triggered.push(s);
-    } else if (s === "triple_momentum") {
-      const cfg = TA_CONFIG.triple_momentum;
-      const e9 = taEma(cfg.emaShort, p), e21 = taEma(cfg.emaLong, p), e200 = taEma(cfg.emaTrend, p);
-      if (e9.at(-1)! > e21.at(-1)! && p.at(-1)! > e200.at(-1)! &&
-          vol > avgVol * cfg.volumeMultiplier && r > cfg.rsiBuy &&
-          md.ageMinutes < cfg.maxAgeMinutes) triggered.push(s);
-    }
-  }
+  // Age-based strategy selection with confirmation layer
+  const phase = selectPhase(md.ageMinutes);
+  const phaseStrategies = getPhaseStrategies(phase);
+  
+  // Only evaluate strategies that are both in the phase AND enabled by user
+  const candidates = phaseStrategies.filter(s => enabled.includes(s));
+  const triggered = candidates.filter(s => evaluateStrategy(s, p, vol, avgVol, r, md));
+  
+  console.log(`[TA] Phase: ${phase} (${md.ageMinutes}min), candidates: [${candidates.join(",")}], triggered: [${triggered.join(",")}]`);
   return triggered;
 }
 
