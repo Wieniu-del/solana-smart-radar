@@ -347,13 +347,13 @@ const Index = () => {
               </div>
             );
           })()}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
         </div>
+
+        <PositionDetailModal
+          position={selectedPosition}
+          open={showPositionModal}
+          onOpenChange={setShowPositionModal}
+        />
 
         {/* Top Smart Wallets */}
         <div className="neon-card rounded-xl p-6 flex flex-col">
