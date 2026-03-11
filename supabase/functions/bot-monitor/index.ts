@@ -138,8 +138,8 @@ Deno.serve(async (req) => {
     const lookbackSinceTs = Date.now() / 1000 - lookbackHours * 3600;
 
     // Use pipeline scoring thresholds if set, otherwise fall back to global
-    const buyThreshold = pScoring.buy_threshold || minScoreThreshold;
-    const watchThreshold = pScoring.watch_threshold || 45;
+    const buyThreshold = pScoring.buy_threshold || 60;
+    const watchThreshold = pScoring.watch_threshold || 40;
 
     // 4. Analyze each wallet
     let totalTokensFound = 0;
