@@ -800,9 +800,9 @@ Deno.serve(async (req) => {
               continue;
             }
 
-            // Min confidence ≥65 for auto-execute
-            if ((signal.confidence || 0) < 65) {
-              console.log(`[bot] Skipping signal ${signal.id}: confidence ${signal.confidence} < 65`);
+            // Min confidence ≥70 for auto-execute
+            if ((signal.confidence || 0) < 70) {
+              console.log(`[bot] Skipping signal ${signal.id}: confidence ${signal.confidence} < 70`);
               await supabase.from("trading_signals").update({ status: "rejected" }).eq("id", signal.id);
               continue;
             }
