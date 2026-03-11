@@ -16,9 +16,9 @@ export function volumeExplosionStrategy(data: MarketData): boolean {
   const r = rsi(14, p);
 
   const cross = ema9.at(-2)! < ema21.at(-2)! && ema9.at(-1)! > ema21.at(-1)!;
-  const volumeOk = currentVolume > avgVol * config.volumeExplosion.volumeMultiplier;
-  const rsiOk = r > config.volumeExplosion.rsiThreshold;
-  const ageOk = data.ageMinutes < config.volumeExplosion.maxAgeMinutes;
+  const volumeOk = currentVolume > avgVol * config.volumeExplosion.volumeMultiplier; // 3x
+  const rsiOk = r > config.volumeExplosion.rsiThreshold; // > 48
+  const ageOk = data.ageMinutes < config.volumeExplosion.maxAgeMinutes; // < 45min
 
   return cross && volumeOk && rsiOk && ageOk;
 }
@@ -73,18 +73,18 @@ export function vwapReversionStrategy(data: MarketData): boolean {
 export function tripleMomentumStrategy(data: MarketData): boolean {
   if (data.candles.length < 3) return false;
   const p = prices(data);
-  const ema9 = ema(config.tripleMomentum.emaShort, p);
-  const ema21 = ema(config.tripleMomentum.emaLong, p);
-  const ema200 = ema(config.tripleMomentum.emaTrend, p);
+  const ema9 = ema(config.tripleMomentum.emaShort, p);    // 9
+  const ema21 = ema(config.tripleMomentum.emaLong, p);     // 21
+  const ema200 = ema(config.tripleMomentum.emaTrend, p);   // 200
   const r = rsi(14, p);
   const currentVolume = data.candles.at(-1)!.volume;
   const avgVol = avgVolume(data.candles, 10);
 
-  const volumeOk = currentVolume > avgVol * config.tripleMomentum.volumeMultiplier;
+  const volumeOk = currentVolume > avgVol * config.tripleMomentum.volumeMultiplier; // 3.5x
   const emaCross = ema9.at(-1)! > ema21.at(-1)!;
   const trendOk = p.at(-1)! > ema200.at(-1)!;
-  const rsiOk = r > config.tripleMomentum.rsiBuy;
-  const ageOk = data.ageMinutes < config.tripleMomentum.maxAgeMinutes;
+  const rsiOk = r > config.tripleMomentum.rsiBuy; // > 50
+  const ageOk = data.ageMinutes < config.tripleMomentum.maxAgeMinutes; // < 60min
 
   return emaCross && trendOk && volumeOk && rsiOk && ageOk;
 }

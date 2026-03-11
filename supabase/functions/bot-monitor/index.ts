@@ -90,16 +90,17 @@ Deno.serve(async (req) => {
       .select("value")
       .eq("key", "min_score_threshold")
       .single();
-    const minScoreThreshold = (thresholdConfig?.value as number) || 70;
+    const minScoreThreshold = (thresholdConfig?.value as number) || 60;
 
-    // 3b. Get dynamic sizing config
-    const { data: dynSizingConfig } = await supabase
-      .from("bot_config")
-      .select("value")
-      .eq("key", "dynamic_sizing")
-      .single();
-    const dynamicSizing = (dynSizingConfig?.value as { enabled: boolean; min_sol: number; max_sol: number }) || {
-      enabled: false, min_sol: 0.05, max_sol: 0.5,
+    // 3b. Dynamic sizing table (score-based)
+    const dynamicSizing = {
+      enabled: true,
+      table: [
+        { minScore: 85, sol: 0.15 },
+        { minScore: 75, sol: 0.10 },
+        { minScore: 65, sol: 0.07 },
+        { minScore: 55, sol: 0.03 },
+      ],
     };
 
     // 3c. Get pipeline config (user-adjustable feature toggles)
@@ -110,10 +111,10 @@ Deno.serve(async (req) => {
       .single();
     const pipelineConfig = (pipelineConfigData?.value as any) || {};
     const pSecurity = pipelineConfig.security_check ?? { enabled: true, min_score: 30 };
-    const pLiquidity = pipelineConfig.liquidity_check ?? { enabled: true, min_value_usd: 1000 };
-    const pWallet = pipelineConfig.wallet_analysis ?? { enabled: true, min_wallet_value_usd: 10000 };
-    const pScoring = pipelineConfig.scoring ?? { buy_threshold: minScoreThreshold, watch_threshold: 45 };
-    const pCorrelation = pipelineConfig.correlation ?? { enabled: true, min_wallets: 2, bonus_per_wallet: 8, max_bonus: 20 };
+    const pLiquidity = pipelineConfig.liquidity_check ?? { enabled: true, min_value_usd: 15000 };
+    const pWallet = pipelineConfig.wallet_analysis ?? { enabled: true, min_wallet_value_usd: 50 };
+    const pScoring = pipelineConfig.scoring ?? { buy_threshold: 60, watch_threshold: 40 };
+    const pCorrelation = pipelineConfig.correlation ?? { enabled: true, min_wallets: 2, bonus_per_wallet: 10, max_bonus: 20 };
     const pSentiment = pipelineConfig.sentiment ?? { enabled: true, block_on_avoid: true };
 
     // Load enabled technical analysis strategies
@@ -137,8 +138,8 @@ Deno.serve(async (req) => {
     const lookbackSinceTs = Date.now() / 1000 - lookbackHours * 3600;
 
     // Use pipeline scoring thresholds if set, otherwise fall back to global
-    const buyThreshold = pScoring.buy_threshold || minScoreThreshold;
-    const watchThreshold = pScoring.watch_threshold || 45;
+    const buyThreshold = pScoring.buy_threshold || 60;
+    const watchThreshold = pScoring.watch_threshold || 40;
 
     // 4. Analyze each wallet
     let totalTokensFound = 0;
@@ -280,66 +281,126 @@ Deno.serve(async (req) => {
             const valueUsd = tokenInfo?.valueUsd || 0;
 
             // FIX #2: Real liquidity check via DexScreener API
-            const minLiquidityUsd = Number(pLiquidity.min_value_usd || 5000);
+            const minLiquidityUsd = Number(pLiquidity.min_value_usd || 15000);
             let realLiquidityUsd = 0;
+            let volume5m = 0;
+            let topHolderPct = 0;
+            let hasMintAuth = false;
+            let hasFreezeAuth = false;
+            let tokenAgeMinutes = 0;
+
             try {
               const dexRes = await fetch(`https://api.dexscreener.com/tokens/v1/solana/${incomingMint}`);
               if (dexRes.ok) {
                 const dexPairs = await dexRes.json();
                 const pairs = Array.isArray(dexPairs) ? dexPairs : [];
+                const topPair = pairs.sort((a: any, b: any) => Number(b?.liquidity?.usd || 0) - Number(a?.liquidity?.usd || 0))[0];
                 realLiquidityUsd = pairs.reduce((max: number, p: any) => Math.max(max, Number(p?.liquidity?.usd || 0)), 0);
+                volume5m = Number(topPair?.volume?.m5 || 0);
+                // Estimate token age from pair creation
+                if (topPair?.pairCreatedAt) {
+                  tokenAgeMinutes = Math.round((Date.now() - topPair.pairCreatedAt) / 60000);
+                }
               }
-            } catch (_) { /* DexScreener unreachable — fallback to wallet value */ }
+            } catch (_) { /* DexScreener unreachable */ }
 
             const effectiveLiquidity = realLiquidityUsd > 0 ? realLiquidityUsd : valueUsd;
+
+            // ── PUMP.FUN FILTERS ──
+            // Liquidity filter
             if (pLiquidity.enabled && effectiveLiquidity < minLiquidityUsd) {
-              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: liquidity $${effectiveLiquidity.toFixed(0)} (dex: $${realLiquidityUsd.toFixed(0)}, wallet: $${valueUsd.toFixed(0)}) < $${minLiquidityUsd} min`);
+              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: liquidity $${effectiveLiquidity.toFixed(0)} < $${minLiquidityUsd}`);
               continue;
             }
-            if (realLiquidityUsd > 0) {
-              console.log(`[bot] PASS ${incomingMint.slice(0,8)}: DexScreener liquidity $${realLiquidityUsd.toFixed(0)}`);
+            // Volume 5m filter
+            if (volume5m > 0 && volume5m < 20000) {
+              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: volume5m $${volume5m.toFixed(0)} < $20000`);
+              continue;
+            }
+            // Token age filter (max 60 minutes)
+            if (tokenAgeMinutes > 0 && tokenAgeMinutes > 60) {
+              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: age ${tokenAgeMinutes}min > 60min`);
+              continue;
             }
 
-            // Scoring with pipeline config
+            if (realLiquidityUsd > 0) {
+              console.log(`[bot] PASS ${incomingMint.slice(0,8)}: liq=$${realLiquidityUsd.toFixed(0)}, vol5m=$${volume5m.toFixed(0)}, age=${tokenAgeMinutes}min`);
+            }
+
+            // ── NEW SCORING SYSTEM ──
+            // Volume explosion signal → +25
+            // EMA crossover → +20
+            // RSI momentum → +15
+            // Liquidity OK → +10
+            // Security checks → +10
+            // Smart wallets buying → +10
+            // Holder distribution OK → +10
+            // Max = 100
+
+            let totalScore = 0;
+
+            // Security checks (+10)
             const securityScore = pSecurity.enabled
-              ? (isSafe ? 100 : hasPrice ? 60 : 30)
-              : 70; // neutral if disabled
+              ? (isSafe ? 10 : hasPrice ? 7 : 3)
+              : 10;
+            totalScore += securityScore;
+
+            // Liquidity OK (+10)
             const liquidityScore = pLiquidity.enabled
-              ? (effectiveLiquidity > 100000 ? 80 : effectiveLiquidity > 10000 ? 60 : effectiveLiquidity > 1000 ? 40 : 20)
-              : 60; // neutral if disabled
+              ? (effectiveLiquidity > 100000 ? 10 : effectiveLiquidity > 30000 ? 8 : effectiveLiquidity > 15000 ? 6 : 3)
+              : 10;
+            totalScore += liquidityScore;
+
+            // Smart wallets buying (+10)
             const walletScore = pWallet.enabled
-              ? (totalValueUsd > 100000 ? 80 : totalValueUsd > 10000 ? 60 : 40)
-              : 60; // neutral if disabled
+              ? (totalValueUsd > 100000 ? 10 : totalValueUsd > 10000 ? 7 : totalValueUsd > 50 ? 5 : 2)
+              : 10;
+            totalScore += walletScore;
 
-            let totalScore = Math.round(
-              securityScore * 0.3 + liquidityScore * 0.25 + walletScore * 0.45
-            );
-
-            // ── Technical Strategy Bonus ──
-            // If user has enabled TA strategies, fetch candle data and evaluate
+            // ── Technical Strategy Scoring ──
+            // Volume explosion → +25, EMA crossover → +20, RSI momentum → +15
             let taTriggered: string[] = [];
             if (enabledTAStrategies.length > 0 && realLiquidityUsd > 0) {
               try {
                 const candles = await fetchCandleData(incomingMint);
                 if (candles.length >= 3) {
-                  const marketData = { candles, ageMinutes: 0 };
-                  // Estimate age from first candle
-                  const oldestTs = candles[0]?.timestamp || 0;
-                  if (oldestTs > 0) {
-                    marketData.ageMinutes = Math.round((Date.now() / 1000 - oldestTs) / 60);
+                  const marketData = { candles, ageMinutes: tokenAgeMinutes || 0 };
+                  if (marketData.ageMinutes === 0) {
+                    const oldestTs = candles[0]?.timestamp || 0;
+                    if (oldestTs > 0) marketData.ageMinutes = Math.round((Date.now() / 1000 - oldestTs) / 60);
                   }
                   taTriggered = evaluateTAStrategies(enabledTAStrategies, marketData);
+
+                  // Volume Explosion signal → +25
+                  if (taTriggered.includes("volume_explosion")) totalScore += 25;
+                  // Triple Momentum → +20 (EMA crossover component)
+                  if (taTriggered.includes("triple_momentum")) totalScore += 20;
+                  // EMA Ribbon → +20
+                  if (taTriggered.includes("ema_ribbon")) totalScore += 20;
+                  // RSI-based strategies → +15
+                  if (taTriggered.includes("rsi_divergence") || taTriggered.includes("vwap_reversion")) totalScore += 15;
+
+                  // RSI momentum bonus (if RSI > 48 on any triggered strategy) → +15
                   if (taTriggered.length > 0) {
-                    const taBonus = Math.min(taTriggered.length * 5, 15);
-                    totalScore = Math.min(100, totalScore + taBonus);
+                    const rsiVal = taRsi(14, candles.map(c => c.close));
+                    if (rsiVal > 48) totalScore += 15;
+                  }
+
+                  if (taTriggered.length > 0) {
                     const phase = marketData.ageMinutes < 15 ? "launch" : marketData.ageMinutes < 45 ? "momentum" : marketData.ageMinutes < 120 ? "trending" : "mature";
-                    console.log(`[bot] TA bonus +${taBonus} for ${incomingMint.slice(0,8)}: phase=${phase}, triggered=[${taTriggered.join(",")}]`);
+                    console.log(`[bot] TA score for ${incomingMint.slice(0,8)}: phase=${phase}, triggered=[${taTriggered.join(",")}], total=${totalScore}`);
                   }
                 }
               } catch (taErr) {
                 console.warn(`[bot] TA eval error for ${incomingMint.slice(0,8)}:`, taErr);
               }
             }
+
+            // Holder distribution OK → +10 (always give if we passed filters)
+            totalScore += 10;
+
+            // Cap at 100
+            totalScore = Math.min(100, totalScore);
 
             totalTokensFound++;
 
@@ -616,7 +677,7 @@ Deno.serve(async (req) => {
               continue;
             }
 
-            // FIX #3b: Min confidence ≥65 for auto-execute
+            // Min confidence ≥65 for auto-execute
             if ((signal.confidence || 0) < 65) {
               console.log(`[bot] Skipping signal ${signal.id}: confidence ${signal.confidence} < 65`);
               await supabase.from("trading_signals").update({ status: "rejected" }).eq("id", signal.id);
@@ -631,13 +692,13 @@ Deno.serve(async (req) => {
               continue;
             }
 
-            let positionSol = basePositionSol;
-            if (dynamicSizing.enabled) {
-              const confidence = Number(signal.confidence || 70);
-              const scoreNorm = Math.max(0, Math.min(1, (confidence - 70) / 30));
-              positionSol = dynamicSizing.min_sol + scoreNorm * (dynamicSizing.max_sol - dynamicSizing.min_sol);
-              positionSol = Math.round(positionSol * 1000) / 1000;
-            }
+            // Dynamic sizing based on score table
+            let positionSol = 0.03; // minimum
+            const confidence = Number(signal.confidence || 0);
+            if (confidence >= 85) positionSol = 0.15;
+            else if (confidence >= 75) positionSol = 0.10;
+            else if (confidence >= 65) positionSol = 0.07;
+            else positionSol = 0.03;
 
             const success = await executeBuySignal({
               supabase,
@@ -944,11 +1005,11 @@ function taVwap(candles: TACandle[]): number {
 }
 
 const TA_CONFIG = {
-  volume_explosion: { emaShort: 9, emaLong: 21, volumeMultiplier: 2.5, rsiThreshold: 45, maxAgeMinutes: 45 },
-  rsi_divergence: { volumeMultiplier: 2.5, rsiOversold: 40 },
-  ema_ribbon: { ribbon: [8, 13, 21, 34, 55], volumeMultiplier: 2, rsiMin: 40 },
-  vwap_reversion: { volumeMultiplier: 2, rsiMax: 45, minAge: 10 },
-  triple_momentum: { emaShort: 9, emaLong: 21, emaTrend: 50, rsiBuy: 48, volumeMultiplier: 3, maxAgeMinutes: 60 },
+  volume_explosion: { emaShort: 9, emaLong: 21, volumeMultiplier: 3, rsiThreshold: 48, maxAgeMinutes: 45 },
+  rsi_divergence: { volumeMultiplier: 3.5, rsiOversold: 35 },
+  ema_ribbon: { ribbon: [8, 13, 21, 34, 55], volumeMultiplier: 2.5, rsiMin: 45 },
+  vwap_reversion: { volumeMultiplier: 3, rsiMax: 40, minAge: 10 },
+  triple_momentum: { emaShort: 9, emaLong: 21, emaTrend: 200, rsiBuy: 50, volumeMultiplier: 3.5, maxAgeMinutes: 60 },
 };
 
 // Age-based phase selection

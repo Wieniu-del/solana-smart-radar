@@ -10,7 +10,7 @@ import {
   BarChart, Bar,
 } from "recharts";
 
-interface ClosedPosition {
+interface Position {
   id: string;
   token_symbol: string | null;
   entry_price_usd: number;
@@ -20,28 +20,44 @@ interface ClosedPosition {
   opened_at: string;
   closed_at: string | null;
   close_reason: string | null;
+  status: string;
+  highest_price_usd: number;
+  stop_price_usd: number | null;
+  trailing_stop_pct: number;
 }
 
 export default function PnLDashboard() {
-  const [positions, setPositions] = useState<ClosedPosition[]>([]);
+  const [closedPositions, setClosedPositions] = useState<Position[]>([]);
+  const [openPositions, setOpenPositions] = useState<Position[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadData();
+    const interval = setInterval(loadData, 15000); // refresh every 15s
+    return () => clearInterval(interval);
   }, []);
 
   async function loadData() {
     setLoading(true);
-    const { data } = await supabase
-      .from("open_positions")
-      .select("*")
-      .eq("status", "closed")
-      .order("closed_at", { ascending: true });
-    if (data) setPositions(data as ClosedPosition[]);
+    const [{ data: closed }, { data: open }] = await Promise.all([
+      supabase
+        .from("open_positions")
+        .select("*")
+        .eq("status", "closed")
+        .order("closed_at", { ascending: true }),
+      supabase
+        .from("open_positions")
+        .select("*")
+        .eq("status", "open")
+        .order("opened_at", { ascending: false }),
+    ]);
+    if (closed) setClosedPositions(closed as Position[]);
+    if (open) setOpenPositions(open as Position[]);
     setLoading(false);
   }
 
-  // Calculate stats
+  // Calculate stats from closed positions
+  const positions = closedPositions;
   const totalTrades = positions.length;
   const wins = positions.filter((p) => (p.pnl_pct || 0) > 0);
   const losses = positions.filter((p) => (p.pnl_pct || 0) <= 0);
@@ -50,15 +66,21 @@ export default function PnLDashboard() {
   const avgLoss = losses.length > 0 ? Math.abs(losses.reduce((s, p) => s + (p.pnl_pct || 0), 0) / losses.length) : 0;
   const profitFactor = avgLoss > 0 ? (avgWin / avgLoss).toFixed(2) : "∞";
 
-  // Total PnL in SOL (approximate)
+  // Total PnL in SOL
   const totalPnLSol = positions.reduce((s, p) => {
     const pnl = (p.pnl_pct || 0) / 100 * p.amount_sol;
     return s + pnl;
   }, 0);
 
+  // Open positions unrealized PnL
+  const unrealizedPnLSol = openPositions.reduce((s, p) => {
+    const pnl = (p.pnl_pct || 0) / 100 * p.amount_sol;
+    return s + pnl;
+  }, 0);
+
   // Best/worst trade
-  const bestTrade = positions.reduce((best, p) => (p.pnl_pct || 0) > (best?.pnl_pct || -Infinity) ? p : best, positions[0]);
-  const worstTrade = positions.reduce((worst, p) => (p.pnl_pct || 0) < (worst?.pnl_pct || Infinity) ? p : worst, positions[0]);
+  const bestTrade = positions.length > 0 ? positions.reduce((best, p) => (p.pnl_pct || 0) > (best?.pnl_pct || -Infinity) ? p : best, positions[0]) : null;
+  const worstTrade = positions.length > 0 ? positions.reduce((worst, p) => (p.pnl_pct || 0) < (worst?.pnl_pct || Infinity) ? p : worst, positions[0]) : null;
 
   // Cumulative PnL chart data
   let cumPnL = 0;
@@ -82,7 +104,7 @@ export default function PnLDashboard() {
     reasonCounts[r] = (reasonCounts[r] || 0) + 1;
   });
   const reasonData = Object.entries(reasonCounts).map(([name, value]) => ({
-    name: name === "trailing_stop" ? "Trailing" : name === "take_profit" ? "TP" : name === "stop_loss" ? "SL" : name,
+    name: name === "trailing_stop" ? "Trailing" : name === "take_profit" ? "TP" : name === "stop_loss" ? "SL" : name === "fast_loss_cut" ? "Fast Cut" : name === "profit_fade" ? "Fade" : name === "time_decay" ? "Decay" : name === "dead_token" ? "Dead" : name,
     value,
   }));
 
@@ -97,20 +119,57 @@ export default function PnLDashboard() {
     );
   }
 
-  if (totalTrades === 0) {
-    return (
-      <Card className="border-border bg-card">
-        <CardContent className="p-8 text-center text-muted-foreground">
-          <BarChart3 className="h-12 w-12 mx-auto mb-3 opacity-30" />
-          <p>Brak zamkniętych pozycji</p>
-          <p className="text-xs mt-1">Statystyki pojawią się po pierwszym zamkniętym trade</p>
-        </CardContent>
-      </Card>
-    );
-  }
-
   return (
     <div className="space-y-4">
+      {/* Open Positions (Live) */}
+      {openPositions.length > 0 && (
+        <Card className="border-border bg-card">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Activity className="h-4 w-4 text-primary animate-pulse" />
+              Otwarte pozycje ({openPositions.length}/3)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {openPositions.map((pos) => {
+                const pnl = pos.pnl_pct || 0;
+                const pnlSol = (pnl / 100) * pos.amount_sol;
+                const isPositive = pnl >= 0;
+                const hoursHeld = ((Date.now() - new Date(pos.opened_at).getTime()) / 3600000).toFixed(1);
+                return (
+                  <div key={pos.id} className="flex items-center justify-between p-2 rounded-md bg-muted/30 border border-border">
+                    <div className="flex items-center gap-3">
+                      <Badge variant={isPositive ? "default" : "destructive"} className="text-xs font-mono">
+                        {isPositive ? "+" : ""}{pnl.toFixed(1)}%
+                      </Badge>
+                      <div>
+                        <p className="text-sm font-medium">{pos.token_symbol || "???"}</p>
+                        <p className="text-[10px] text-muted-foreground">{hoursHeld}h | {pos.amount_sol} SOL</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className={`text-sm font-mono ${isPositive ? "text-primary" : "text-destructive"}`}>
+                        {isPositive ? "+" : ""}{pnlSol.toFixed(4)} SOL
+                      </p>
+                      <p className="text-[9px] text-muted-foreground">
+                        Stop: ${Number(pos.stop_price_usd || 0).toFixed(8)}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+              <div className="flex justify-between pt-1 border-t border-border text-xs">
+                <span className="text-muted-foreground">Unrealized PnL:</span>
+                <span className={unrealizedPnLSol >= 0 ? "text-primary font-bold" : "text-destructive font-bold"}>
+                  {unrealizedPnLSol >= 0 ? "+" : ""}{unrealizedPnLSol.toFixed(4)} SOL
+                </span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Key Metrics */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <MetricCard
@@ -122,129 +181,143 @@ export default function PnLDashboard() {
         />
         <MetricCard
           icon={totalPnLSol >= 0 ? TrendingUp : TrendingDown}
-          label="Łączny PnL"
+          label="Realized PnL"
           value={`${totalPnLSol >= 0 ? "+" : ""}${totalPnLSol.toFixed(4)} SOL`}
-          sub={`${totalTrades} trades`}
+          sub={`${totalTrades} zamkniętych`}
           positive={totalPnLSol >= 0}
         />
         <MetricCard
           icon={Award}
           label="Profit Factor"
           value={profitFactor}
-          sub={`Śr. win: +${avgWin.toFixed(1)}% | loss: -${avgLoss.toFixed(1)}%`}
+          sub={`Win: +${avgWin.toFixed(1)}% | Loss: -${avgLoss.toFixed(1)}%`}
           positive={Number(profitFactor) >= 1}
         />
         <MetricCard
           icon={BarChart3}
-          label="Najlepszy / Najgorszy"
+          label="Best / Worst"
           value={`+${(bestTrade?.pnl_pct || 0).toFixed(1)}%`}
-          sub={`${bestTrade?.token_symbol || "?"} | Worst: ${(worstTrade?.pnl_pct || 0).toFixed(1)}% ${worstTrade?.token_symbol || ""}`}
+          sub={`${bestTrade?.token_symbol || "—"} | ${(worstTrade?.pnl_pct || 0).toFixed(1)}% ${worstTrade?.token_symbol || ""}`}
           positive
         />
       </div>
 
-      {/* Cumulative PnL Chart */}
-      <Card className="border-border bg-card">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <TrendingUp className="h-4 w-4 text-primary" />
-            Kumulatywny PnL (SOL)
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="h-[220px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis dataKey="date" tick={{ fontSize: 10 }} className="fill-muted-foreground" />
-                <YAxis tick={{ fontSize: 10 }} className="fill-muted-foreground" />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "hsl(var(--card))",
-                    borderColor: "hsl(var(--border))",
-                    borderRadius: 8,
-                    fontSize: 12,
-                  }}
-                  formatter={(v: number) => [`${v.toFixed(4)} SOL`, "PnL"]}
-                />
-                <defs>
-                  <linearGradient id="pnlGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <Area
-                  type="monotone"
-                  dataKey="pnl"
-                  stroke="hsl(var(--primary))"
-                  fill="url(#pnlGrad)"
-                  strokeWidth={2}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+      {totalTrades === 0 && openPositions.length === 0 && (
+        <Card className="border-border bg-card">
+          <CardContent className="p-8 text-center text-muted-foreground">
+            <BarChart3 className="h-12 w-12 mx-auto mb-3 opacity-30" />
+            <p>Brak pozycji</p>
+            <p className="text-xs mt-1">Statystyki pojawią się po pierwszym trade</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {totalTrades > 0 && (
+        <>
+          {/* Cumulative PnL Chart */}
+          <Card className="border-border bg-card">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <TrendingUp className="h-4 w-4 text-primary" />
+                Kumulatywny PnL (SOL)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[220px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                    <XAxis dataKey="date" tick={{ fontSize: 10 }} className="fill-muted-foreground" />
+                    <YAxis tick={{ fontSize: 10 }} className="fill-muted-foreground" />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: "hsl(var(--card))",
+                        borderColor: "hsl(var(--border))",
+                        borderRadius: 8,
+                        fontSize: 12,
+                      }}
+                      formatter={(v: number) => [`${v.toFixed(4)} SOL`, "PnL"]}
+                    />
+                    <defs>
+                      <linearGradient id="pnlGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <Area
+                      type="monotone"
+                      dataKey="pnl"
+                      stroke="hsl(var(--primary))"
+                      fill="url(#pnlGrad)"
+                      strokeWidth={2}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Trade Distribution + Per-trade PnL */}
+          <div className="grid md:grid-cols-2 gap-4">
+            <Card className="border-border bg-card">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">PnL per trade (%)</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="h-[180px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={chartData}>
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                      <XAxis dataKey="trade" tick={{ fontSize: 10 }} />
+                      <YAxis tick={{ fontSize: 10 }} />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: "hsl(var(--card))",
+                          borderColor: "hsl(var(--border))",
+                          borderRadius: 8,
+                          fontSize: 12,
+                        }}
+                        formatter={(v: number) => [`${v.toFixed(1)}%`, "PnL"]}
+                      />
+                      <Bar
+                        dataKey="pnlPct"
+                        fill="hsl(var(--primary))"
+                        radius={[3, 3, 0, 0]}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-border bg-card">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Dystrybucja zamknięć</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="h-[180px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={reasonData} layout="vertical">
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                      <XAxis type="number" tick={{ fontSize: 10 }} />
+                      <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={70} />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: "hsl(var(--card))",
+                          borderColor: "hsl(var(--border))",
+                          borderRadius: 8,
+                          fontSize: 12,
+                        }}
+                      />
+                      <Bar dataKey="value" fill="hsl(var(--secondary))" radius={[0, 3, 3, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Trade Distribution + Per-trade PnL */}
-      <div className="grid md:grid-cols-2 gap-4">
-        <Card className="border-border bg-card">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">PnL per trade (%)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-[180px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis dataKey="trade" tick={{ fontSize: 10 }} />
-                  <YAxis tick={{ fontSize: 10 }} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "hsl(var(--card))",
-                      borderColor: "hsl(var(--border))",
-                      borderRadius: 8,
-                      fontSize: 12,
-                    }}
-                    formatter={(v: number) => [`${v.toFixed(1)}%`, "PnL"]}
-                  />
-                  <Bar
-                    dataKey="pnlPct"
-                    fill="hsl(var(--primary))"
-                    radius={[3, 3, 0, 0]}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border bg-card">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Dystrybucja zamknięć</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-[180px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={reasonData} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis type="number" tick={{ fontSize: 10 }} />
-                  <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={60} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "hsl(var(--card))",
-                      borderColor: "hsl(var(--border))",
-                      borderRadius: 8,
-                      fontSize: 12,
-                    }}
-                  />
-                  <Bar dataKey="value" fill="hsl(var(--secondary))" radius={[0, 3, 3, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+        </>
+      )}
     </div>
   );
 }
