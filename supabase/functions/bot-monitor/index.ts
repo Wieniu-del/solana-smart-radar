@@ -1128,11 +1128,11 @@ function taVwap(candles: TACandle[]): number {
 }
 
 const TA_CONFIG = {
-  volume_explosion: { emaShort: 9, emaLong: 21, volumeMultiplier: 3, rsiThreshold: 48, maxAgeMinutes: 45 },
+  volume_explosion: { emaShort: 9, emaLong: 21, volumeMultiplier: 2.5, rsiThreshold: 45, maxAgeMinutes: 30 },
   rsi_divergence: { volumeMultiplier: 3.5, rsiOversold: 35 },
   ema_ribbon: { ribbon: [8, 13, 21, 34, 55], volumeMultiplier: 2.5, rsiMin: 45 },
   vwap_reversion: { volumeMultiplier: 3, rsiMax: 40, minAge: 10 },
-  triple_momentum: { emaShort: 9, emaLong: 21, emaTrend: 200, rsiBuy: 50, volumeMultiplier: 3.5, maxAgeMinutes: 60 },
+  triple_momentum: { emaShort: 9, emaLong: 21, emaTrend: 50, rsiBuy: 48, volumeMultiplier: 3, maxAgeMinutes: 30 },
 };
 
 // Age-based phase selection
