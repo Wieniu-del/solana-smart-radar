@@ -116,6 +116,17 @@ Deno.serve(async (req) => {
     const pCorrelation = pipelineConfig.correlation ?? { enabled: true, min_wallets: 2, bonus_per_wallet: 8, max_bonus: 20 };
     const pSentiment = pipelineConfig.sentiment ?? { enabled: true, block_on_avoid: true };
 
+    // Load enabled technical analysis strategies
+    const { data: taConfig } = await supabase
+      .from("bot_config")
+      .select("value")
+      .eq("key", "technical_strategies")
+      .maybeSingle();
+    const enabledTAStrategies: string[] = Array.isArray(taConfig?.value) ? (taConfig.value as string[]) : [];
+    if (enabledTAStrategies.length > 0) {
+      console.log(`[bot] TA strategies enabled: ${enabledTAStrategies.join(", ")}`);
+    }
+
     // Lookback window for wallet activity (default 72h to avoid empty scans)
     const { data: lookbackConfig } = await supabase
       .from("bot_config")
