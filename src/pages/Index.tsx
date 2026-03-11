@@ -105,7 +105,7 @@ const Index = () => {
     try {
       const [posRes, closedRes, configRes, healthRes] = await Promise.all([
         supabase.from("open_positions").select("*").eq("status", "open"),
-        supabase.from("open_positions").select("amount_sol, pnl_pct").eq("status", "closed"),
+        supabase.from("open_positions").select("*").eq("status", "closed").order("closed_at", { ascending: false }).limit(10),
         supabase.from("bot_config").select("value").eq("key", "bot_enabled").single(),
         supabase.functions.invoke("bot-health"),
       ]);
