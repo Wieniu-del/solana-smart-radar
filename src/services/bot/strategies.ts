@@ -6,6 +6,19 @@ function prices(data: MarketData): number[] {
   return data.candles.map((c) => c.close);
 }
 
+/**
+ * Volume confirmation: require N consecutive candles with rising volume.
+ */
+function hasRisingVolume(data: MarketData, count: number): boolean {
+  if (!config.volumeConfirmation.enabled) return true;
+  if (data.candles.length < count + 1) return true; // not enough data, skip check
+  const recent = data.candles.slice(-(count + 1));
+  for (let i = 1; i < recent.length; i++) {
+    if (recent[i].volume <= recent[i - 1].volume) return false;
+  }
+  return true;
+}
+
 export function volumeExplosionStrategy(data: MarketData): boolean {
   if (data.candles.length < 3) return false;
   const p = prices(data);
@@ -16,11 +29,12 @@ export function volumeExplosionStrategy(data: MarketData): boolean {
   const r = rsi(14, p);
 
   const cross = ema9.at(-2)! < ema21.at(-2)! && ema9.at(-1)! > ema21.at(-1)!;
-  const volumeOk = currentVolume > avgVol * config.volumeExplosion.volumeMultiplier; // 3x
-  const rsiOk = r > config.volumeExplosion.rsiThreshold; // > 48
-  const ageOk = data.ageMinutes < config.volumeExplosion.maxAgeMinutes; // < 45min
+  const volumeOk = currentVolume > avgVol * config.volumeExplosion.volumeMultiplier;
+  const rsiOk = r > config.volumeExplosion.rsiThreshold;
+  const ageOk = data.ageMinutes < config.volumeExplosion.maxAgeMinutes;
+  const volConfirm = hasRisingVolume(data, config.volumeConfirmation.consecutiveRisingCandles);
 
-  return cross && volumeOk && rsiOk && ageOk;
+  return cross && volumeOk && rsiOk && ageOk && volConfirm;
 }
 
 export function rsiDivergenceStrategy(data: MarketData): boolean {
@@ -73,20 +87,21 @@ export function vwapReversionStrategy(data: MarketData): boolean {
 export function tripleMomentumStrategy(data: MarketData): boolean {
   if (data.candles.length < 3) return false;
   const p = prices(data);
-  const ema9 = ema(config.tripleMomentum.emaShort, p);    // 9
-  const ema21 = ema(config.tripleMomentum.emaLong, p);     // 21
-  const ema200 = ema(config.tripleMomentum.emaTrend, p);   // 200
+  const ema9 = ema(config.tripleMomentum.emaShort, p);
+  const ema21 = ema(config.tripleMomentum.emaLong, p);
+  const emaTrend = ema(config.tripleMomentum.emaTrend, p);
   const r = rsi(14, p);
   const currentVolume = data.candles.at(-1)!.volume;
   const avgVol = avgVolume(data.candles, 10);
 
-  const volumeOk = currentVolume > avgVol * config.tripleMomentum.volumeMultiplier; // 3.5x
+  const volumeOk = currentVolume > avgVol * config.tripleMomentum.volumeMultiplier;
   const emaCross = ema9.at(-1)! > ema21.at(-1)!;
-  const trendOk = p.at(-1)! > ema200.at(-1)!;
-  const rsiOk = r > config.tripleMomentum.rsiBuy; // > 50
-  const ageOk = data.ageMinutes < config.tripleMomentum.maxAgeMinutes; // < 60min
+  const trendOk = p.at(-1)! > emaTrend.at(-1)!;
+  const rsiOk = r > config.tripleMomentum.rsiBuy;
+  const ageOk = data.ageMinutes < config.tripleMomentum.maxAgeMinutes;
+  const volConfirm = hasRisingVolume(data, config.volumeConfirmation.consecutiveRisingCandles);
 
-  return emaCross && trendOk && volumeOk && rsiOk && ageOk;
+  return emaCross && trendOk && volumeOk && rsiOk && ageOk && volConfirm;
 }
 
 export const strategies = {
