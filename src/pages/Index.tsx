@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import {
   BarChart3, Search, TrendingUp, Activity, Zap, Clock, ArrowUpRight,
-  Brain, Trophy, DollarSign, Target, PieChart, Layers, Timer, Radio, Cpu, Gauge
+  Brain, Trophy, DollarSign, Target, PieChart, Layers, Timer, Radio, Cpu, Gauge, Coins
 } from "lucide-react";
 import { mockTopWallets } from "@/types/wallet";
 import { useSearchHistory } from "@/hooks/useSearchHistory";
@@ -38,6 +38,7 @@ const Index = () => {
     activePositions: 0,
     botActive: false,
   });
+  const [openPositions, setOpenPositions] = useState<any[]>([]);
 
   // Live clock tick for animated effects
   useEffect(() => {
@@ -105,6 +106,7 @@ const Index = () => {
       ]);
       const openPositions = posRes.data || [];
       const closedPositions = closedRes.data || [];
+      setOpenPositions(openPositions);
 
       const portfolioValue = openPositions.reduce((s, p) => s + p.amount_sol, 0);
       const totalInvested = [...openPositions, ...closedPositions].reduce((s, p) => s + p.amount_sol, 0);
@@ -134,25 +136,8 @@ const Index = () => {
   const topWallets = useMemo(() =>
     [...mockTopWallets].sort((a, b) => b.smartScore - a.smartScore).slice(0, 5), []);
 
-  // Simulated live network chart that updates
-  const [networkChart, setNetworkChart] = useState(() =>
-    Array.from({ length: 24 }, (_, i) => ({
-      hour: `${i}:00`,
-      tx: Math.floor(100000 + Math.random() * 200000),
-      wallets: Math.floor(8000 + Math.random() * 15000),
-    }))
-  );
 
-  // Update current hour bar live
-  useEffect(() => {
-    if (!stats) return;
-    const currentHour = new Date().getHours();
-    setNetworkChart(prev => prev.map((d, i) =>
-      i === currentHour
-        ? { ...d, tx: d.tx + Math.floor(Math.random() * 3000 - 1000) }
-        : d
-    ));
-  }, [clockTick, stats]);
+
 
   return (
     <div className="space-y-6">
@@ -258,43 +243,79 @@ const Index = () => {
 
       {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Network Activity Chart */}
+        {/* Hodlowane Tokeny */}
         <div className="lg:col-span-2 neon-card rounded-xl p-6 relative overflow-hidden">
-          {/* Animated scan line */}
           <div className="absolute inset-0 pointer-events-none scan-line opacity-30" />
           
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Aktywność sieci 24h</h3>
+              <Coins className="h-4 w-4 text-primary" />
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Moje pozycje</h3>
               <LivePulse color="bg-primary" />
             </div>
-            <Link to="/activity" className="text-xs text-primary hover:underline flex items-center gap-1">
-              Więcej <ArrowUpRight className="h-3 w-3" />
+            <Link to="/trading" className="text-xs text-primary hover:underline flex items-center gap-1">
+              Auto Trading <ArrowUpRight className="h-3 w-3" />
             </Link>
           </div>
-          <ResponsiveContainer width="100%" height={200}>
-            <AreaChart data={networkChart}>
-              <defs>
-                <linearGradient id="txGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="hsl(155, 100%, 50%)" stopOpacity={0.4} />
-                  <stop offset="50%" stopColor="hsl(185, 100%, 50%)" stopOpacity={0.15} />
-                  <stop offset="100%" stopColor="hsl(155, 100%, 50%)" stopOpacity={0} />
-                </linearGradient>
-                <linearGradient id="strokeGrad" x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0%" stopColor="hsl(155, 100%, 50%)" />
-                  <stop offset="50%" stopColor="hsl(185, 100%, 50%)" />
-                  <stop offset="100%" stopColor="hsl(270, 80%, 65%)" />
-                </linearGradient>
-              </defs>
-              <XAxis dataKey="hour" tick={{ fontSize: 10, fill: "hsl(220,10%,55%)" }} axisLine={false} tickLine={false} interval={5} />
-              <YAxis hide />
-              <Tooltip
-                contentStyle={{ background: "hsl(220,18%,10%)", border: "1px solid hsl(220,15%,18%)", borderRadius: 8, fontSize: 12 }}
-                labelStyle={{ color: "hsl(220,10%,55%)" }}
-              />
-              <Area type="monotone" dataKey="tx" stroke="url(#strokeGrad)" fill="url(#txGrad)" strokeWidth={2.5} name="Transakcje" />
-            </AreaChart>
-          </ResponsiveContainer>
+
+          {openPositions.length === 0 ? (
+            <div className="text-center py-10">
+              <Coins className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+              <p className="text-xs text-muted-foreground">Brak otwartych pozycji</p>
+            </div>
+          ) : (
+            <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1">
+              {/* Header */}
+              <div className="grid grid-cols-[1fr_80px_80px_70px_60px] gap-2 px-3 py-1 text-[10px] text-muted-foreground uppercase tracking-wider font-mono">
+                <span>Token</span>
+                <span className="text-right">Kupno</span>
+                <span className="text-right">Teraz</span>
+                <span className="text-right">PnL</span>
+                <span className="text-right">SOL</span>
+              </div>
+              {openPositions.map((pos, i) => {
+                const pnl = pos.pnl_pct || 0;
+                const isUp = pnl >= 0;
+                const currentPrice = pos.current_price_usd || 0;
+                const entryPrice = pos.entry_price_usd || 0;
+                return (
+                  <div
+                    key={pos.id}
+                    className="grid grid-cols-[1fr_80px_80px_70px_60px] gap-2 items-center bg-muted/20 hover:bg-muted/40 rounded-lg px-3 py-2.5 transition-all duration-300 group"
+                    style={{ animation: `fade-in-up 0.3s ease-out ${i * 0.06}s both` }}
+                  >
+                    {/* Token */}
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className={`w-2 h-2 rounded-full flex-shrink-0 ${isUp ? "bg-primary" : "bg-destructive"}`} />
+                      <span className="text-sm font-bold text-foreground truncate">
+                        {pos.token_symbol || pos.token_mint?.slice(0, 6)}
+                      </span>
+                    </div>
+
+                    {/* Entry Price */}
+                    <span className="text-xs font-mono text-muted-foreground text-right">
+                      ${entryPrice < 0.01 ? entryPrice.toExponential(1) : entryPrice.toFixed(4)}
+                    </span>
+
+                    {/* Current Price */}
+                    <span className={`text-xs font-mono text-right font-semibold ${isUp ? "text-primary" : "text-destructive"}`}>
+                      ${currentPrice < 0.01 ? currentPrice.toExponential(1) : currentPrice.toFixed(4)}
+                    </span>
+
+                    {/* PnL % */}
+                    <span className={`text-xs font-mono font-black text-right ${isUp ? "text-primary" : "text-destructive"}`}>
+                      {isUp ? "+" : ""}{pnl.toFixed(1)}%
+                    </span>
+
+                    {/* Amount SOL */}
+                    <span className="text-xs font-mono text-muted-foreground text-right">
+                      {pos.amount_sol?.toFixed(2)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Top Smart Wallets */}
