@@ -105,6 +105,7 @@ const Index = () => {
         supabase.functions.invoke("bot-health"),
       ]);
       const openPositions = posRes.data || [];
+      const closedPositions = closedRes.data || [];
       setOpenPositions(openPositions);
 
       const portfolioValue = openPositions.reduce((s, p) => s + p.amount_sol, 0);
