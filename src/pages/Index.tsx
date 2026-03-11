@@ -266,63 +266,87 @@ const Index = () => {
               <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Moje pozycje</h3>
               <LivePulse color="bg-primary" />
             </div>
-            <Link to="/trading" className="text-xs text-primary hover:underline flex items-center gap-1">
-              Auto Trading <ArrowUpRight className="h-3 w-3" />
-            </Link>
+            <div className="flex items-center gap-3">
+              <div className="flex bg-muted/30 rounded-lg p-0.5 border border-border">
+                <button
+                  onClick={() => setPositionsTab("open")}
+                  className={`text-[10px] font-bold px-3 py-1 rounded-md transition-all ${positionsTab === "open" ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  Otwarte ({openPositions.length})
+                </button>
+                <button
+                  onClick={() => setPositionsTab("closed")}
+                  className={`text-[10px] font-bold px-3 py-1 rounded-md transition-all ${positionsTab === "closed" ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  Zamknięte ({closedPositions.length})
+                </button>
+              </div>
+              <Link to="/trading" className="text-xs text-primary hover:underline flex items-center gap-1">
+                Auto Trading <ArrowUpRight className="h-3 w-3" />
+              </Link>
+            </div>
           </div>
 
-          {openPositions.length === 0 ? (
-            <div className="text-center py-10">
-              <Coins className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
-              <p className="text-xs text-muted-foreground">Brak otwartych pozycji</p>
-            </div>
-          ) : (
-            <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1">
-              {/* Header */}
-              <div className="grid grid-cols-[1fr_80px_80px_70px_60px] gap-2 px-3 py-1 text-[10px] text-muted-foreground uppercase tracking-wider font-mono">
-                <span>Token</span>
-                <span className="text-right">Kupno</span>
-                <span className="text-right">Teraz</span>
-                <span className="text-right">PnL</span>
-                <span className="text-right">SOL</span>
-              </div>
-              {openPositions.map((pos, i) => {
-                const pnl = pos.pnl_pct || 0;
-                const isUp = pnl >= 0;
-                const currentPrice = pos.current_price_usd || 0;
-                const entryPrice = pos.entry_price_usd || 0;
-                return (
-                  <div
-                    key={pos.id}
-                    className="grid grid-cols-[1fr_80px_80px_70px_60px] gap-2 items-center bg-muted/20 hover:bg-muted/40 rounded-lg px-3 py-2.5 transition-all duration-300 group"
-                    style={{ animation: `fade-in-up 0.3s ease-out ${i * 0.06}s both` }}
-                  >
-                    {/* Token */}
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className={`w-2 h-2 rounded-full flex-shrink-0 ${isUp ? "bg-primary" : "bg-destructive"}`} />
-                      <span className="text-sm font-bold text-foreground truncate">
-                        {pos.token_symbol || pos.token_mint?.slice(0, 6)}
+          {(() => {
+            const positions = positionsTab === "open" ? openPositions : closedPositions;
+            if (positions.length === 0) {
+              return (
+                <div className="text-center py-10">
+                  <Coins className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+                  <p className="text-xs text-muted-foreground">
+                    {positionsTab === "open" ? "Brak otwartych pozycji — bot czeka na sygnał" : "Brak zamkniętych pozycji"}
+                  </p>
+                </div>
+              );
+            }
+            return (
+              <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
+                <div className="grid grid-cols-[1fr_80px_80px_70px_60px] gap-2 px-3 py-1 text-[10px] text-muted-foreground uppercase tracking-wider font-mono">
+                  <span>Token</span>
+                  <span className="text-right">Kupno</span>
+                  <span className="text-right">{positionsTab === "open" ? "Teraz" : "Wyjście"}</span>
+                  <span className="text-right">PnL</span>
+                  <span className="text-right">SOL</span>
+                </div>
+                {positions.map((pos: any, i: number) => {
+                  const pnl = pos.pnl_pct || 0;
+                  const isUp = pnl >= 0;
+                  const currentPrice = pos.current_price_usd || 0;
+                  const entryPrice = pos.entry_price_usd || 0;
+                  const reasonLabel = pos.close_reason
+                    ? { stop_loss: "🔴", trailing_stop: "🟡", take_profit: "🟢", dead_token: "💀", profit_fade: "🟠", fast_loss_cut: "⚡", time_decay: "⏰", manual_sell: "🖐️" }[pos.close_reason] || ""
+                    : "";
+                  return (
+                    <div
+                      key={pos.id}
+                      onClick={() => { setSelectedPosition(pos); setShowPositionModal(true); }}
+                      className="grid grid-cols-[1fr_80px_80px_70px_60px] gap-2 items-center bg-muted/20 hover:bg-muted/40 rounded-lg px-3 py-2.5 transition-all duration-300 cursor-pointer group"
+                      style={{ animation: `fade-in-up 0.3s ease-out ${i * 0.06}s both` }}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${isUp ? "bg-primary" : "bg-destructive"}`} />
+                        <span className="text-sm font-bold text-foreground truncate group-hover:text-primary transition-colors">
+                          {reasonLabel} {pos.token_symbol || pos.token_mint?.slice(0, 6)}
+                        </span>
+                      </div>
+                      <span className="text-xs font-mono text-muted-foreground text-right">
+                        ${entryPrice < 0.01 ? entryPrice.toExponential(1) : entryPrice.toFixed(4)}
+                      </span>
+                      <span className={`text-xs font-mono text-right font-semibold ${isUp ? "text-primary" : "text-destructive"}`}>
+                        ${currentPrice < 0.01 ? currentPrice.toExponential(1) : currentPrice.toFixed(4)}
+                      </span>
+                      <span className={`text-xs font-mono font-black text-right ${isUp ? "text-primary" : "text-destructive"}`}>
+                        {isUp ? "+" : ""}{pnl.toFixed(1)}%
+                      </span>
+                      <span className="text-xs font-mono text-muted-foreground text-right">
+                        {pos.amount_sol?.toFixed(2)}
                       </span>
                     </div>
-
-                    {/* Entry Price */}
-                    <span className="text-xs font-mono text-muted-foreground text-right">
-                      ${entryPrice < 0.01 ? entryPrice.toExponential(1) : entryPrice.toFixed(4)}
-                    </span>
-
-                    {/* Current Price */}
-                    <span className={`text-xs font-mono text-right font-semibold ${isUp ? "text-primary" : "text-destructive"}`}>
-                      ${currentPrice < 0.01 ? currentPrice.toExponential(1) : currentPrice.toFixed(4)}
-                    </span>
-
-                    {/* PnL % */}
-                    <span className={`text-xs font-mono font-black text-right ${isUp ? "text-primary" : "text-destructive"}`}>
-                      {isUp ? "+" : ""}{pnl.toFixed(1)}%
-                    </span>
-
-                    {/* Amount SOL */}
-                    <span className="text-xs font-mono text-muted-foreground text-right">
-                      {pos.amount_sol?.toFixed(2)}
+                  );
+                })}
+              </div>
+            );
+          })()}
                     </span>
                   </div>
                 );
