@@ -378,14 +378,14 @@ Deno.serve(async (req) => {
               console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: liquidity $${effectiveLiquidity.toFixed(0)} < $${minLiquidityUsd}`);
               continue;
             }
-            // Volume 5m filter
-            if (volume5m > 0 && volume5m < 20000) {
-              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: volume5m $${volume5m.toFixed(0)} < $20000`);
+            // Volume 5m filter ($40k minimum)
+            if (volume5m > 0 && volume5m < 40000) {
+              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: volume5m $${volume5m.toFixed(0)} < $40000`);
               continue;
             }
-            // Token age filter (max 60 minutes)
-            if (tokenAgeMinutes > 0 && tokenAgeMinutes > 60) {
-              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: age ${tokenAgeMinutes}min > 60min`);
+            // Token age filter (max 30 minutes)
+            if (tokenAgeMinutes > 0 && tokenAgeMinutes > 30) {
+              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: age ${tokenAgeMinutes}min > 30min`);
               continue;
             }
 
