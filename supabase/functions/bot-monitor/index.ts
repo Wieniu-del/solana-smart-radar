@@ -581,7 +581,7 @@ Deno.serve(async (req) => {
             .select("value")
             .eq("key", "trailing_stop_pct")
             .single();
-          const trailingStopPct = (tsConfig?.value as number) || 10;
+          const trailingStopPct = (tsConfig?.value as number) || 4;
 
           const { data: tpConfig } = await supabase
             .from("bot_config")
