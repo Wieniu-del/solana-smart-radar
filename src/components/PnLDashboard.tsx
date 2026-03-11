@@ -10,7 +10,7 @@ import {
   BarChart, Bar,
 } from "recharts";
 
-interface ClosedPosition {
+interface Position {
   id: string;
   token_symbol: string | null;
   entry_price_usd: number;
@@ -20,24 +20,39 @@ interface ClosedPosition {
   opened_at: string;
   closed_at: string | null;
   close_reason: string | null;
+  status: string;
+  highest_price_usd: number;
+  stop_price_usd: number | null;
+  trailing_stop_pct: number;
 }
 
 export default function PnLDashboard() {
-  const [positions, setPositions] = useState<ClosedPosition[]>([]);
+  const [closedPositions, setClosedPositions] = useState<Position[]>([]);
+  const [openPositions, setOpenPositions] = useState<Position[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadData();
+    const interval = setInterval(loadData, 15000); // refresh every 15s
+    return () => clearInterval(interval);
   }, []);
 
   async function loadData() {
     setLoading(true);
-    const { data } = await supabase
-      .from("open_positions")
-      .select("*")
-      .eq("status", "closed")
-      .order("closed_at", { ascending: true });
-    if (data) setPositions(data as ClosedPosition[]);
+    const [{ data: closed }, { data: open }] = await Promise.all([
+      supabase
+        .from("open_positions")
+        .select("*")
+        .eq("status", "closed")
+        .order("closed_at", { ascending: true }),
+      supabase
+        .from("open_positions")
+        .select("*")
+        .eq("status", "open")
+        .order("opened_at", { ascending: false }),
+    ]);
+    if (closed) setClosedPositions(closed as Position[]);
+    if (open) setOpenPositions(open as Position[]);
     setLoading(false);
   }
 
