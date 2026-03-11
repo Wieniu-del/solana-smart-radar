@@ -611,7 +611,64 @@ Deno.serve(async (req) => {
 
       const autoExecuteEnabled = autoExecConfig?.value !== false;
 
-      if (autoExecuteEnabled) {
+      // ── SELL-ONLY MODE: block ALL buys if enabled ──
+      const { data: sellOnlyConfig } = await supabase
+        .from("bot_config")
+        .select("value")
+        .eq("key", "sell_only_mode")
+        .maybeSingle();
+      const sellOnlyMode = sellOnlyConfig?.value === true || sellOnlyConfig?.value === "true";
+
+      // ── BALANCE GUARD: block buys if balance < min_balance_sol ──
+      const { data: minBalConfig } = await supabase
+        .from("bot_config")
+        .select("value")
+        .eq("key", "min_balance_sol")
+        .maybeSingle();
+      const minBalanceSol = Number(minBalConfig?.value) || 0.5;
+
+      let balanceTooLow = false;
+      try {
+        const solPubKey = Deno.env.get("SOLANA_PUBLIC_KEY");
+        if (solPubKey) {
+          const balRpc = Deno.env.get("HELIUS_API_KEY")
+            ? `https://mainnet.helius-rpc.com/?api-key=${Deno.env.get("HELIUS_API_KEY")}`
+            : "https://api.mainnet-beta.solana.com";
+          const balRes = await fetch(balRpc, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              jsonrpc: "2.0", id: 1,
+              method: "getBalance",
+              params: [solPubKey],
+            }),
+          });
+          const balData = await balRes.json();
+          const balanceSol = (balData?.result?.value || 0) / 1e9;
+          console.log(`[bot] Wallet balance: ${balanceSol.toFixed(4)} SOL, min required: ${minBalanceSol} SOL`);
+          if (balanceSol < minBalanceSol) {
+            balanceTooLow = true;
+            console.warn(`[bot] ⚠️ Balance ${balanceSol.toFixed(4)} SOL < ${minBalanceSol} SOL — BUY BLOCKED`);
+            await supabase.from("notifications").insert({
+              type: "balance_guard",
+              title: "⚠️ Balans poniżej limitu — kupno zablokowane",
+              message: `Saldo: ${balanceSol.toFixed(4)} SOL < ${minBalanceSol} SOL. Tylko sprzedaż aktywna.`,
+              details: { balance: balanceSol, min_required: minBalanceSol },
+            });
+          }
+        }
+      } catch (balErr) {
+        console.warn("[bot] Balance check error:", balErr);
+      }
+
+      const buyBlocked = sellOnlyMode || balanceTooLow;
+      if (buyBlocked) {
+        console.log(`[bot] 🚫 BUY BLOCKED — sell_only=${sellOnlyMode}, balance_low=${balanceTooLow}`);
+        // Reject all pending signals
+        await supabase.from("trading_signals").update({ status: "rejected" }).eq("status", "pending").eq("signal_type", "BUY");
+      }
+
+      if (autoExecuteEnabled && !buyBlocked) {
         // Check max open positions limit
         const { data: maxPosConfig } = await supabase
           .from("bot_config")
