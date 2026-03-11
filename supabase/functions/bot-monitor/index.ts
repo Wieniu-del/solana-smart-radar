@@ -90,7 +90,7 @@ Deno.serve(async (req) => {
       .select("value")
       .eq("key", "min_score_threshold")
       .single();
-    const minScoreThreshold = (thresholdConfig?.value as number) || 60;
+    const minScoreThreshold = (thresholdConfig?.value as number) || 70;
 
     // 3b. Dynamic sizing table (score-based)
     const dynamicSizing = {
