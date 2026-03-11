@@ -10,6 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useSolanaLiveStats } from "@/hooks/useSolanaLiveStats";
 import LivePulse from "@/components/LivePulse";
 import BotHealthMonitor from "@/components/BotHealthMonitor";
+import PortfolioHealth from "@/components/PortfolioHealth";
 import AnimatedCounter from "@/components/AnimatedCounter";
 import {
   AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip, BarChart, Bar
