@@ -727,7 +727,7 @@ Deno.serve(async (req) => {
         console.warn("[bot] Balance check error:", balErr);
       }
 
-      const buyBlocked = sellOnlyMode || balanceTooLow;
+      const buyBlocked = sellOnlyMode || balanceTooLow || cooldownActive || dailyLossExceeded;
       if (buyBlocked) {
         console.log(`[bot] 🚫 BUY BLOCKED — sell_only=${sellOnlyMode}, balance_low=${balanceTooLow}`);
         // Reject all pending signals
