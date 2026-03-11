@@ -45,6 +45,15 @@ const Index = () => {
   const [showPositionModal, setShowPositionModal] = useState(false);
   const [positionsTab, setPositionsTab] = useState<"open" | "closed">("open");
 
+  // Auto-switch to closed tab when no open positions exist
+  useEffect(() => {
+    if (openPositions.length === 0 && closedPositions.length > 0) {
+      setPositionsTab("closed");
+    } else if (openPositions.length > 0) {
+      setPositionsTab("open");
+    }
+  }, [openPositions.length, closedPositions.length]);
+
   // Live clock tick for animated effects
   useEffect(() => {
     const timer = setInterval(() => setClockTick(t => t + 1), 1000);
