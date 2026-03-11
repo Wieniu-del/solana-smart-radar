@@ -1,3 +1,5 @@
+import nacl from "https://esm.sh/tweetnacl@1.0.3";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
@@ -30,7 +32,7 @@ Deno.serve(async (req) => {
 
     // 1. Get quote
     const quoteUrl = `${JUPITER_QUOTE_API}?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountLamports}&slippageBps=${slippageBps || 300}`;
-    console.log(`[execute-swap] ${action} quote: ${quoteUrl.slice(0, 120)}...`);
+    console.log(`[execute-swap] ${action} quote request`);
     const quoteRes = await fetch(quoteUrl);
     if (!quoteRes.ok) {
       const err = await quoteRes.text();
@@ -38,11 +40,9 @@ Deno.serve(async (req) => {
     }
     const quoteData = await quoteRes.json();
 
-    // 2. Get public key
+    // 2. Derive keypair
     const keyBytes = parsePrivateKey(PRIVATE_KEY);
-    // Dynamically import tweetnacl for signing
-    const nacl = await import("https://esm.sh/tweetnacl@1.0.3?target=deno");
-    let keypair: { publicKey: Uint8Array; secretKey: Uint8Array };
+    let keypair: nacl.SignKeyPair;
     if (keyBytes.length === 32) {
       keypair = nacl.sign.keyPair.fromSeed(keyBytes);
     } else if (keyBytes.length === 64) {
@@ -75,29 +75,31 @@ Deno.serve(async (req) => {
     // 4. Deserialize, sign, send
     const txBytes = Uint8Array.from(atob(swapTransaction), c => c.charCodeAt(0));
 
-    // VersionedTransaction: first byte is prefix (0x80), then message
-    // We need to sign the message part (everything after the signatures section)
-    // For versioned tx: [prefix(1)] [num_sigs(compact)] [sig1(64)] ... [message]
-    // We use the raw approach: find message, sign it, inject signature
-    
-    // Parse: first byte = 0x80 (versioned marker) or count of signatures
-    // Versioned tx binary: [num_required_signatures as compact-u16] [signatures...] [message...]
+    // Versioned tx: [num_sigs(1 byte)] [sig_slots(num_sigs * 64)] [message...]
     const numSigs = txBytes[0];
     const sigsEnd = 1 + numSigs * 64;
     const messageBytes = txBytes.slice(sigsEnd);
-    
-    // Sign message
+
+    // Sign message with ed25519
     const signature = nacl.sign.detached(messageBytes, keypair.secretKey);
-    
-    // Replace first signature slot
+
+    // Inject signature into first slot
     const signedTx = new Uint8Array(txBytes.length);
     signedTx.set(txBytes);
-    signedTx.set(signature, 1); // first sig starts at byte 1
+    signedTx.set(signature, 1);
 
     const HELIUS_KEY = Deno.env.get("HELIUS_API_KEY");
     const rpcUrl = HELIUS_KEY
       ? `https://mainnet.helius-rpc.com/?api-key=${HELIUS_KEY}`
       : "https://api.mainnet-beta.solana.com";
+
+    // Convert to base64
+    let b64 = "";
+    const chunk = 8192;
+    for (let i = 0; i < signedTx.length; i += chunk) {
+      b64 += String.fromCharCode(...signedTx.slice(i, i + chunk));
+    }
+    b64 = btoa(b64);
 
     const sendRes = await fetch(rpcUrl, {
       method: "POST",
@@ -105,10 +107,7 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         jsonrpc: "2.0", id: 1,
         method: "sendTransaction",
-        params: [
-          btoa(String.fromCharCode(...signedTx)),
-          { encoding: "base64", skipPreflight: false, preflightCommitment: "confirmed" },
-        ],
+        params: [b64, { encoding: "base64", skipPreflight: false, preflightCommitment: "confirmed" }],
       }),
     });
 
@@ -130,8 +129,6 @@ Deno.serve(async (req) => {
     return jsonRes({ success: false, error: err.message }, 500);
   }
 });
-
-// ── Helpers ──
 
 function jsonRes(data: any, status = 200) {
   return new Response(JSON.stringify(data), {
