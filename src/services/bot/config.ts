@@ -32,9 +32,9 @@ export const config = {
   },
 
   // ─── Market Filters ───
-  minLiquidityUsd: 30000,      // was 15000
-  minVolume5m: 40000,          // was 20000
-  maxTokenAgeMinutes: 30,      // was 60
+  minLiquidityUsd: 10000,      // was 30000
+  minVolume5m: 10000,          // was 40000
+  maxTokenAgeMinutes: 120,     // was 30
   maxSingleHolderPct: 20,
   mintAuthority: false,
   freezeAuthority: false,
@@ -52,15 +52,15 @@ export const config = {
   smartWalletBonus: 10,
 
   // ─── Scoring ───
-  buyScoreThreshold: 70,       // was 60
-  minScoreForPosition: 70,     // was 65
+  buyScoreThreshold: 50,       // was 70
+  minScoreForPosition: 50,     // was 70
 
   // Dynamic sizing based on score
   dynamicSizing: [
-    { minScore: 85, sol: 0.15 },
-    { minScore: 75, sol: 0.10 },
-    { minScore: 70, sol: 0.07 },
-    { minScore: 60, sol: 0.03 },
+    { minScore: 80, sol: 0.15 },
+    { minScore: 65, sol: 0.10 },
+    { minScore: 55, sol: 0.07 },
+    { minScore: 50, sol: 0.03 },
   ],
 
   // ─── Strategy: Volume Explosion ───

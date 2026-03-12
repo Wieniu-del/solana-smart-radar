@@ -96,10 +96,10 @@ Deno.serve(async (req) => {
     const dynamicSizing = {
       enabled: true,
       table: [
-        { minScore: 85, sol: 0.15 },
-        { minScore: 75, sol: 0.10 },
-        { minScore: 65, sol: 0.07 },
-        { minScore: 55, sol: 0.03 },
+        { minScore: 80, sol: 0.15 },
+        { minScore: 65, sol: 0.10 },
+        { minScore: 55, sol: 0.07 },
+        { minScore: 50, sol: 0.03 },
       ],
     };
 
@@ -138,8 +138,8 @@ Deno.serve(async (req) => {
     const lookbackSinceTs = Date.now() / 1000 - lookbackHours * 3600;
 
     // Use pipeline scoring thresholds if set, otherwise fall back to global
-    const buyThreshold = pScoring.buy_threshold || 70;
-    const watchThreshold = pScoring.watch_threshold || 40;
+    const buyThreshold = pScoring.buy_threshold || 50;
+    const watchThreshold = pScoring.watch_threshold || 30;
 
     // ── COOLDOWN: DISABLED per user request ──
     const cooldownActive = false;
@@ -158,7 +158,7 @@ Deno.serve(async (req) => {
     // FIX #1: Also block ALL pending signals (no time limit) to prevent spam
     // FIX #3: Cooldown — block tokens that hit SL in last 48h
     const blockedMints = new Set<string>();
-    const COOLDOWN_HOURS = 48;
+    const COOLDOWN_HOURS = 12;
     const [{ data: openPositions }, { data: recentSignals }, { data: pendingSignalMints }, { data: slCooldownMints }] = await Promise.all([
       supabase.from("open_positions").select("token_mint").eq("status", "open"),
       supabase
@@ -319,13 +319,13 @@ Deno.serve(async (req) => {
               continue;
             }
             // Volume 5m filter ($40k minimum)
-            if (volume5m > 0 && volume5m < 40000) {
-              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: volume5m $${volume5m.toFixed(0)} < $40000`);
+            if (volume5m > 0 && volume5m < 10000) {
+              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: volume5m $${volume5m.toFixed(0)} < $10000`);
               continue;
             }
-            // Token age filter (max 30 minutes)
-            if (tokenAgeMinutes > 0 && tokenAgeMinutes > 30) {
-              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: age ${tokenAgeMinutes}min > 30min`);
+            // Token age filter (max 120 minutes)
+            if (tokenAgeMinutes > 0 && tokenAgeMinutes > 120) {
+              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: age ${tokenAgeMinutes}min > 120min`);
               continue;
             }
 
