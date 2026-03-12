@@ -32,9 +32,9 @@ export const config = {
   },
 
   // ─── Market Filters ───
-  minLiquidityUsd: 30000,      // was 15000
-  minVolume5m: 40000,          // was 20000
-  maxTokenAgeMinutes: 30,      // was 60
+  minLiquidityUsd: 10000,      // was 30000
+  minVolume5m: 10000,          // was 40000
+  maxTokenAgeMinutes: 120,     // was 30
   maxSingleHolderPct: 20,
   mintAuthority: false,
   freezeAuthority: false,
