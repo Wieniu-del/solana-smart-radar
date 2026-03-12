@@ -354,8 +354,8 @@ const Journal = () => {
                       };
                       if (entry.pos_status === "open") {
                         return (
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border border-secondary/50 bg-secondary/10 text-secondary">
-                            🟢 W PORTFELU
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border border-amber-500/50 bg-amber-500/15 text-amber-400">
+                            🟡 W PORTFELU
                           </span>
                         );
                       }
