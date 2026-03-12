@@ -20,15 +20,15 @@ export const config = {
     { minPnl: 0, trailing: 4 },
   ],
 
-  // ─── Loss Protection ───
+  // ─── Loss Protection (DISABLED) ───
   cooldown: {
-    enabled: true,
-    maxConsecutiveLosses: 2,    // pause after 2 losses in a row
-    cooldownMinutes: 10,        // wait 10 minutes
+    enabled: false,
+    maxConsecutiveLosses: 999,
+    cooldownMinutes: 0,
   },
   dailyLossLimit: {
-    enabled: true,
-    maxDailyLossSol: 0.1,      // stop buying if daily loss > 0.1 SOL
+    enabled: false,
+    maxDailyLossSol: 999,
   },
 
   // ─── Market Filters ───
