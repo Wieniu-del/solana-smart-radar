@@ -29,7 +29,7 @@ const DEFAULT_CONFIG: PipelineConfig = {
   scoring: { buy_threshold: 70, watch_threshold: 45 },
   correlation: { enabled: true, min_wallets: 2, bonus_per_wallet: 8, max_bonus: 20 },
   sentiment: { enabled: true, block_on_avoid: true },
-  auto_execute: { enabled: false, min_confidence: 80 },
+  auto_execute: { enabled: true, min_confidence: 65 },
   risk_manager: { trailing_stop: true, take_profit: true },
 };
 
