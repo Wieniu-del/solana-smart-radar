@@ -52,8 +52,8 @@ export const config = {
   smartWalletBonus: 10,
 
   // ─── Scoring ───
-  buyScoreThreshold: 70,       // was 60
-  minScoreForPosition: 70,     // was 65
+  buyScoreThreshold: 50,       // was 70
+  minScoreForPosition: 50,     // was 70
 
   // Dynamic sizing based on score
   dynamicSizing: [

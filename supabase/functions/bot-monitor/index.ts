@@ -319,13 +319,13 @@ Deno.serve(async (req) => {
               continue;
             }
             // Volume 5m filter ($40k minimum)
-            if (volume5m > 0 && volume5m < 40000) {
-              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: volume5m $${volume5m.toFixed(0)} < $40000`);
+            if (volume5m > 0 && volume5m < 10000) {
+              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: volume5m $${volume5m.toFixed(0)} < $10000`);
               continue;
             }
-            // Token age filter (max 30 minutes)
-            if (tokenAgeMinutes > 0 && tokenAgeMinutes > 30) {
-              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: age ${tokenAgeMinutes}min > 30min`);
+            // Token age filter (max 120 minutes)
+            if (tokenAgeMinutes > 0 && tokenAgeMinutes > 120) {
+              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: age ${tokenAgeMinutes}min > 120min`);
               continue;
             }
 
