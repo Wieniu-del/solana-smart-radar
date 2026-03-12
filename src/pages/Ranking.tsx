@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Trophy, ArrowUpDown, Search, Copy, ExternalLink } from "lucide-react";
-import { mockTopWallets, generateMockWallet, WalletData } from "@/types/wallet";
+import { mockTopWallets, WalletData } from "@/types/wallet";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 
@@ -8,7 +8,15 @@ type SortKey = "smartScore" | "transactionCount24h" | "totalTransactions";
 
 const Ranking = () => {
   const wallets = useMemo<WalletData[]>(() => {
-    const all = [...mockTopWallets, ...Array.from({ length: 30 }, () => generateMockWallet())];
+    // Use real wallet addresses - no duplicates
+    const seen = new Set<string>();
+    const all: WalletData[] = [];
+    for (const w of mockTopWallets) {
+      if (!seen.has(w.address)) {
+        seen.add(w.address);
+        all.push(w);
+      }
+    }
     return all.sort((a, b) => b.smartScore - a.smartScore);
   }, []);
 
