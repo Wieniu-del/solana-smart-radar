@@ -92,5 +92,18 @@ export const mockWalletData: WalletData = {
   ],
 };
 
-// Generate mock top wallets for ranking/dashboard
-export const mockTopWallets: WalletData[] = Array.from({ length: 20 }, () => generateMockWallet());
+// Top wallets with real known addresses for ranking
+const REAL_TOP_WALLETS: string[] = [
+  "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+  "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+  "DYw8jCTfwHNRJhhmFcbXvVDTqWMEVFBX6ZKUmG5CNSKK",
+  "4ynNnbMnhpKgSPVpWaALmhMFg1bcacczAaGi3HxpDTvh",
+  "HN7cABqLq46Es1jh92dQQisAq662SmxELLLsHHe4YWrH",
+  "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+  "2iuFWkjMXWCJXiFhxKwVYBCHfQhe2joeXq6rMGFoHBkG",
+  "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
+  "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
+  "3AVi9Tg9Uo68tJfuvoKvqKNWKkC5wPdSSZa2mQPEz6Fv",
+];
+
+export const mockTopWallets: WalletData[] = REAL_TOP_WALLETS.map(addr => generateMockWallet(addr));
