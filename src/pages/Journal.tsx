@@ -341,17 +341,40 @@ const Journal = () => {
                       </span>
                     )}
                     {/* Position status badge */}
-                    {entry.pos_status && (
-                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
-                        entry.pos_status === "open" 
-                          ? "border-secondary/50 bg-secondary/10 text-secondary" 
-                          : (entry.pos_pnl_pct || 0) >= 0
-                            ? "border-primary/50 bg-primary/10 text-primary"
-                            : "border-destructive/50 bg-destructive/10 text-destructive"
-                      }`}>
-                        {entry.pos_status === "open" ? "🟢 OTWARTA" : entry.pos_close_reason ? `🔴 ZAMKNIĘTA: ${entry.pos_close_reason}` : "🔴 ZAMKNIĘTA"}
-                      </span>
-                    )}
+                    {entry.pos_status && (() => {
+                      const closeReasonMap: Record<string, { label: string; icon: string; colorClass: string }> = {
+                        stop_loss: { label: "STOP-LOSS", icon: "🔴", colorClass: "border-destructive/50 bg-destructive/15 text-destructive" },
+                        fast_loss_cut: { label: "FAST LOSS CUT", icon: "⚡", colorClass: "border-destructive/50 bg-destructive/15 text-destructive" },
+                        trailing_stop: { label: "TRAILING STOP (PROFIT)", icon: "🟢", colorClass: "border-primary/50 bg-primary/15 text-primary" },
+                        take_profit: { label: "TAKE-PROFIT", icon: "🟢", colorClass: "border-primary/50 bg-primary/15 text-primary" },
+                        profit_fade: { label: "PROFIT FADE", icon: "🟠", colorClass: "border-accent/50 bg-accent/15 text-accent-foreground" },
+                        time_decay: { label: "TIME DECAY", icon: "⏰", colorClass: "border-border bg-muted/30 text-muted-foreground" },
+                        dead_token: { label: "DEAD TOKEN", icon: "💀", colorClass: "border-destructive/50 bg-destructive/15 text-destructive" },
+                        manual: { label: "RĘCZNE ZAMKNIĘCIE", icon: "⚪", colorClass: "border-border bg-muted/30 text-muted-foreground" },
+                      };
+                      if (entry.pos_status === "open") {
+                        return (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border border-secondary/50 bg-secondary/10 text-secondary">
+                            🟢 W PORTFELU
+                          </span>
+                        );
+                      }
+                      const reason = entry.pos_close_reason ? closeReasonMap[entry.pos_close_reason] : null;
+                      if (reason) {
+                        return (
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${reason.colorClass}`}>
+                            {reason.icon} SPRZEDANY: {reason.label}
+                          </span>
+                        );
+                      }
+                      return (
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
+                          (entry.pos_pnl_pct || 0) >= 0 ? "border-primary/50 bg-primary/10 text-primary" : "border-destructive/50 bg-destructive/10 text-destructive"
+                        }`}>
+                          🔴 ZAMKNIĘTA{entry.pos_close_reason ? `: ${entry.pos_close_reason}` : ""}
+                        </span>
+                      );
+                    })()}
                     <span className="text-sm font-bold text-foreground">{entry.title || entry.token_symbol || "Bez tytułu"}</span>
                     {entry.emotion && <span className="text-xs">{entry.emotion}</span>}
                     {entry.rating && (
