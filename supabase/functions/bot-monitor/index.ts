@@ -175,37 +175,8 @@ Deno.serve(async (req) => {
       console.warn("[bot] Cooldown check error:", cooldownErr);
     }
 
-    // ── DAILY LOSS LIMIT: check if daily losses > 0.1 SOL ──
-    let dailyLossExceeded = false;
-    try {
-      const todayStart = new Date();
-      todayStart.setUTCHours(0, 0, 0, 0);
-      const { data: todayClosedPositions } = await supabase
-        .from("open_positions")
-        .select("pnl_pct, amount_sol")
-        .eq("status", "closed")
-        .gte("closed_at", todayStart.toISOString());
-
-      if (todayClosedPositions) {
-        const dailyLossSol = todayClosedPositions.reduce((sum: number, p: any) => {
-          const pnlSol = (Number(p.pnl_pct) / 100) * Number(p.amount_sol);
-          return pnlSol < 0 ? sum + Math.abs(pnlSol) : sum;
-        }, 0);
-        
-        if (dailyLossSol >= 0.1) {
-          dailyLossExceeded = true;
-          console.warn(`[bot] 🚫 DAILY LOSS LIMIT — lost ${dailyLossSol.toFixed(4)} SOL today (limit: 0.1 SOL)`);
-          await supabase.from("notifications").insert({
-            type: "daily_loss",
-            title: "🚫 Dzienny limit strat osiągnięty",
-            message: `Strata dzisiaj: ${dailyLossSol.toFixed(4)} SOL ≥ 0.1 SOL. Kupno zablokowane do jutra.`,
-            details: { daily_loss_sol: dailyLossSol, limit: 0.1 },
-          });
-        }
-      }
-    } catch (dlErr) {
-      console.warn("[bot] Daily loss check error:", dlErr);
-    }
+    // ── DAILY LOSS LIMIT: DISABLED per user request ──
+    const dailyLossExceeded = false;
 
     // 4. Analyze each wallet
     let totalTokensFound = 0;
