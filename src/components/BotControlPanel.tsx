@@ -9,8 +9,8 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   Power, Plus, Trash2, RefreshCw, Clock, CheckCircle2, XCircle,
   AlertTriangle, Activity, Loader2, Wifi, WifiOff, Settings2,
-  Shield, TrendingUp, TrendingDown, Target, Search, Sparkles, Brain
-} from "lucide-react";
+  Shield, TrendingUp, TrendingDown, Target, Search, Sparkles, Brain } from
+"lucide-react";
 import TradingTerminal from "./TradingTerminal";
 
 interface BotRun {
@@ -76,26 +76,26 @@ export default function BotControlPanel() {
       if (configs) {
         for (const c of configs) {
           switch (c.key) {
-            case "bot_enabled": setBotEnabled(c.value === true); break;
-            case "tracked_wallets": setTrackedWallets(c.value as string[] || []); break;
-            case "min_score_threshold": { const v = c.value as number || 70; setMinScore(v); setSavedMinScore(v); break; }
-            case "max_position_sol": { const v = c.value as number || 0.1; setMaxPosition(v); setSavedMaxPosition(v); break; }
-            case "trailing_stop_pct": { const v = c.value as number || 10; setTrailingStop(v); setSavedTrailingStop(v); break; }
-            case "take_profit_pct": { const v = c.value as number || 50; setTakeProfit(v); setSavedTakeProfit(v); break; }
-            case "max_open_positions": { const v = c.value as number || 3; setMaxOpenPositions(v); setSavedMaxOpenPositions(v); break; }
-            case "dynamic_sizing": {
-              const v = c.value as any || { enabled: false, min_sol: 0.05, max_sol: 0.5 };
-              setDynamicSizing(v); setSavedDynamicSizing(v); break;
-            }
+            case "bot_enabled":setBotEnabled(c.value === true);break;
+            case "tracked_wallets":setTrackedWallets(c.value as string[] || []);break;
+            case "min_score_threshold":{const v = c.value as number || 70;setMinScore(v);setSavedMinScore(v);break;}
+            case "max_position_sol":{const v = c.value as number || 0.1;setMaxPosition(v);setSavedMaxPosition(v);break;}
+            case "trailing_stop_pct":{const v = c.value as number || 10;setTrailingStop(v);setSavedTrailingStop(v);break;}
+            case "take_profit_pct":{const v = c.value as number || 50;setTakeProfit(v);setSavedTakeProfit(v);break;}
+            case "max_open_positions":{const v = c.value as number || 3;setMaxOpenPositions(v);setSavedMaxOpenPositions(v);break;}
+            case "dynamic_sizing":{
+                const v = c.value as any || { enabled: false, min_sol: 0.05, max_sol: 0.5 };
+                setDynamicSizing(v);setSavedDynamicSizing(v);break;
+              }
           }
         }
       }
 
       const [runsRes, openRes, closedRes] = await Promise.all([
-        supabase.from("bot_runs").select("*").order("started_at", { ascending: false }).limit(20),
-        supabase.from("open_positions").select("*").eq("status", "open").order("opened_at", { ascending: false }),
-        supabase.from("open_positions").select("*").eq("status", "closed").order("closed_at", { ascending: false }).limit(10),
-      ]);
+      supabase.from("bot_runs").select("*").order("started_at", { ascending: false }).limit(20),
+      supabase.from("open_positions").select("*").eq("status", "open").order("opened_at", { ascending: false }),
+      supabase.from("open_positions").select("*").eq("status", "closed").order("closed_at", { ascending: false }).limit(10)]
+      );
       if (runsRes.data) setRecentRuns(runsRes.data as BotRun[]);
       if (openRes.data) setOpenPositions(openRes.data as OpenPosition[]);
       if (closedRes.data) setClosedPositions(closedRes.data as OpenPosition[]);
@@ -106,21 +106,21 @@ export default function BotControlPanel() {
     }
   }, [toast]);
 
-  useEffect(() => { loadConfig(); }, [loadConfig]);
+  useEffect(() => {loadConfig();}, [loadConfig]);
 
   // Realtime for open positions
   useEffect(() => {
-    const channel = supabase
-      .channel("positions-realtime")
-      .on("postgres_changes", { event: "*", schema: "public", table: "open_positions" }, () => {
-        // Reload positions on any change
-        supabase.from("open_positions").select("*").eq("status", "open").order("opened_at", { ascending: false })
-          .then(({ data }) => { if (data) setOpenPositions(data as OpenPosition[]); });
-        supabase.from("open_positions").select("*").eq("status", "closed").order("closed_at", { ascending: false }).limit(10)
-          .then(({ data }) => { if (data) setClosedPositions(data as OpenPosition[]); });
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    const channel = supabase.
+    channel("positions-realtime").
+    on("postgres_changes", { event: "*", schema: "public", table: "open_positions" }, () => {
+      // Reload positions on any change
+      supabase.from("open_positions").select("*").eq("status", "open").order("opened_at", { ascending: false }).
+      then(({ data }) => {if (data) setOpenPositions(data as OpenPosition[]);});
+      supabase.from("open_positions").select("*").eq("status", "closed").order("closed_at", { ascending: false }).limit(10).
+      then(({ data }) => {if (data) setClosedPositions(data as OpenPosition[]);});
+    }).
+    subscribe();
+    return () => {supabase.removeChannel(channel);};
   }, []);
 
   // Auto-refresh runs every 30s
@@ -133,9 +133,9 @@ export default function BotControlPanel() {
   }, []);
 
   async function updateConfig(key: string, value: any) {
-    const { error } = await supabase
-      .from("bot_config")
-      .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: "key" });
+    const { error } = await supabase.
+    from("bot_config").
+    upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: "key" });
     if (error) throw error;
   }
 
@@ -146,11 +146,11 @@ export default function BotControlPanel() {
       setBotEnabled(enabled);
       toast({
         title: enabled ? "🟢 Bot aktywowany!" : "🔴 Bot zatrzymany",
-        description: enabled ? "Bot skanuje portfele co minutę w tle" : "Bot nie będzie generował nowych sygnałów",
+        description: enabled ? "Bot skanuje portfele co minutę w tle" : "Bot nie będzie generował nowych sygnałów"
       });
     } catch (e: any) {
       toast({ title: "Błąd", description: e.message, variant: "destructive" });
-    } finally { setSaving(false); }
+    } finally {setSaving(false);}
   }
 
   async function addWallet() {
@@ -172,7 +172,7 @@ export default function BotControlPanel() {
       toast({ title: "✅ Portfel dodany" });
     } catch (e: any) {
       toast({ title: "Błąd", description: e.message, variant: "destructive" });
-    } finally { setSaving(false); }
+    } finally {setSaving(false);}
   }
 
   async function removeWallet(addr: string) {
@@ -184,20 +184,20 @@ export default function BotControlPanel() {
       toast({ title: "Portfel usunięty" });
     } catch (e: any) {
       toast({ title: "Błąd", description: e.message, variant: "destructive" });
-    } finally { setSaving(false); }
+    } finally {setSaving(false);}
   }
 
   async function saveSettings() {
     setSaving(true);
     try {
       await Promise.all([
-        updateConfig("min_score_threshold", minScore),
-        updateConfig("max_position_sol", maxPosition),
-        updateConfig("trailing_stop_pct", trailingStop),
-        updateConfig("take_profit_pct", takeProfit),
-        updateConfig("max_open_positions", maxOpenPositions),
-        updateConfig("dynamic_sizing", dynamicSizing),
-      ]);
+      updateConfig("min_score_threshold", minScore),
+      updateConfig("max_position_sol", maxPosition),
+      updateConfig("trailing_stop_pct", trailingStop),
+      updateConfig("take_profit_pct", takeProfit),
+      updateConfig("max_open_positions", maxOpenPositions),
+      updateConfig("dynamic_sizing", dynamicSizing)]
+      );
       setSavedMinScore(minScore);
       setSavedMaxPosition(maxPosition);
       setSavedTrailingStop(trailingStop);
@@ -207,7 +207,7 @@ export default function BotControlPanel() {
       toast({ title: "✅ Ustawienia zapisane" });
     } catch (e: any) {
       toast({ title: "Błąd", description: e.message, variant: "destructive" });
-    } finally { setSaving(false); }
+    } finally {setSaving(false);}
   }
 
   async function triggerManualRun() {
@@ -217,12 +217,12 @@ export default function BotControlPanel() {
       if (error) throw error;
       toast({
         title: "Skan zakończony",
-        description: `Portfele: ${data?.wallets_scanned || 0}, Tokeny: ${data?.tokens_found || 0}, Sygnały BUY: ${data?.buy_signals || 0}`,
+        description: `Portfele: ${data?.wallets_scanned || 0}, Tokeny: ${data?.tokens_found || 0}, Sygnały BUY: ${data?.buy_signals || 0}`
       });
       loadConfig();
     } catch (e: any) {
       toast({ title: "Błąd skanu", description: e.message, variant: "destructive" });
-    } finally { setSaving(false); }
+    } finally {setSaving(false);}
   }
 
   async function triggerPositionCheck() {
@@ -232,12 +232,12 @@ export default function BotControlPanel() {
       if (error) throw error;
       toast({
         title: "Sprawdzenie pozycji",
-        description: `Sprawdzono: ${data?.checked || 0}, Zamknięto: ${data?.closed || 0}`,
+        description: `Sprawdzono: ${data?.checked || 0}, Zamknięto: ${data?.closed || 0}`
       });
       loadConfig();
     } catch (e: any) {
       toast({ title: "Błąd", description: e.message, variant: "destructive" });
-    } finally { setSaving(false); }
+    } finally {setSaving(false);}
   }
 
   async function discoverWallets() {
@@ -249,14 +249,14 @@ export default function BotControlPanel() {
         setDiscoveredWallets(data.candidates);
         toast({
           title: `🔍 Odkryto ${data.candidates.length} portfeli`,
-          description: `Przeanalizowano ${data.total_analyzed} portfeli, znaleziono ${data.discovered} kandydatów`,
+          description: `Przeanalizowano ${data.total_analyzed} portfeli, znaleziono ${data.discovered} kandydatów`
         });
       } else {
         toast({ title: "Brak nowych portfeli", description: "Nie znaleziono aktywnych portfeli spełniających kryteria" });
       }
     } catch (e: any) {
       toast({ title: "Błąd discovery", description: e.message, variant: "destructive" });
-    } finally { setDiscovering(false); }
+    } finally {setDiscovering(false);}
   }
 
   async function addDiscoveredWallet(addr: string) {
@@ -273,27 +273,27 @@ export default function BotControlPanel() {
       toast({ title: "✅ Portfel dodany do śledzenia" });
     } catch (e: any) {
       toast({ title: "Błąd", description: e.message, variant: "destructive" });
-    } finally { setSaving(false); }
+    } finally {setSaving(false);}
   }
 
   const hasUnsavedChanges = minScore !== savedMinScore || maxPosition !== savedMaxPosition ||
-    trailingStop !== savedTrailingStop || takeProfit !== savedTakeProfit || maxOpenPositions !== savedMaxOpenPositions ||
-    JSON.stringify(dynamicSizing) !== JSON.stringify(savedDynamicSizing);
+  trailingStop !== savedTrailingStop || takeProfit !== savedTakeProfit || maxOpenPositions !== savedMaxOpenPositions ||
+  JSON.stringify(dynamicSizing) !== JSON.stringify(savedDynamicSizing);
 
   // Stats
   const last24h = recentRuns.filter((r) => new Date(r.started_at).getTime() > Date.now() - 86400000);
   const totalScans24h = last24h.length;
   const totalSignals24h = last24h.reduce((s, r) => s + (r.signals_generated || 0), 0);
   const totalErrors24h = last24h.filter((r) => r.status === "error").length;
-  const avgDuration = last24h.length > 0
-    ? Math.round(last24h.reduce((s, r) => s + (r.duration_ms || 0), 0) / last24h.length) : 0;
+  const avgDuration = last24h.length > 0 ?
+  Math.round(last24h.reduce((s, r) => s + (r.duration_ms || 0), 0) / last24h.length) : 0;
 
   if (loading) {
     return (
       <div className="flex items-center justify-center p-12">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
+      </div>);
+
   }
 
   return (
@@ -355,19 +355,19 @@ export default function BotControlPanel() {
           <CardContent className="space-y-3">
             <div className="flex gap-2">
               <Input placeholder="Adres portfela Solana..." value={newWallet} onChange={(e) => setNewWallet(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && addWallet()} className="text-xs font-mono" />
+              onKeyDown={(e) => e.key === "Enter" && addWallet()} className="text-xs font-mono" />
               <Button size="sm" onClick={addWallet} disabled={saving}><Plus className="h-4 w-4" /></Button>
             </div>
 
             {/* Discovered wallets */}
-            {discoveredWallets.length > 0 && (
-              <div className="border border-primary/20 rounded-lg p-2 space-y-1.5">
+            {discoveredWallets.length > 0 &&
+            <div className="border border-primary/20 rounded-lg p-2 space-y-1.5">
                 <p className="text-[10px] font-medium text-primary flex items-center gap-1">
                   <Sparkles className="h-3 w-3" />
                   Odkryte portfele ({discoveredWallets.length})
                 </p>
-                {discoveredWallets.map((w: any) => (
-                  <div key={w.address} className="flex items-center justify-between bg-primary/5 rounded px-2 py-1.5">
+                {discoveredWallets.map((w: any) =>
+              <div key={w.address} className="flex items-center justify-between bg-primary/5 rounded px-2 py-1.5">
                     <div className="flex-1 min-w-0">
                       <span className="text-[10px] font-mono text-foreground block truncate">{w.address}</span>
                       <span className="text-[9px] text-muted-foreground">
@@ -378,23 +378,23 @@ export default function BotControlPanel() {
                       <Plus className="h-3 w-3 mr-0.5" /> Dodaj
                     </Button>
                   </div>
-                ))}
+              )}
               </div>
-            )}
+            }
 
             <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
-              {trackedWallets.length === 0 ? (
-                <p className="text-xs text-muted-foreground text-center py-4">Brak śledzonych portfeli. Użyj Auto-discovery lub dodaj ręcznie.</p>
-              ) : (
-                trackedWallets.map((w) => (
-                  <div key={w} className="flex items-center justify-between bg-muted/30 rounded px-2.5 py-1.5">
+              {trackedWallets.length === 0 ?
+              <p className="text-xs text-muted-foreground text-center py-4">Brak śledzonych portfeli. Użyj Auto-discovery lub dodaj ręcznie.</p> :
+
+              trackedWallets.map((w) =>
+              <div key={w} className="flex items-center justify-between bg-muted/30 rounded px-2.5 py-1.5">
                     <span className="text-[11px] font-mono text-foreground break-all mr-2">{w}</span>
                     <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => removeWallet(w)}>
                       <Trash2 className="h-3 w-3 text-destructive" />
                     </Button>
                   </div>
-                ))
-              )}
+              )
+              }
             </div>
           </CardContent>
         </Card>
@@ -459,27 +459,27 @@ export default function BotControlPanel() {
                 </p>
                 <Switch
                   checked={dynamicSizing.enabled}
-                  onCheckedChange={(checked) => setDynamicSizing({ ...dynamicSizing, enabled: checked })}
-                />
+                  onCheckedChange={(checked) => setDynamicSizing({ ...dynamicSizing, enabled: checked })} />
+                
               </div>
-              {dynamicSizing.enabled && (
-                <div className="grid grid-cols-2 gap-3">
+              {dynamicSizing.enabled &&
+              <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-xs text-muted-foreground mb-1 block">Min SOL (score 70)</label>
                     <Input type="number" min={0.01} step={0.01} value={dynamicSizing.min_sol}
-                      onChange={(e) => setDynamicSizing({ ...dynamicSizing, min_sol: Number(e.target.value) })} />
+                  onChange={(e) => setDynamicSizing({ ...dynamicSizing, min_sol: Number(e.target.value) })} />
                   </div>
                   <div>
                     <label className="text-xs text-muted-foreground mb-1 block">Max SOL (score 100)</label>
                     <Input type="number" min={0.01} step={0.01} value={dynamicSizing.max_sol}
-                      onChange={(e) => setDynamicSizing({ ...dynamicSizing, max_sol: Number(e.target.value) })} />
+                  onChange={(e) => setDynamicSizing({ ...dynamicSizing, max_sol: Number(e.target.value) })} />
                   </div>
                 </div>
-              )}
+              }
               <p className="text-[10px] text-muted-foreground mt-1.5">
-                {dynamicSizing.enabled
-                  ? `Wyższy confidence = większa pozycja: ${dynamicSizing.min_sol}–${dynamicSizing.max_sol} SOL`
-                  : "Wyłączony — stała wielkość pozycji"}
+                {dynamicSizing.enabled ?
+                `Wyższy confidence = większa pozycja: ${dynamicSizing.min_sol}–${dynamicSizing.max_sol} SOL` :
+                "Wyłączony — stała wielkość pozycji"}
               </p>
             </div>
             {hasUnsavedChanges && <p className="text-[10px] text-neon-amber">⚠ Niezapisane zmiany</p>}
@@ -507,46 +507,46 @@ export default function BotControlPanel() {
         </CardHeader>
         <CardContent>
           <div className="space-y-1.5 max-h-[300px] overflow-y-auto">
-            {recentRuns.length === 0 ? (
-              <p className="text-xs text-muted-foreground text-center py-6">Brak historii — bot jeszcze nie skanował</p>
-            ) : (
-              recentRuns.map((run) => <RunRow key={run.id} run={run} />)
-            )}
+            {recentRuns.length === 0 ?
+            <p className="text-xs text-muted-foreground text-center py-6">Brak historii — bot jeszcze nie skanował</p> :
+
+            recentRuns.map((run) => <RunRow key={run.id} run={run} />)
+            }
           </div>
         </CardContent>
       </Card>
-    </div>
-  );
+    </div>);
+
 }
 
 // --- Sub-components ---
 
-function MiniStat({ icon: Icon, label, value }: { icon: any; label: string; value: number }) {
+function MiniStat({ icon: Icon, label, value }: {icon: any;label: string;value: number;}) {
   return (
     <Card className="border-border bg-card">
       <CardContent className="p-3 flex items-center gap-2.5">
         <Icon className="h-4 w-4 text-primary shrink-0" />
         <div>
-          <p className="text-lg font-bold text-foreground">{value}</p>
+          <p className="text-lg font-bold text-neon-amber">{value}</p>
           <p className="text-[10px] text-muted-foreground">{label}</p>
         </div>
       </CardContent>
-    </Card>
-  );
+    </Card>);
+
 }
 
-function RunRow({ run }: { run: BotRun }) {
-  const statusConfig: Record<string, { icon: any; color: string }> = {
+function RunRow({ run }: {run: BotRun;}) {
+  const statusConfig: Record<string, {icon: any;color: string;}> = {
     completed: { icon: CheckCircle2, color: "text-primary" },
     error: { icon: XCircle, color: "text-destructive" },
     running: { icon: Loader2, color: "text-neon-amber" },
-    skipped: { icon: Power, color: "text-muted-foreground" },
+    skipped: { icon: Power, color: "text-muted-foreground" }
   };
 
   const cfg = statusConfig[run.status] || statusConfig.completed;
   const Icon = cfg.icon;
   const time = new Date(run.started_at).toLocaleString("pl-PL", {
-    hour: "2-digit", minute: "2-digit", second: "2-digit", day: "2-digit", month: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", day: "2-digit", month: "2-digit"
   });
 
   return (
@@ -556,22 +556,22 @@ function RunRow({ run }: { run: BotRun }) {
         <span className="text-muted-foreground">{time}</span>
       </div>
       <div className="flex items-center gap-3">
-        {run.status === "completed" && (
-          <>
+        {run.status === "completed" &&
+        <>
             <span className="text-muted-foreground">{run.wallets_scanned} portfeli</span>
             <span className="text-muted-foreground">{run.tokens_found} tokenów</span>
-            {run.buy_signals > 0 && (
-              <Badge variant="default" className="text-[9px] px-1.5 py-0">{run.buy_signals} BUY</Badge>
-            )}
+            {run.buy_signals > 0 &&
+          <Badge variant="default" className="text-[9px] px-1.5 py-0">{run.buy_signals} BUY</Badge>
+          }
           </>
-        )}
-        {run.status === "error" && (
-          <span className="text-destructive truncate max-w-[200px]" title={run.error_message || ""}>
+        }
+        {run.status === "error" &&
+        <span className="text-destructive truncate max-w-[200px]" title={run.error_message || ""}>
             {run.error_message?.slice(0, 40)}
           </span>
-        )}
+        }
         {run.duration_ms && <span className="text-muted-foreground">{run.duration_ms}ms</span>}
       </div>
-    </div>
-  );
+    </div>);
+
 }
