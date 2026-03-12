@@ -57,10 +57,10 @@ export const config = {
 
   // Dynamic sizing based on score
   dynamicSizing: [
-    { minScore: 85, sol: 0.15 },
-    { minScore: 75, sol: 0.10 },
-    { minScore: 70, sol: 0.07 },
-    { minScore: 60, sol: 0.03 },
+    { minScore: 80, sol: 0.15 },
+    { minScore: 65, sol: 0.10 },
+    { minScore: 55, sol: 0.07 },
+    { minScore: 50, sol: 0.03 },
   ],
 
   // ─── Strategy: Volume Explosion ───
