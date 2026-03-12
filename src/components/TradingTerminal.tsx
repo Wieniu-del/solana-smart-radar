@@ -393,9 +393,18 @@ export default function TradingTerminal() {
                           </span>
                         </TableCell>
                         <TableCell className="text-center">
-                          <Badge variant="secondary" className="text-xs px-2 py-0.5">
-                            {reasonLabels[pos.close_reason || ""] || pos.close_reason || "—"}
-                          </Badge>
+                          {(() => {
+                            const reason = reasonLabels[pos.close_reason || ""];
+                            return reason ? (
+                              <span className={`text-xs font-bold px-2 py-1 rounded border ${reason.color} ${reason.bg}`}>
+                                {reason.label}
+                              </span>
+                            ) : (
+                              <Badge variant="secondary" className="text-xs px-2 py-0.5">
+                                {pos.close_reason || "—"}
+                              </Badge>
+                            );
+                          })()}
                         </TableCell>
                         <TableCell className="text-right text-sm text-muted-foreground">
                           {pos.closed_at ? fmtTime(pos.closed_at) : "—"}
