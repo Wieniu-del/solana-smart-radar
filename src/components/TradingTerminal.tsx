@@ -170,11 +170,15 @@ export default function TradingTerminal() {
     return sum + pnl;
   }, 0);
 
-  const reasonLabels: Record<string, string> = {
-    stop_loss: "🔴 Stop-Loss",
-    trailing_stop: "🟡 Trailing Stop",
-    take_profit: "🟢 Take-Profit",
-    manual: "⚪ Ręczne",
+  const reasonLabels: Record<string, { label: string; color: string; bg: string }> = {
+    stop_loss: { label: "🔴 Stop-Loss", color: "text-destructive", bg: "bg-destructive/15 border-destructive/30" },
+    fast_loss_cut: { label: "⚡ Fast Loss Cut", color: "text-destructive", bg: "bg-destructive/15 border-destructive/30" },
+    trailing_stop: { label: "🟡 Trailing Stop", color: "text-primary", bg: "bg-primary/15 border-primary/30" },
+    take_profit: { label: "🟢 Take-Profit", color: "text-primary", bg: "bg-primary/15 border-primary/30" },
+    profit_fade: { label: "🟠 Profit Fade", color: "text-accent-foreground", bg: "bg-accent/15 border-accent/30" },
+    time_decay: { label: "⏰ Time Decay", color: "text-muted-foreground", bg: "bg-muted/30 border-border" },
+    dead_token: { label: "💀 Dead Token", color: "text-destructive", bg: "bg-destructive/15 border-destructive/30" },
+    manual: { label: "⚪ Ręczne", color: "text-muted-foreground", bg: "bg-muted/30 border-border" },
   };
 
   if (loading) {
