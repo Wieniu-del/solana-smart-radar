@@ -158,7 +158,7 @@ Deno.serve(async (req) => {
     // FIX #1: Also block ALL pending signals (no time limit) to prevent spam
     // FIX #3: Cooldown — block tokens that hit SL in last 48h
     const blockedMints = new Set<string>();
-    const COOLDOWN_HOURS = 48;
+    const COOLDOWN_HOURS = 12;
     const [{ data: openPositions }, { data: recentSignals }, { data: pendingSignalMints }, { data: slCooldownMints }] = await Promise.all([
       supabase.from("open_positions").select("token_mint").eq("status", "open"),
       supabase
