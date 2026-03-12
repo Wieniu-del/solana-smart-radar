@@ -141,71 +141,11 @@ Deno.serve(async (req) => {
     const buyThreshold = pScoring.buy_threshold || 70;
     const watchThreshold = pScoring.watch_threshold || 40;
 
-    // ── COOLDOWN: check if 2+ consecutive losses in last hour → pause 10 min ──
-    let cooldownActive = false;
-    try {
-      const { data: recentClosedLosses } = await supabase
-        .from("open_positions")
-        .select("close_reason, closed_at, pnl_pct")
-        .eq("status", "closed")
-        .in("close_reason", ["stop_loss", "fast_loss_cut"])
-        .order("closed_at", { ascending: false })
-        .limit(2);
+    // ── COOLDOWN: DISABLED per user request ──
+    const cooldownActive = false;
 
-      if (recentClosedLosses && recentClosedLosses.length >= 2) {
-        const lastLossTime = new Date(recentClosedLosses[0].closed_at).getTime();
-        const secondLossTime = new Date(recentClosedLosses[1].closed_at).getTime();
-        const bothRecent = (Date.now() - lastLossTime) < 60 * 60 * 1000; // within 1h
-        const bothConsecutive = (lastLossTime - secondLossTime) < 30 * 60 * 1000; // within 30min of each other
-        const cooldownExpiry = lastLossTime + 10 * 60 * 1000; // 10 min cooldown
-        
-        if (bothRecent && bothConsecutive && Date.now() < cooldownExpiry) {
-          cooldownActive = true;
-          const remainingMin = Math.round((cooldownExpiry - Date.now()) / 60000);
-          console.warn(`[bot] 🧊 COOLDOWN ACTIVE — 2 consecutive losses, ${remainingMin}min remaining`);
-          await supabase.from("notifications").insert({
-            type: "cooldown",
-            title: "🧊 Cooldown aktywny — 2 straty z rzędu",
-            message: `Bot pauzuje kupno na ${remainingMin} min po 2 kolejnych stratach.`,
-            details: { remaining_min: remainingMin },
-          });
-        }
-      }
-    } catch (cooldownErr) {
-      console.warn("[bot] Cooldown check error:", cooldownErr);
-    }
-
-    // ── DAILY LOSS LIMIT: check if daily losses > 0.1 SOL ──
-    let dailyLossExceeded = false;
-    try {
-      const todayStart = new Date();
-      todayStart.setUTCHours(0, 0, 0, 0);
-      const { data: todayClosedPositions } = await supabase
-        .from("open_positions")
-        .select("pnl_pct, amount_sol")
-        .eq("status", "closed")
-        .gte("closed_at", todayStart.toISOString());
-
-      if (todayClosedPositions) {
-        const dailyLossSol = todayClosedPositions.reduce((sum: number, p: any) => {
-          const pnlSol = (Number(p.pnl_pct) / 100) * Number(p.amount_sol);
-          return pnlSol < 0 ? sum + Math.abs(pnlSol) : sum;
-        }, 0);
-        
-        if (dailyLossSol >= 0.1) {
-          dailyLossExceeded = true;
-          console.warn(`[bot] 🚫 DAILY LOSS LIMIT — lost ${dailyLossSol.toFixed(4)} SOL today (limit: 0.1 SOL)`);
-          await supabase.from("notifications").insert({
-            type: "daily_loss",
-            title: "🚫 Dzienny limit strat osiągnięty",
-            message: `Strata dzisiaj: ${dailyLossSol.toFixed(4)} SOL ≥ 0.1 SOL. Kupno zablokowane do jutra.`,
-            details: { daily_loss_sol: dailyLossSol, limit: 0.1 },
-          });
-        }
-      }
-    } catch (dlErr) {
-      console.warn("[bot] Daily loss check error:", dlErr);
-    }
+    // ── DAILY LOSS LIMIT: DISABLED per user request ──
+    const dailyLossExceeded = false;
 
     // 4. Analyze each wallet
     let totalTokensFound = 0;
