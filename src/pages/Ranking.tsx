@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Trophy, ArrowUpDown, Search, Copy, ExternalLink } from "lucide-react";
-import { mockTopWallets, generateMockWallet, WalletData } from "@/types/wallet";
+import { mockTopWallets, WalletData } from "@/types/wallet";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 
