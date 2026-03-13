@@ -798,7 +798,8 @@ Deno.serve(async (req) => {
               continue;
             }
 
-            if (signal.token_mint === "So11111111111111111111111111111111111111112") {
+            // Block base assets and stablecoins
+            if (BASE_ASSET_MINTS.has(signal.token_mint)) {
               await supabase
                 .from("trading_signals")
                 .update({ status: "rejected" })
