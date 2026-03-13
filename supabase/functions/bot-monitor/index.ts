@@ -791,14 +791,15 @@ Deno.serve(async (req) => {
           // FIX #5: Cleanup old pending signals (>6h old) — reject them to prevent infinite accumulation
           try {
             const cutoff = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
-            const { count } = await supabase
+            const { data: expiredRows } = await supabase
               .from("trading_signals")
               .update({ status: "expired" })
               .eq("status", "pending")
               .lt("created_at", cutoff)
-              .select("*", { count: "exact", head: true });
-            if (count && count > 0) {
-              console.log(`[bot] Expired ${count} old pending signals (>6h)`);
+              .select("id");
+            const expiredCount = expiredRows?.length || 0;
+            if (expiredCount > 0) {
+              console.log(`[bot] Expired ${expiredCount} old pending signals (>6h)`);
             }
           } catch (cleanupErr) {
             console.warn("Pending signals cleanup error:", cleanupErr);
