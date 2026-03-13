@@ -107,9 +107,9 @@ Deno.serve(async (req) => {
         ? highestPrice * (1 - trailingStopPct / 100)
         : entryPrice * (1 - STOP_LOSS_PCT / 100); // hard SL before trailing activates
 
-      // ── EARLY PROFIT LOCK: profit faded from >5% to <2% → lock ──
+      // ── EARLY PROFIT LOCK: profit faded from >3% to <1% → lock ──
       const prevHighPnl = ((highestPrice - entryPrice) / entryPrice) * 100;
-      if (prevHighPnl >= 5 && pnlPct < 2 && pnlPct >= 0) {
+      if (prevHighPnl >= 3 && pnlPct < 1 && pnlPct >= 0) {
         console.warn(`[position-monitor] Profit fade: ${pos.token_symbol} was +${prevHighPnl.toFixed(1)}% now +${pnlPct.toFixed(1)}% — locking gains`);
         await closePosition(supabase, supabaseUrl, supabaseKey, pos, currentPrice, "profit_fade", pnlPct);
         closedCount++;
@@ -133,9 +133,14 @@ Deno.serve(async (req) => {
         closeReason = "fast_loss_cut";
       }
 
-      // ── TIME DECAY: after 4h with <3% profit ──
-      if (hoursHeld >= 4 && pnlPct < 3 && pnlPct > -3) {
+      // ── TIME DECAY: after 1.5h with <5% profit → close (no hodling) ──
+      if (hoursHeld >= 1.5 && pnlPct < 5 && pnlPct > -STOP_LOSS_PCT) {
         closeReason = "time_decay";
+      }
+
+      // ── MAX HOLD: after 3h force close regardless of PnL (no hodling) ──
+      if (hoursHeld >= 3 && !closeReason) {
+        closeReason = "max_hold_time";
       }
 
       if (closeReason) {
@@ -218,7 +223,8 @@ async function closePosition(
     dead_token: "💀 Dead Token",
     profit_fade: "🟠 Profit Fade Lock",
     fast_loss_cut: "⚡ Fast Loss Cut",
-    time_decay: "⏰ Time Decay",
+    time_decay: "⏰ Time Decay (1.5h)",
+    max_hold_time: "⏳ Max Hold (3h)",
   };
   await supabase.from("notifications").insert({
     type: "position_closed",
