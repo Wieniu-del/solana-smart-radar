@@ -670,11 +670,16 @@ Deno.serve(async (req) => {
         console.warn("[bot] Balance check error:", balErr);
       }
 
+      const executableSignalStatuses = ["pending", "approved"];
       const buyBlocked = sellOnlyMode || balanceTooLow || cooldownActive || dailyLossExceeded;
       if (buyBlocked) {
         console.log(`[bot] 🚫 BUY BLOCKED — sell_only=${sellOnlyMode}, balance_low=${balanceTooLow}, cooldown=${cooldownActive}, daily_loss=${dailyLossExceeded}`);
-        // Reject all pending signals
-        await supabase.from("trading_signals").update({ status: "rejected" }).eq("status", "pending").eq("signal_type", "BUY");
+        // Reject all executable BUY signals
+        await supabase
+          .from("trading_signals")
+          .update({ status: "rejected" })
+          .in("status", executableSignalStatuses)
+          .eq("signal_type", "BUY");
       }
 
       if (autoExecuteEnabled && !buyBlocked) {
@@ -720,12 +725,12 @@ Deno.serve(async (req) => {
           const slotsAvailable = maxOpenPositions - (currentOpen || 0);
           let executed = 0;
 
-          // Execute oldest pending BUY signals first (including older pending ones)
+          // Execute oldest actionable BUY signals first (pending + approved)
           const { data: pendingSignals } = await supabase
             .from("trading_signals")
-            .select("id, token_mint, token_symbol, token_name, confidence")
+            .select("id, token_mint, token_symbol, token_name, confidence, status, strategy, smart_score")
             .eq("signal_type", "BUY")
-            .eq("status", "pending")
+            .in("status", executableSignalStatuses)
             .order("created_at", { ascending: true })
             .limit(100);
 
@@ -743,8 +748,9 @@ Deno.serve(async (req) => {
               continue;
             }
 
-            // Min confidence from pipeline config
-            if ((signal.confidence || 0) < autoExecMinConfidence) {
+            // Min confidence from pipeline config (manual approval bypasses this check)
+            const isManuallyApproved = signal.status === "approved";
+            if (!isManuallyApproved && (signal.confidence || 0) < autoExecMinConfidence) {
               console.log(`[bot] Skipping signal ${signal.id}: confidence ${signal.confidence} < ${autoExecMinConfidence}`);
               await supabase.from("trading_signals").update({ status: "rejected" }).eq("id", signal.id);
               continue;
@@ -785,14 +791,15 @@ Deno.serve(async (req) => {
           // FIX #5: Cleanup old pending signals (>6h old) — reject them to prevent infinite accumulation
           try {
             const cutoff = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
-            const { count } = await supabase
+            const { data: expiredRows } = await supabase
               .from("trading_signals")
               .update({ status: "expired" })
               .eq("status", "pending")
               .lt("created_at", cutoff)
-              .select("*", { count: "exact", head: true });
-            if (count && count > 0) {
-              console.log(`[bot] Expired ${count} old pending signals (>6h)`);
+              .select("id");
+            const expiredCount = expiredRows?.length || 0;
+            if (expiredCount > 0) {
+              console.log(`[bot] Expired ${expiredCount} old pending signals (>6h)`);
             }
           } catch (cleanupErr) {
             console.warn("Pending signals cleanup error:", cleanupErr);
@@ -865,7 +872,7 @@ async function executeBuySignal({
   supabase: any;
   supabaseUrl: string;
   supabaseKey: string;
-  signal: { id: string; token_mint: string; token_symbol: string | null; token_name: string | null; confidence?: number | null };
+  signal: { id: string; token_mint: string; token_symbol: string | null; token_name: string | null; confidence?: number | null; status?: string | null; strategy?: string | null; smart_score?: number | null };
   positionSol: number;
   trailingStopPct: number;
   takeProfitPct: number;
