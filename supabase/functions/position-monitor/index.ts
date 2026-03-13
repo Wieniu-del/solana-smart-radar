@@ -74,8 +74,8 @@ Deno.serve(async (req) => {
 
         if (hoursSinceUpdate >= 3 || entryPrice <= 0) {
           console.warn(`[position-monitor] Dead token: ${pos.token_symbol} — no price ${hoursSinceUpdate.toFixed(1)}h, force-closing as -100%`);
-          await closePosition(supabase, supabaseUrl, supabaseKey, pos, 0, "dead_token", -100);
-          closedCount++;
+          const closed = await closePosition(supabase, supabaseUrl, supabaseKey, pos, 0, "dead_token", -100);
+          if (closed) closedCount++;
           continue;
         }
         console.warn(`[position-monitor] No price for ${pos.token_symbol}, waiting ${(3 - hoursSinceUpdate).toFixed(1)}h`);
@@ -111,8 +111,8 @@ Deno.serve(async (req) => {
       const prevHighPnl = ((highestPrice - entryPrice) / entryPrice) * 100;
       if (prevHighPnl >= 3 && pnlPct < 1 && pnlPct >= 0) {
         console.warn(`[position-monitor] Profit fade: ${pos.token_symbol} was +${prevHighPnl.toFixed(1)}% now +${pnlPct.toFixed(1)}% — locking gains`);
-        await closePosition(supabase, supabaseUrl, supabaseKey, pos, currentPrice, "profit_fade", pnlPct);
-        closedCount++;
+        const closed = await closePosition(supabase, supabaseUrl, supabaseKey, pos, currentPrice, "profit_fade", pnlPct);
+        if (closed) closedCount++;
         continue;
       }
 
@@ -144,8 +144,8 @@ Deno.serve(async (req) => {
       }
 
       if (closeReason) {
-        await closePosition(supabase, supabaseUrl, supabaseKey, pos, currentPrice, closeReason, pnlPct);
-        closedCount++;
+        const closed = await closePosition(supabase, supabaseUrl, supabaseKey, pos, currentPrice, closeReason, pnlPct);
+        if (closed) closedCount++;
       } else {
         await supabase.from("open_positions").update({
           current_price_usd: currentPrice,
