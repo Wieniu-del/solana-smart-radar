@@ -8,11 +8,16 @@ const corsHeaders = {
 const HELIUS_BASE = "https://api.helius.xyz/v0";
 const HELIUS_RPC = "https://mainnet.helius-rpc.com";
 
-// Base assets (never BUY these)
+// Base assets & stablecoins (never BUY these)
 const BASE_ASSET_MINTS = new Set([
-  "So11111111111111111111111111111111111111112",
-  "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-  "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+  "So11111111111111111111111111111111111111112",   // SOL
+  "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", // USDC
+  "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",  // USDT
+  "USD1ttGY1N17NEEHLmELoaybftRBUSErhqYiQzvEmuB",   // USD1
+  "USDSwr9ApdHk5bvJKMjzff41FfuX8bSxdKcR81vTwcA",   // USDS
+  "7dHbWXmci3dT8UFYWYZweBLXgycu7Y3iL6trKn1Y7ARj",  // stSOL
+  "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So",   // mSOL
+  "bSo13r4TkiE4KumL71LsHTPpL2euBYLFx6h9HP3piy1",   // bSOL
 ]);
 
 // Known safer tokens (used only for safety scoring)
