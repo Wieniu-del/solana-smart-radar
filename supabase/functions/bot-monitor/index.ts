@@ -608,14 +608,10 @@ Deno.serve(async (req) => {
       await supabase.from("notifications").insert(notifications);
     }
 
-      // 5b. Auto-execute pending BUY signals if enabled (or missing config)
-      const { data: autoExecConfig } = await supabase
-        .from("bot_config")
-        .select("value")
-        .eq("key", "auto_execute")
-        .single();
-
-      const autoExecuteEnabled = autoExecConfig?.value !== false;
+      // 5b. Auto-execute pending BUY signals — use pipeline_config settings
+      const pAutoExecute = pipelineConfig.auto_execute ?? { enabled: true, min_confidence: 65 };
+      const autoExecuteEnabled = pAutoExecute.enabled !== false;
+      const autoExecMinConfidence = Number(pAutoExecute.min_confidence) || 65;
 
       // ── SELL-ONLY MODE: block ALL buys if enabled ──
       const { data: sellOnlyConfig } = await supabase
