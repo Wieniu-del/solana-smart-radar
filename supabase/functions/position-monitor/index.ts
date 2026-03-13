@@ -223,7 +223,8 @@ async function closePosition(
     dead_token: "💀 Dead Token",
     profit_fade: "🟠 Profit Fade Lock",
     fast_loss_cut: "⚡ Fast Loss Cut",
-    time_decay: "⏰ Time Decay",
+    time_decay: "⏰ Time Decay (1.5h)",
+    max_hold_time: "⏳ Max Hold (3h)",
   };
   await supabase.from("notifications").insert({
     type: "position_closed",
