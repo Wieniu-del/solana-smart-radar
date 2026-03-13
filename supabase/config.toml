@@ -29,3 +29,6 @@ verify_jwt = false
 
 [functions.bot-api]
 verify_jwt = false
+
+[functions.web-token-discovery]
+verify_jwt = false
