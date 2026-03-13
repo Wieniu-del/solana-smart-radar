@@ -35,6 +35,13 @@ Deno.serve(async (req) => {
 
   const supabase = createClient(supabaseUrl, supabaseKey);
 
+  // Auto-cleanup stale "running" bot_runs (older than 5 minutes)
+  await supabase
+    .from("bot_runs")
+    .update({ status: "completed", finished_at: new Date().toISOString(), details: { reason: "auto_cleanup_stale" } })
+    .eq("status", "running")
+    .lt("started_at", new Date(Date.now() - 5 * 60 * 1000).toISOString());
+
   // Create run record
   const { data: run } = await supabase
     .from("bot_runs")
