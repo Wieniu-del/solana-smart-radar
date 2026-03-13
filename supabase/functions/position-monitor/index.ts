@@ -169,12 +169,12 @@ Deno.serve(async (req) => {
 async function closePosition(
   supabase: any, supabaseUrl: string, supabaseKey: string,
   pos: any, currentPrice: number, closeReason: string, pnlPct: number
-) {
+): Promise<boolean> {
   const entryPrice = Number(pos.entry_price_usd) || 0;
   const highestPrice = Math.max(Number(pos.highest_price_usd) || 0, currentPrice);
   const pnlSol = (pnlPct / 100) * Number(pos.amount_sol);
 
-  // Try to execute SELL
+  // Try to execute SELL first (for non-dead tokens)
   let txSignature: string | null = null;
   if (currentPrice > 0 && closeReason !== "dead_token") {
     try {
@@ -188,23 +188,56 @@ async function closePosition(
           action: "SELL",
           tokenMint: pos.token_mint,
           amountSol: pos.token_amount || pos.amount_sol,
+          closeAll: true,
           slippageBps: 300,
         }),
       });
+
+      if (!swapRes.ok) {
+        const errText = await swapRes.text();
+        throw new Error(`HTTP ${swapRes.status}: ${errText.slice(0, 160)}`);
+      }
+
       const swapData = await swapRes.json();
-      txSignature = swapData?.txSignature || null;
+      if (!swapData?.success || !swapData?.txSignature) {
+        throw new Error(swapData?.error || "Swap SELL failed (no tx signature)");
+      }
+
+      txSignature = swapData.txSignature;
+
+      await supabase.from("trade_executions").insert({
+        signal_id: pos.signal_id || null,
+        action: "SELL",
+        token_mint: pos.token_mint,
+        token_symbol: pos.token_symbol,
+        amount_sol: Number(pos.amount_sol) || 0,
+        token_amount: Number(pos.token_amount) || null,
+        price_usd: currentPrice,
+        tx_signature: txSignature,
+        status: "executed",
+      });
     } catch (sellErr: any) {
       console.error(`Sell error for ${pos.token_symbol}:`, sellErr);
+
+      await supabase.from("open_positions").update({
+        current_price_usd: currentPrice,
+        highest_price_usd: highestPrice,
+        pnl_pct: Math.round(pnlPct * 100) / 100,
+        updated_at: new Date().toISOString(),
+      }).eq("id", pos.id);
+
       await supabase.from("notifications").insert({
         type: "swap_error",
-        title: `❌ Błąd sprzedaży: ${pos.token_symbol}`,
-        message: `Nie udało się sprzedać (${closeReason}): ${sellErr.message?.slice(0, 100)}`,
-        details: { position_id: pos.id, error: sellErr.message },
+        title: `❌ Sprzedaż nieudana: ${pos.token_symbol}`,
+        message: `Nie zamknięto pozycji (${closeReason}) — ponowię próbę przy kolejnym skanie. ${sellErr.message?.slice(0, 120)}`,
+        details: { position_id: pos.id, token_mint: pos.token_mint, close_reason: closeReason, error: sellErr.message },
       });
+
+      return false;
     }
   }
 
-  // Close position in DB
+  // Close position in DB only after SELL success (or dead token force-close)
   await supabase.from("open_positions").update({
     status: "closed",
     close_reason: closeReason,
@@ -229,7 +262,7 @@ async function closePosition(
   await supabase.from("notifications").insert({
     type: "position_closed",
     title: `${reasonLabels[closeReason] || closeReason} — ${pos.token_symbol || "???"}`,
-    message: `PnL: ${pnlPct.toFixed(1)}% | Entry: $${entryPrice.toFixed(8)} | Exit: $${currentPrice.toFixed(8)}`,
+    message: `PnL: ${pnlPct.toFixed(1)}% | Entry: $${entryPrice.toFixed(8)} | Exit: $${currentPrice.toFixed(8)}${txSignature ? ` | TX: ${txSignature.slice(0, 12)}...` : ""}`,
     details: {
       position_id: pos.id, token_mint: pos.token_mint,
       close_reason: closeReason, pnl_pct: pnlPct,
@@ -246,7 +279,7 @@ async function closePosition(
         user_id: profile.id,
         entry_type: "auto",
         title: `${reasonLabels[closeReason] || closeReason}: ${pos.token_symbol || "???"}`,
-        notes: `${closeReason} | Entry: $${entryPrice.toFixed(8)}, Exit: $${currentPrice.toFixed(8)}. PnL: ${pnlPct.toFixed(2)}%`,
+        notes: `${closeReason} | Entry: $${entryPrice.toFixed(8)}, Exit: $${currentPrice.toFixed(8)}. PnL: ${pnlPct.toFixed(2)}%.${txSignature ? ` TX: ${txSignature}` : ""}`,
         token_symbol: pos.token_symbol,
         token_mint: pos.token_mint,
         action: "SELL",
@@ -260,6 +293,8 @@ async function closePosition(
   } catch (jErr) {
     console.warn("Journal error:", jErr);
   }
+
+  return true;
 }
 
 // ── PRICE FETCHER ──
