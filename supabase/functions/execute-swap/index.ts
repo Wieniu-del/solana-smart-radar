@@ -207,6 +207,55 @@ function encodeBase58(bytes: Uint8Array): string {
   return str;
 }
 
+async function fetchTokenDecimals(rpcUrl: string, mint: string): Promise<number> {
+  try {
+    const res = await fetch(rpcUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "getTokenSupply",
+        params: [mint],
+      }),
+    });
+    const data = await res.json();
+    const decimals = Number(data?.result?.value?.decimals);
+    return Number.isFinite(decimals) ? decimals : 6;
+  } catch {
+    return 6;
+  }
+}
+
+async function fetchWalletTokenBalanceBaseUnits(rpcUrl: string, owner: string, mint: string): Promise<number> {
+  try {
+    const res = await fetch(rpcUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "getTokenAccountsByOwner",
+        params: [
+          owner,
+          { mint },
+          { encoding: "jsonParsed" },
+        ],
+      }),
+    });
+
+    const data = await res.json();
+    const accounts = data?.result?.value || [];
+
+    return accounts.reduce((sum: number, acc: any) => {
+      const rawAmount = Number(acc?.account?.data?.parsed?.info?.tokenAmount?.amount || 0);
+      return sum + (Number.isFinite(rawAmount) ? rawAmount : 0);
+    }, 0);
+  } catch {
+    return 0;
+  }
+}
+
 function parsePrivateKey(raw: string): Uint8Array {
   const trimmed = raw.trim();
   if (trimmed.startsWith("[")) {
