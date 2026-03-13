@@ -385,6 +385,11 @@ export default function AutoTrading() {
           <PnLDashboard />
         </TabsContent>
 
+        {/* ─── Web Token Discovery Tab ─── */}
+        <TabsContent value="web-discovery">
+          <WebTokenDiscovery />
+        </TabsContent>
+
         {/* ─── Signal Diagnostics Tab ─── */}
         <TabsContent value="diagnostics">
           <SignalDiagnostics />
