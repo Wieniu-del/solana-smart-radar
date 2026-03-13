@@ -8,11 +8,16 @@ const corsHeaders = {
 const HELIUS_BASE = "https://api.helius.xyz/v0";
 const HELIUS_RPC = "https://mainnet.helius-rpc.com";
 
-// Base assets (never BUY these)
+// Base assets & stablecoins (never BUY these)
 const BASE_ASSET_MINTS = new Set([
-  "So11111111111111111111111111111111111111112",
-  "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-  "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+  "So11111111111111111111111111111111111111112",   // SOL
+  "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", // USDC
+  "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",  // USDT
+  "USD1ttGY1N17NEEHLmELoaybftRBUSErhqYiQzvEmuB",   // USD1
+  "USDSwr9ApdHk5bvJKMjzff41FfuX8bSxdKcR81vTwcA",   // USDS
+  "7dHbWXmci3dT8UFYWYZweBLXgycu7Y3iL6trKn1Y7ARj",  // stSOL
+  "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So",   // mSOL
+  "bSo13r4TkiE4KumL71LsHTPpL2euBYLFx6h9HP3piy1",   // bSOL
 ]);
 
 // Known safer tokens (used only for safety scoring)
@@ -302,20 +307,57 @@ Deno.serve(async (req) => {
             let hasFreezeAuth = false;
             let tokenAgeMinutes = 0;
 
+            // FIX: Try multiple APIs for liquidity data
             try {
+              // Try DexScreener v1 first
               const dexRes = await fetch(`https://api.dexscreener.com/tokens/v1/solana/${incomingMint}`);
               if (dexRes.ok) {
                 const dexPairs = await dexRes.json();
                 const pairs = Array.isArray(dexPairs) ? dexPairs : [];
-                const topPair = pairs.sort((a: any, b: any) => Number(b?.liquidity?.usd || 0) - Number(a?.liquidity?.usd || 0))[0];
-                realLiquidityUsd = pairs.reduce((max: number, p: any) => Math.max(max, Number(p?.liquidity?.usd || 0)), 0);
-                volume5m = Number(topPair?.volume?.m5 || 0);
-                // Estimate token age from pair creation
-                if (topPair?.pairCreatedAt) {
-                  tokenAgeMinutes = Math.round((Date.now() - topPair.pairCreatedAt) / 60000);
+                if (pairs.length > 0) {
+                  const topPair = pairs.sort((a: any, b: any) => Number(b?.liquidity?.usd || 0) - Number(a?.liquidity?.usd || 0))[0];
+                  realLiquidityUsd = pairs.reduce((max: number, p: any) => Math.max(max, Number(p?.liquidity?.usd || 0)), 0);
+                  volume5m = Number(topPair?.volume?.m5 || 0);
+                  if (topPair?.pairCreatedAt) {
+                    tokenAgeMinutes = Math.round((Date.now() - topPair.pairCreatedAt) / 60000);
+                  }
                 }
               }
-            } catch (_) { /* DexScreener unreachable */ }
+
+              // Fallback: try legacy DexScreener endpoint if v1 returned nothing
+              if (realLiquidityUsd <= 0) {
+                const dexRes2 = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${incomingMint}`);
+                if (dexRes2.ok) {
+                  const dexData2 = await dexRes2.json();
+                  const pairs2 = Array.isArray(dexData2?.pairs) ? dexData2.pairs : [];
+                  if (pairs2.length > 0) {
+                    realLiquidityUsd = pairs2.reduce((max: number, p: any) => Math.max(max, Number(p?.liquidity?.usd || 0)), 0);
+                    volume5m = Number(pairs2[0]?.volume?.m5 || 0);
+                    if (pairs2[0]?.pairCreatedAt) {
+                      tokenAgeMinutes = Math.round((Date.now() - new Date(pairs2[0].pairCreatedAt).getTime()) / 60000);
+                    }
+                  }
+                }
+              }
+
+              // Fallback: estimate from Jupiter price if still no liquidity data
+              if (realLiquidityUsd <= 0) {
+                try {
+                  const jupRes = await fetch(`https://lite-api.jup.ag/price/v2?ids=${encodeURIComponent(incomingMint)}`);
+                  if (jupRes.ok) {
+                    const jupData = await jupRes.json();
+                    const jupPrice = Number(jupData?.data?.[incomingMint]?.price);
+                    if (jupPrice > 0) {
+                      // If Jupiter has a price, token is tradeable — estimate min liquidity
+                      realLiquidityUsd = 15000; // conservative estimate for Jupiter-listed tokens
+                      console.log(`[bot] ${incomingMint.slice(0,8)}: Jupiter price=$${jupPrice.toFixed(8)}, estimated liq=$15000`);
+                    }
+                  }
+                } catch (_) {}
+              }
+            } catch (dexErr) {
+              console.warn(`[bot] DexScreener error for ${incomingMint.slice(0,8)}:`, dexErr);
+            }
 
             const effectiveLiquidity = realLiquidityUsd > 0 ? realLiquidityUsd : valueUsd;
 
@@ -756,7 +798,8 @@ Deno.serve(async (req) => {
               continue;
             }
 
-            if (signal.token_mint === "So11111111111111111111111111111111111111112") {
+            // Block base assets and stablecoins
+            if (BASE_ASSET_MINTS.has(signal.token_mint)) {
               await supabase
                 .from("trading_signals")
                 .update({ status: "rejected" })
