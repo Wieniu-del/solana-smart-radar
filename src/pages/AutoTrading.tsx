@@ -380,6 +380,11 @@ export default function AutoTrading() {
           <PnLDashboard />
         </TabsContent>
 
+        {/* ─── Signal Diagnostics Tab ─── */}
+        <TabsContent value="diagnostics">
+          <SignalDiagnostics />
+        </TabsContent>
+
         {/* ─── System Status Tab ─── */}
         <TabsContent value="status">
           <SystemStatusPanel />
