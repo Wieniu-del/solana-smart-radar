@@ -63,7 +63,7 @@ const Index = () => {
   useEffect(() => {
     loadTradingStats();
     loadBotHero();
-    const interval = setInterval(() => { loadTradingStats(); loadBotHero(); }, 30_000);
+    const interval = setInterval(() => { loadTradingStats(); loadBotHero(); }, 10_000);
     return () => clearInterval(interval);
   }, []);
 

@@ -64,6 +64,7 @@ Deno.serve(async (req) => {
 
     for (const pos of positions) {
       const currentPrice = priceMap[pos.token_mint] || 0;
+      console.log(`[position-monitor] ${pos.token_symbol}: entry=$${Number(pos.entry_price_usd).toFixed(6)}, current=$${currentPrice.toFixed(6)}, pnl=${currentPrice > 0 && Number(pos.entry_price_usd) > 0 ? (((currentPrice - Number(pos.entry_price_usd)) / Number(pos.entry_price_usd)) * 100).toFixed(2) : '?'}%`);
 
       // ── DEAD TOKEN: no price for >3h → close ──
       if (currentPrice <= 0) {

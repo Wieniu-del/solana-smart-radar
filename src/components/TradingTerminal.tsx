@@ -89,12 +89,12 @@ export default function TradingTerminal() {
     return () => { supabase.removeChannel(ch); };
   }, []);
 
-  // Auto-refresh every 15s
+  // Auto-refresh every 5s for live PnL
   useEffect(() => {
     const iv = setInterval(async () => {
       const { data } = await supabase.from("open_positions").select("*").eq("status", "open").order("opened_at", { ascending: false });
       if (data) setOpenPositions(data as Position[]);
-    }, 15000);
+    }, 5000);
     return () => clearInterval(iv);
   }, []);
 
