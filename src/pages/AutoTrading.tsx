@@ -16,7 +16,7 @@ import WebTokenDiscovery from "@/components/WebTokenDiscovery";
 import {
   Bot, Zap, ShieldAlert, TrendingUp, TrendingDown, Clock, AlertTriangle,
   CheckCircle2, XCircle, Activity, Target, DollarSign, Play, Square,
-  Filter, Shield, Droplets, Users, Loader2, BarChart3 } from
+  Filter, Shield, Droplets, Users, Loader2, BarChart3, Globe } from
 "lucide-react";
 import {
   getStrategies, toggleStrategy, getRecentSignals, updateSignalStatus,
