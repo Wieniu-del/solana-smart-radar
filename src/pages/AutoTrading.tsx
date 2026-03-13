@@ -12,10 +12,11 @@ import SystemStatusPanel from "@/components/SystemStatusPanel";
 import PipelineConfigPanel from "@/components/PipelineConfigPanel";
 import TechnicalStrategiesPanel from "@/components/TechnicalStrategiesPanel";
 import SignalDiagnostics from "@/components/SignalDiagnostics";
+import WebTokenDiscovery from "@/components/WebTokenDiscovery";
 import {
   Bot, Zap, ShieldAlert, TrendingUp, TrendingDown, Clock, AlertTriangle,
   CheckCircle2, XCircle, Activity, Target, DollarSign, Play, Square,
-  Filter, Shield, Droplets, Users, Loader2, BarChart3 } from
+  Filter, Shield, Droplets, Users, Loader2, BarChart3, Globe } from
 "lucide-react";
 import {
   getStrategies, toggleStrategy, getRecentSignals, updateSignalStatus,
@@ -263,6 +264,10 @@ export default function AutoTrading() {
             <Filter className="h-3.5 w-3.5 mr-1" />
             Pipeline
           </TabsTrigger>
+          <TabsTrigger value="web-discovery">
+            <Globe className="h-3.5 w-3.5 mr-1" />
+            Web Discovery
+          </TabsTrigger>
           <TabsTrigger value="diagnostics">
             <BarChart3 className="h-3.5 w-3.5 mr-1" />
             Diagnostyka
@@ -378,6 +383,11 @@ export default function AutoTrading() {
         {/* ─── PnL Dashboard Tab ─── */}
         <TabsContent value="pnl">
           <PnLDashboard />
+        </TabsContent>
+
+        {/* ─── Web Token Discovery Tab ─── */}
+        <TabsContent value="web-discovery">
+          <WebTokenDiscovery />
         </TabsContent>
 
         {/* ─── Signal Diagnostics Tab ─── */}
