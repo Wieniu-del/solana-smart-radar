@@ -15,9 +15,9 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { action, tokenMint, amountSol, slippageBps } = await req.json();
+    const { action, tokenMint, amountSol, slippageBps, closeAll } = await req.json();
 
-    if (!tokenMint || !amountSol || !action) {
+    if (!tokenMint || !action) {
       return jsonRes({ success: false, error: "Brak wymaganych parametrów" }, 400);
     }
 
@@ -26,21 +26,12 @@ Deno.serve(async (req) => {
       return jsonRes({ success: false, error: "Brak klucza prywatnego. Dodaj SOLANA_PRIVATE_KEY." }, 500);
     }
 
-    const inputMint = action === "BUY" ? SOL_MINT : tokenMint;
-    const outputMint = action === "BUY" ? tokenMint : SOL_MINT;
-    const amountLamports = Math.round(amountSol * 1e9);
+    const HELIUS_KEY = Deno.env.get("HELIUS_API_KEY");
+    const rpcUrl = HELIUS_KEY
+      ? `https://mainnet.helius-rpc.com/?api-key=${HELIUS_KEY}`
+      : "https://api.mainnet-beta.solana.com";
 
-    // 1. Get quote
-    const quoteUrl = `${JUPITER_QUOTE_API}?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountLamports}&slippageBps=${slippageBps || 300}`;
-    console.log(`[execute-swap] ${action} quote request`);
-    const quoteRes = await fetch(quoteUrl);
-    if (!quoteRes.ok) {
-      const err = await quoteRes.text();
-      return jsonRes({ success: false, error: `Jupiter quote error: ${err}` }, 502);
-    }
-    const quoteData = await quoteRes.json();
-
-    // 2. Derive keypair
+    // 1. Derive keypair first
     const keyBytes = parsePrivateKey(PRIVATE_KEY);
     let keypair: { publicKey: Uint8Array; secretKey: Uint8Array };
     if (keyBytes.length === 32) {
@@ -53,7 +44,45 @@ Deno.serve(async (req) => {
     const userPublicKey = encodeBase58(keypair.publicKey);
     console.log(`[execute-swap] Wallet: ${userPublicKey.slice(0, 8)}...`);
 
-    // 3. Get swap transaction
+    // 2. Resolve amount in base units
+    const inputMint = action === "BUY" ? SOL_MINT : tokenMint;
+    const outputMint = action === "BUY" ? tokenMint : SOL_MINT;
+
+    let amountLamports = 0;
+    if (action === "BUY") {
+      if (!amountSol || Number(amountSol) <= 0) {
+        return jsonRes({ success: false, error: "Nieprawidłowa kwota BUY" }, 400);
+      }
+      amountLamports = Math.round(Number(amountSol) * 1e9);
+    } else {
+      const tokenDecimals = await fetchTokenDecimals(rpcUrl, tokenMint);
+      const walletTokenRaw = await fetchWalletTokenBalanceBaseUnits(rpcUrl, userPublicKey, tokenMint);
+      const requestedRaw = amountSol && Number(amountSol) > 0
+        ? Math.floor(Number(amountSol) * Math.pow(10, tokenDecimals))
+        : 0;
+
+      amountLamports = closeAll === true
+        ? walletTokenRaw
+        : (requestedRaw > 0 ? Math.min(requestedRaw, walletTokenRaw) : walletTokenRaw);
+
+      if (amountLamports <= 0) {
+        return jsonRes({ success: false, error: `Brak tokenów ${tokenMint.slice(0, 6)}... do sprzedaży` }, 400);
+      }
+
+      console.log(`[execute-swap] SELL amount raw=${amountLamports}, decimals=${tokenDecimals}, closeAll=${closeAll === true}`);
+    }
+
+    // 3. Get quote
+    const quoteUrl = `${JUPITER_QUOTE_API}?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountLamports}&slippageBps=${slippageBps || 300}`;
+    console.log(`[execute-swap] ${action} quote request`);
+    const quoteRes = await fetch(quoteUrl);
+    if (!quoteRes.ok) {
+      const err = await quoteRes.text();
+      return jsonRes({ success: false, error: `Jupiter quote error: ${err}` }, 502);
+    }
+    const quoteData = await quoteRes.json();
+
+    // 4. Get swap transaction
     const swapRes = await fetch(JUPITER_SWAP_API, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -71,8 +100,11 @@ Deno.serve(async (req) => {
     }
     const swapData = await swapRes.json();
     const swapTransaction = swapData.swapTransaction;
+    if (!swapTransaction) {
+      return jsonRes({ success: false, error: "Brak transakcji swap z Jupiter" }, 502);
+    }
 
-    // 4. Deserialize, sign, send
+    // 5. Deserialize, sign, send
     const txBytes = Uint8Array.from(atob(swapTransaction), c => c.charCodeAt(0));
     const numSigs = txBytes[0];
     const sigsEnd = 1 + numSigs * 64;
@@ -81,11 +113,6 @@ Deno.serve(async (req) => {
     const signedTx = new Uint8Array(txBytes.length);
     signedTx.set(txBytes);
     signedTx.set(signature, 1);
-
-    const HELIUS_KEY = Deno.env.get("HELIUS_API_KEY");
-    const rpcUrl = HELIUS_KEY
-      ? `https://mainnet.helius-rpc.com/?api-key=${HELIUS_KEY}`
-      : "https://api.mainnet-beta.solana.com";
 
     // base64 encode in chunks
     let b64 = "";
@@ -114,7 +141,7 @@ Deno.serve(async (req) => {
     return jsonRes({
       success: true,
       txSignature: sendResult.result,
-      inputAmount: amountSol,
+      inputAmount: action === "BUY" ? Number(amountSol) : undefined,
       outputAmount: quoteData.outAmount,
       priceImpact: quoteData.priceImpactPct,
     });
