@@ -11,6 +11,7 @@ import PnLDashboard from "@/components/PnLDashboard";
 import SystemStatusPanel from "@/components/SystemStatusPanel";
 import PipelineConfigPanel from "@/components/PipelineConfigPanel";
 import TechnicalStrategiesPanel from "@/components/TechnicalStrategiesPanel";
+import SignalDiagnostics from "@/components/SignalDiagnostics";
 import {
   Bot, Zap, ShieldAlert, TrendingUp, TrendingDown, Clock, AlertTriangle,
   CheckCircle2, XCircle, Activity, Target, DollarSign, Play, Square,
@@ -262,6 +263,10 @@ export default function AutoTrading() {
             <Filter className="h-3.5 w-3.5 mr-1" />
             Pipeline
           </TabsTrigger>
+          <TabsTrigger value="diagnostics">
+            <BarChart3 className="h-3.5 w-3.5 mr-1" />
+            Diagnostyka
+          </TabsTrigger>
           <TabsTrigger value="status">
             <Activity className="h-3.5 w-3.5 mr-1" />
             Status
@@ -373,6 +378,11 @@ export default function AutoTrading() {
         {/* ─── PnL Dashboard Tab ─── */}
         <TabsContent value="pnl">
           <PnLDashboard />
+        </TabsContent>
+
+        {/* ─── Signal Diagnostics Tab ─── */}
+        <TabsContent value="diagnostics">
+          <SignalDiagnostics />
         </TabsContent>
 
         {/* ─── System Status Tab ─── */}
