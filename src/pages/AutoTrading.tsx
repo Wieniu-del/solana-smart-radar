@@ -263,6 +263,10 @@ export default function AutoTrading() {
             <Filter className="h-3.5 w-3.5 mr-1" />
             Pipeline
           </TabsTrigger>
+          <TabsTrigger value="diagnostics">
+            <BarChart3 className="h-3.5 w-3.5 mr-1" />
+            Diagnostyka
+          </TabsTrigger>
           <TabsTrigger value="status">
             <Activity className="h-3.5 w-3.5 mr-1" />
             Status
