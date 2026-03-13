@@ -728,7 +728,7 @@ Deno.serve(async (req) => {
           // Execute oldest actionable BUY signals first (pending + approved)
           const { data: pendingSignals } = await supabase
             .from("trading_signals")
-            .select("id, token_mint, token_symbol, token_name, confidence, status")
+            .select("id, token_mint, token_symbol, token_name, confidence, status, strategy, smart_score")
             .eq("signal_type", "BUY")
             .in("status", executableSignalStatuses)
             .order("created_at", { ascending: true })
