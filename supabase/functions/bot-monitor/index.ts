@@ -872,7 +872,7 @@ async function executeBuySignal({
   supabase: any;
   supabaseUrl: string;
   supabaseKey: string;
-  signal: { id: string; token_mint: string; token_symbol: string | null; token_name: string | null; confidence?: number | null };
+  signal: { id: string; token_mint: string; token_symbol: string | null; token_name: string | null; confidence?: number | null; status?: string | null; strategy?: string | null; smart_score?: number | null };
   positionSol: number;
   trailingStopPct: number;
   takeProfitPct: number;
