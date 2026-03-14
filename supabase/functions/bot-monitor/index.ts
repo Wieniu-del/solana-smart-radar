@@ -567,6 +567,12 @@ Deno.serve(async (req) => {
             const resolvedSymbol = incoming?.tokenSymbol || tokenInfo?.symbol || fallbackSymbol;
             const resolvedName = tokenInfo?.name || incoming?.tokenName || resolvedSymbol;
 
+            // Fetch initial price for delay entry check
+            let initialPriceUsd = 0;
+            try {
+              initialPriceUsd = await fetchTokenUsdPrice(incomingMint);
+            } catch (_) {}
+
             allCandidates.push({
               mint: incomingMint,
               symbol: resolvedSymbol,
@@ -580,6 +586,9 @@ Deno.serve(async (req) => {
               valueUsd,
               totalValueUsd,
               ta_strategies: taTriggered,
+              initialPriceUsd,
+              lpLocked,
+              lpLockScore,
             });
 
             if (decision === "BUY") totalBuySignals++;
