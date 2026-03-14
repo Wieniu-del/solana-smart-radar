@@ -85,7 +85,7 @@ Deno.serve(async (req) => {
       .eq("key", "tracked_wallets")
       .single();
 
-    const wallets: string[] = (walletsConfig?.value as string[]) || [];
+    let wallets: string[] = (walletsConfig?.value as string[]) || [];
     if (wallets.length === 0) {
       await updateRun(supabase, runId, {
         status: "completed",
@@ -94,6 +94,72 @@ Deno.serve(async (req) => {
         details: { reason: "No tracked wallets" },
       });
       return jsonResponse({ success: true, status: "no_wallets" });
+    }
+
+    // ── WALLET PnL AUDIT: exclude wallets that generated mostly losses ──
+    const { data: walletPnlConfig } = await supabase
+      .from("bot_config")
+      .select("value")
+      .eq("key", "wallet_pnl_audit")
+      .maybeSingle();
+    const walletPnlAudit = (walletPnlConfig?.value as any) || {};
+    const auditEnabled = walletPnlAudit.enabled !== false; // enabled by default
+    const minTradesForAudit = Number(walletPnlAudit.min_trades) || 3;
+    const maxLossRatePct = Number(walletPnlAudit.max_loss_rate_pct) || 80; // exclude if 80%+ of signals were losses
+
+    if (auditEnabled) {
+      // Get per-wallet signal performance from closed positions
+      const { data: closedPositions } = await supabase
+        .from("open_positions")
+        .select("signal_id, pnl_pct, close_reason, token_mint")
+        .eq("status", "closed");
+
+      const { data: signalSources } = await supabase
+        .from("trading_signals")
+        .select("id, wallet_address")
+        .eq("signal_type", "BUY");
+
+      if (closedPositions && signalSources) {
+        const signalWalletMap = new Map<string, string>();
+        for (const s of signalSources) signalWalletMap.set(s.id, s.wallet_address);
+
+        const walletStats: Record<string, { total: number; losses: number; deadTokens: number }> = {};
+        for (const pos of closedPositions) {
+          const wallet = pos.signal_id ? signalWalletMap.get(pos.signal_id) : null;
+          if (!wallet) continue;
+          if (!walletStats[wallet]) walletStats[wallet] = { total: 0, losses: 0, deadTokens: 0 };
+          walletStats[wallet].total++;
+          if (Number(pos.pnl_pct) < 0) walletStats[wallet].losses++;
+          if (pos.close_reason === "dead_token") walletStats[wallet].deadTokens++;
+        }
+
+        const excludedWallets: string[] = [];
+        for (const [wallet, stats] of Object.entries(walletStats)) {
+          if (stats.total >= minTradesForAudit) {
+            const lossRate = (stats.losses / stats.total) * 100;
+            if (lossRate >= maxLossRatePct || stats.deadTokens >= 2) {
+              excludedWallets.push(wallet);
+              console.log(`[bot] ❌ WALLET EXCLUDED: ${wallet.slice(0,8)}... — ${stats.losses}/${stats.total} losses (${lossRate.toFixed(0)}%), dead_tokens=${stats.deadTokens}`);
+            }
+          }
+        }
+
+        if (excludedWallets.length > 0) {
+          const before = wallets.length;
+          wallets = wallets.filter(w => !excludedWallets.includes(w));
+          console.log(`[bot] Wallet audit: excluded ${excludedWallets.length} bad wallets (${before} → ${wallets.length})`);
+          
+          if (wallets.length === 0) {
+            await updateRun(supabase, runId, {
+              status: "completed",
+              finished_at: new Date().toISOString(),
+              duration_ms: Date.now() - startTime,
+              details: { reason: "All wallets excluded by PnL audit", excluded: excludedWallets.map(w => w.slice(0,8)) },
+            });
+            return jsonResponse({ success: true, status: "all_wallets_excluded", excluded: excludedWallets.length });
+          }
+        }
+      }
     }
 
     // 3. Get scoring threshold
