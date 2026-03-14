@@ -870,9 +870,11 @@ Deno.serve(async (req) => {
           let executed = 0;
 
           // Execute oldest actionable BUY signals first (pending + approved)
+          // DELAY ENTRY: only execute signals that are at least 5 minutes old (price stability check)
+          const DELAY_ENTRY_MINUTES = 5;
           const { data: pendingSignals } = await supabase
             .from("trading_signals")
-            .select("id, token_mint, token_symbol, token_name, confidence, status, strategy, smart_score")
+            .select("id, token_mint, token_symbol, token_name, confidence, status, strategy, smart_score, created_at, conditions")
             .eq("signal_type", "BUY")
             .in("status", executableSignalStatuses)
             .order("created_at", { ascending: true })
@@ -892,8 +894,44 @@ Deno.serve(async (req) => {
               continue;
             }
 
-            // Min confidence from pipeline config (manual approval bypasses this check)
+            // ── DELAY ENTRY: wait 5 min before executing ──
+            const signalAge = (Date.now() - new Date(signal.created_at).getTime()) / 60000;
             const isManuallyApproved = signal.status === "approved";
+            if (!isManuallyApproved && signalAge < DELAY_ENTRY_MINUTES) {
+              console.log(`[bot] ⏳ DELAY ENTRY: ${signal.token_symbol} — signal age ${signalAge.toFixed(1)}min < ${DELAY_ENTRY_MINUTES}min, waiting...`);
+              continue; // don't reject, just skip — will be picked up next cycle
+            }
+
+            // ── DELAY ENTRY: price stability check after delay ──
+            if (!isManuallyApproved && signalAge >= DELAY_ENTRY_MINUTES) {
+              const conditions = signal.conditions as any || {};
+              const initialPrice = Number(conditions.initial_price_usd || 0);
+              if (initialPrice > 0) {
+                try {
+                  const currentPrice = await fetchTokenUsdPrice(signal.token_mint);
+                  if (currentPrice > 0) {
+                    const priceChange = ((currentPrice - initialPrice) / initialPrice) * 100;
+                    // Reject if price dumped >30% since signal (pump & dump)
+                    if (priceChange < -30) {
+                      console.log(`[bot] ❌ DELAY REJECT: ${signal.token_symbol} — price dumped ${priceChange.toFixed(1)}% since signal ($${initialPrice.toFixed(8)} → $${currentPrice.toFixed(8)})`);
+                      await supabase.from("trading_signals").update({ status: "rejected" }).eq("id", signal.id);
+                      continue;
+                    }
+                    // Reject if price pumped >100% (likely too late / FOMO trap)
+                    if (priceChange > 100) {
+                      console.log(`[bot] ❌ DELAY REJECT: ${signal.token_symbol} — price pumped ${priceChange.toFixed(1)}% since signal (FOMO trap)`);
+                      await supabase.from("trading_signals").update({ status: "rejected" }).eq("id", signal.id);
+                      continue;
+                    }
+                    console.log(`[bot] ✅ DELAY PASS: ${signal.token_symbol} — price change ${priceChange.toFixed(1)}% after ${signalAge.toFixed(1)}min delay`);
+                  }
+                } catch (priceErr) {
+                  console.warn(`[bot] Price check error for delay entry:`, priceErr);
+                }
+              }
+            }
+
+            // Min confidence from pipeline config (manual approval bypasses this check)
             if (!isManuallyApproved && (signal.confidence || 0) < autoExecMinConfidence) {
               console.log(`[bot] Skipping signal ${signal.id}: confidence ${signal.confidence} < ${autoExecMinConfidence}`);
               await supabase.from("trading_signals").update({ status: "rejected" }).eq("id", signal.id);
