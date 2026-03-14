@@ -85,7 +85,7 @@ Deno.serve(async (req) => {
       .eq("key", "tracked_wallets")
       .single();
 
-    const wallets: string[] = (walletsConfig?.value as string[]) || [];
+    let wallets: string[] = (walletsConfig?.value as string[]) || [];
     if (wallets.length === 0) {
       await updateRun(supabase, runId, {
         status: "completed",
@@ -94,6 +94,72 @@ Deno.serve(async (req) => {
         details: { reason: "No tracked wallets" },
       });
       return jsonResponse({ success: true, status: "no_wallets" });
+    }
+
+    // ── WALLET PnL AUDIT: exclude wallets that generated mostly losses ──
+    const { data: walletPnlConfig } = await supabase
+      .from("bot_config")
+      .select("value")
+      .eq("key", "wallet_pnl_audit")
+      .maybeSingle();
+    const walletPnlAudit = (walletPnlConfig?.value as any) || {};
+    const auditEnabled = walletPnlAudit.enabled !== false; // enabled by default
+    const minTradesForAudit = Number(walletPnlAudit.min_trades) || 3;
+    const maxLossRatePct = Number(walletPnlAudit.max_loss_rate_pct) || 80; // exclude if 80%+ of signals were losses
+
+    if (auditEnabled) {
+      // Get per-wallet signal performance from closed positions
+      const { data: closedPositions } = await supabase
+        .from("open_positions")
+        .select("signal_id, pnl_pct, close_reason, token_mint")
+        .eq("status", "closed");
+
+      const { data: signalSources } = await supabase
+        .from("trading_signals")
+        .select("id, wallet_address")
+        .eq("signal_type", "BUY");
+
+      if (closedPositions && signalSources) {
+        const signalWalletMap = new Map<string, string>();
+        for (const s of signalSources) signalWalletMap.set(s.id, s.wallet_address);
+
+        const walletStats: Record<string, { total: number; losses: number; deadTokens: number }> = {};
+        for (const pos of closedPositions) {
+          const wallet = pos.signal_id ? signalWalletMap.get(pos.signal_id) : null;
+          if (!wallet) continue;
+          if (!walletStats[wallet]) walletStats[wallet] = { total: 0, losses: 0, deadTokens: 0 };
+          walletStats[wallet].total++;
+          if (Number(pos.pnl_pct) < 0) walletStats[wallet].losses++;
+          if (pos.close_reason === "dead_token") walletStats[wallet].deadTokens++;
+        }
+
+        const excludedWallets: string[] = [];
+        for (const [wallet, stats] of Object.entries(walletStats)) {
+          if (stats.total >= minTradesForAudit) {
+            const lossRate = (stats.losses / stats.total) * 100;
+            if (lossRate >= maxLossRatePct || stats.deadTokens >= 2) {
+              excludedWallets.push(wallet);
+              console.log(`[bot] ❌ WALLET EXCLUDED: ${wallet.slice(0,8)}... — ${stats.losses}/${stats.total} losses (${lossRate.toFixed(0)}%), dead_tokens=${stats.deadTokens}`);
+            }
+          }
+        }
+
+        if (excludedWallets.length > 0) {
+          const before = wallets.length;
+          wallets = wallets.filter(w => !excludedWallets.includes(w));
+          console.log(`[bot] Wallet audit: excluded ${excludedWallets.length} bad wallets (${before} → ${wallets.length})`);
+          
+          if (wallets.length === 0) {
+            await updateRun(supabase, runId, {
+              status: "completed",
+              finished_at: new Date().toISOString(),
+              duration_ms: Date.now() - startTime,
+              details: { reason: "All wallets excluded by PnL audit", excluded: excludedWallets.map(w => w.slice(0,8)) },
+            });
+            return jsonResponse({ success: true, status: "all_wallets_excluded", excluded: excludedWallets.length });
+          }
+        }
+      }
     }
 
     // 3. Get scoring threshold
@@ -308,12 +374,14 @@ Deno.serve(async (req) => {
             let tokenAgeMinutes = 0;
 
             // FIX: Try multiple APIs for liquidity data
+            let dexPairsData: any[] = []; // store for LP lock check
             try {
               // Try DexScreener v1 first
               const dexRes = await fetch(`https://api.dexscreener.com/tokens/v1/solana/${incomingMint}`);
               if (dexRes.ok) {
                 const dexPairs = await dexRes.json();
                 const pairs = Array.isArray(dexPairs) ? dexPairs : [];
+                dexPairsData = pairs;
                 if (pairs.length > 0) {
                   const topPair = pairs.sort((a: any, b: any) => Number(b?.liquidity?.usd || 0) - Number(a?.liquidity?.usd || 0))[0];
                   realLiquidityUsd = pairs.reduce((max: number, p: any) => Math.max(max, Number(p?.liquidity?.usd || 0)), 0);
@@ -330,6 +398,7 @@ Deno.serve(async (req) => {
                 if (dexRes2.ok) {
                   const dexData2 = await dexRes2.json();
                   const pairs2 = Array.isArray(dexData2?.pairs) ? dexData2.pairs : [];
+                  dexPairsData = pairs2.length > 0 ? pairs2 : dexPairsData;
                   if (pairs2.length > 0) {
                     realLiquidityUsd = pairs2.reduce((max: number, p: any) => Math.max(max, Number(p?.liquidity?.usd || 0)), 0);
                     volume5m = Number(pairs2[0]?.volume?.m5 || 0);
@@ -348,8 +417,7 @@ Deno.serve(async (req) => {
                     const jupData = await jupRes.json();
                     const jupPrice = Number(jupData?.data?.[incomingMint]?.price);
                     if (jupPrice > 0) {
-                      // If Jupiter has a price, token is tradeable — estimate min liquidity
-                      realLiquidityUsd = 15000; // conservative estimate for Jupiter-listed tokens
+                      realLiquidityUsd = 15000;
                       console.log(`[bot] ${incomingMint.slice(0,8)}: Jupiter price=$${jupPrice.toFixed(8)}, estimated liq=$15000`);
                     }
                   }
@@ -357,6 +425,37 @@ Deno.serve(async (req) => {
               }
             } catch (dexErr) {
               console.warn(`[bot] DexScreener error for ${incomingMint.slice(0,8)}:`, dexErr);
+            }
+
+            // ── LP LOCK VERIFICATION ──
+            // Check if liquidity is locked/burned (rugpull protection)
+            let lpLocked = false;
+            let lpLockScore = 0;
+            if (dexPairsData.length > 0) {
+              const topPair = dexPairsData.sort((a: any, b: any) => Number(b?.liquidity?.usd || 0) - Number(a?.liquidity?.usd || 0))[0];
+              // Check for burn address or lock indicators
+              const lpAddress = topPair?.liquidity?.base?.address || topPair?.info?.lpAddress || "";
+              const hasLpBurn = topPair?.info?.lpBurned === true;
+              const lpLockedPct = Number(topPair?.info?.lpLockedPct || 0);
+              // Alternative: check if LP tokens were sent to dead/burn addresses
+              const pairAddress = topPair?.pairAddress || "";
+
+              // DexScreener sometimes provides lock info in info.socials or info object
+              if (hasLpBurn || lpLockedPct >= 90) {
+                lpLocked = true;
+                lpLockScore = 10;
+                console.log(`[bot] ✅ LP LOCKED: ${incomingMint.slice(0,8)} — burned=${hasLpBurn}, locked=${lpLockedPct}%`);
+              } else {
+                // Heuristic: if LP has been stable for >30 min and liq > $50k, likely safer
+                if (realLiquidityUsd > 50000 && tokenAgeMinutes > 30) {
+                  lpLockScore = 5;
+                  console.log(`[bot] ⚠️ LP NOT CONFIRMED LOCKED: ${incomingMint.slice(0,8)} — but liq=$${realLiquidityUsd.toFixed(0)}, age=${tokenAgeMinutes}min (OK)`);
+                } else if (realLiquidityUsd < 30000 && tokenAgeMinutes < 15) {
+                  // New token, low liq, no LP lock — HIGH RISK
+                  console.log(`[bot] ❌ REJECT LP RISK: ${incomingMint.slice(0,8)} — no LP lock, liq=$${realLiquidityUsd.toFixed(0)}, age=${tokenAgeMinutes}min`);
+                  continue;
+                }
+              }
             }
 
             const effectiveLiquidity = realLiquidityUsd > 0 ? realLiquidityUsd : valueUsd;
@@ -454,6 +553,9 @@ Deno.serve(async (req) => {
             // Holder distribution OK → +10 (always give if we passed filters)
             totalScore += 10;
 
+            // LP Lock bonus → +10 if locked, +5 if high liq
+            totalScore += lpLockScore;
+
             // Cap at 100
             totalScore = Math.min(100, totalScore);
 
@@ -464,6 +566,12 @@ Deno.serve(async (req) => {
             const fallbackSymbol = `${incomingMint.slice(0, 4)}...${incomingMint.slice(-4)}`;
             const resolvedSymbol = incoming?.tokenSymbol || tokenInfo?.symbol || fallbackSymbol;
             const resolvedName = tokenInfo?.name || incoming?.tokenName || resolvedSymbol;
+
+            // Fetch initial price for delay entry check
+            let initialPriceUsd = 0;
+            try {
+              initialPriceUsd = await fetchTokenUsdPrice(incomingMint);
+            } catch (_) {}
 
             allCandidates.push({
               mint: incomingMint,
@@ -478,6 +586,9 @@ Deno.serve(async (req) => {
               valueUsd,
               totalValueUsd,
               ta_strategies: taTriggered,
+              initialPriceUsd,
+              lpLocked,
+              lpLockScore,
             });
 
             if (decision === "BUY") totalBuySignals++;
@@ -632,6 +743,9 @@ Deno.serve(async (req) => {
         total_score: c.totalScore,
         source: "cron_monitor",
         value_usd: c.valueUsd,
+        initial_price_usd: c.initialPriceUsd || 0, // for delay entry price check
+        lp_locked: c.lpLocked || false,
+        lp_lock_score: c.lpLockScore || 0,
         correlation_wallets: c.correlationWallets || 1,
         correlation_bonus: c.correlationBonus || 0,
         sentiment: c.sentiment?.sentiment || "unknown",
@@ -768,9 +882,11 @@ Deno.serve(async (req) => {
           let executed = 0;
 
           // Execute oldest actionable BUY signals first (pending + approved)
+          // DELAY ENTRY: only execute signals that are at least 5 minutes old (price stability check)
+          const DELAY_ENTRY_MINUTES = 5;
           const { data: pendingSignals } = await supabase
             .from("trading_signals")
-            .select("id, token_mint, token_symbol, token_name, confidence, status, strategy, smart_score")
+            .select("id, token_mint, token_symbol, token_name, confidence, status, strategy, smart_score, created_at, conditions")
             .eq("signal_type", "BUY")
             .in("status", executableSignalStatuses)
             .order("created_at", { ascending: true })
@@ -790,8 +906,44 @@ Deno.serve(async (req) => {
               continue;
             }
 
-            // Min confidence from pipeline config (manual approval bypasses this check)
+            // ── DELAY ENTRY: wait 5 min before executing ──
+            const signalAge = (Date.now() - new Date(signal.created_at).getTime()) / 60000;
             const isManuallyApproved = signal.status === "approved";
+            if (!isManuallyApproved && signalAge < DELAY_ENTRY_MINUTES) {
+              console.log(`[bot] ⏳ DELAY ENTRY: ${signal.token_symbol} — signal age ${signalAge.toFixed(1)}min < ${DELAY_ENTRY_MINUTES}min, waiting...`);
+              continue; // don't reject, just skip — will be picked up next cycle
+            }
+
+            // ── DELAY ENTRY: price stability check after delay ──
+            if (!isManuallyApproved && signalAge >= DELAY_ENTRY_MINUTES) {
+              const conditions = signal.conditions as any || {};
+              const initialPrice = Number(conditions.initial_price_usd || 0);
+              if (initialPrice > 0) {
+                try {
+                  const currentPrice = await fetchTokenUsdPrice(signal.token_mint);
+                  if (currentPrice > 0) {
+                    const priceChange = ((currentPrice - initialPrice) / initialPrice) * 100;
+                    // Reject if price dumped >30% since signal (pump & dump)
+                    if (priceChange < -30) {
+                      console.log(`[bot] ❌ DELAY REJECT: ${signal.token_symbol} — price dumped ${priceChange.toFixed(1)}% since signal ($${initialPrice.toFixed(8)} → $${currentPrice.toFixed(8)})`);
+                      await supabase.from("trading_signals").update({ status: "rejected" }).eq("id", signal.id);
+                      continue;
+                    }
+                    // Reject if price pumped >100% (likely too late / FOMO trap)
+                    if (priceChange > 100) {
+                      console.log(`[bot] ❌ DELAY REJECT: ${signal.token_symbol} — price pumped ${priceChange.toFixed(1)}% since signal (FOMO trap)`);
+                      await supabase.from("trading_signals").update({ status: "rejected" }).eq("id", signal.id);
+                      continue;
+                    }
+                    console.log(`[bot] ✅ DELAY PASS: ${signal.token_symbol} — price change ${priceChange.toFixed(1)}% after ${signalAge.toFixed(1)}min delay`);
+                  }
+                } catch (priceErr) {
+                  console.warn(`[bot] Price check error for delay entry:`, priceErr);
+                }
+              }
+            }
+
+            // Min confidence from pipeline config (manual approval bypasses this check)
             if (!isManuallyApproved && (signal.confidence || 0) < autoExecMinConfidence) {
               console.log(`[bot] Skipping signal ${signal.id}: confidence ${signal.confidence} < ${autoExecMinConfidence}`);
               await supabase.from("trading_signals").update({ status: "rejected" }).eq("id", signal.id);
