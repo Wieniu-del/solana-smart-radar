@@ -553,6 +553,9 @@ Deno.serve(async (req) => {
             // Holder distribution OK → +10 (always give if we passed filters)
             totalScore += 10;
 
+            // LP Lock bonus → +10 if locked, +5 if high liq
+            totalScore += lpLockScore;
+
             // Cap at 100
             totalScore = Math.min(100, totalScore);
 
