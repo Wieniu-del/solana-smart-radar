@@ -734,6 +734,9 @@ Deno.serve(async (req) => {
         total_score: c.totalScore,
         source: "cron_monitor",
         value_usd: c.valueUsd,
+        initial_price_usd: c.initialPriceUsd || 0, // for delay entry price check
+        lp_locked: c.lpLocked || false,
+        lp_lock_score: c.lpLockScore || 0,
         correlation_wallets: c.correlationWallets || 1,
         correlation_bonus: c.correlationBonus || 0,
         sentiment: c.sentiment?.sentiment || "unknown",
