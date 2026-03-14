@@ -374,12 +374,14 @@ Deno.serve(async (req) => {
             let tokenAgeMinutes = 0;
 
             // FIX: Try multiple APIs for liquidity data
+            let dexPairsData: any[] = []; // store for LP lock check
             try {
               // Try DexScreener v1 first
               const dexRes = await fetch(`https://api.dexscreener.com/tokens/v1/solana/${incomingMint}`);
               if (dexRes.ok) {
                 const dexPairs = await dexRes.json();
                 const pairs = Array.isArray(dexPairs) ? dexPairs : [];
+                dexPairsData = pairs;
                 if (pairs.length > 0) {
                   const topPair = pairs.sort((a: any, b: any) => Number(b?.liquidity?.usd || 0) - Number(a?.liquidity?.usd || 0))[0];
                   realLiquidityUsd = pairs.reduce((max: number, p: any) => Math.max(max, Number(p?.liquidity?.usd || 0)), 0);
@@ -396,6 +398,7 @@ Deno.serve(async (req) => {
                 if (dexRes2.ok) {
                   const dexData2 = await dexRes2.json();
                   const pairs2 = Array.isArray(dexData2?.pairs) ? dexData2.pairs : [];
+                  dexPairsData = pairs2.length > 0 ? pairs2 : dexPairsData;
                   if (pairs2.length > 0) {
                     realLiquidityUsd = pairs2.reduce((max: number, p: any) => Math.max(max, Number(p?.liquidity?.usd || 0)), 0);
                     volume5m = Number(pairs2[0]?.volume?.m5 || 0);
@@ -414,8 +417,7 @@ Deno.serve(async (req) => {
                     const jupData = await jupRes.json();
                     const jupPrice = Number(jupData?.data?.[incomingMint]?.price);
                     if (jupPrice > 0) {
-                      // If Jupiter has a price, token is tradeable — estimate min liquidity
-                      realLiquidityUsd = 15000; // conservative estimate for Jupiter-listed tokens
+                      realLiquidityUsd = 15000;
                       console.log(`[bot] ${incomingMint.slice(0,8)}: Jupiter price=$${jupPrice.toFixed(8)}, estimated liq=$15000`);
                     }
                   }
@@ -423,6 +425,37 @@ Deno.serve(async (req) => {
               }
             } catch (dexErr) {
               console.warn(`[bot] DexScreener error for ${incomingMint.slice(0,8)}:`, dexErr);
+            }
+
+            // ── LP LOCK VERIFICATION ──
+            // Check if liquidity is locked/burned (rugpull protection)
+            let lpLocked = false;
+            let lpLockScore = 0;
+            if (dexPairsData.length > 0) {
+              const topPair = dexPairsData.sort((a: any, b: any) => Number(b?.liquidity?.usd || 0) - Number(a?.liquidity?.usd || 0))[0];
+              // Check for burn address or lock indicators
+              const lpAddress = topPair?.liquidity?.base?.address || topPair?.info?.lpAddress || "";
+              const hasLpBurn = topPair?.info?.lpBurned === true;
+              const lpLockedPct = Number(topPair?.info?.lpLockedPct || 0);
+              // Alternative: check if LP tokens were sent to dead/burn addresses
+              const pairAddress = topPair?.pairAddress || "";
+
+              // DexScreener sometimes provides lock info in info.socials or info object
+              if (hasLpBurn || lpLockedPct >= 90) {
+                lpLocked = true;
+                lpLockScore = 10;
+                console.log(`[bot] ✅ LP LOCKED: ${incomingMint.slice(0,8)} — burned=${hasLpBurn}, locked=${lpLockedPct}%`);
+              } else {
+                // Heuristic: if LP has been stable for >30 min and liq > $50k, likely safer
+                if (realLiquidityUsd > 50000 && tokenAgeMinutes > 30) {
+                  lpLockScore = 5;
+                  console.log(`[bot] ⚠️ LP NOT CONFIRMED LOCKED: ${incomingMint.slice(0,8)} — but liq=$${realLiquidityUsd.toFixed(0)}, age=${tokenAgeMinutes}min (OK)`);
+                } else if (realLiquidityUsd < 30000 && tokenAgeMinutes < 15) {
+                  // New token, low liq, no LP lock — HIGH RISK
+                  console.log(`[bot] ❌ REJECT LP RISK: ${incomingMint.slice(0,8)} — no LP lock, liq=$${realLiquidityUsd.toFixed(0)}, age=${tokenAgeMinutes}min`);
+                  continue;
+                }
+              }
             }
 
             const effectiveLiquidity = realLiquidityUsd > 0 ? realLiquidityUsd : valueUsd;
