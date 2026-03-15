@@ -218,22 +218,35 @@ async function closePosition(
       });
     } catch (sellErr: any) {
       console.error(`Sell error for ${pos.token_symbol}:`, sellErr);
+      const errMsg = sellErr.message || "";
 
-      await supabase.from("open_positions").update({
-        current_price_usd: currentPrice,
-        highest_price_usd: highestPrice,
-        pnl_pct: Math.round(pnlPct * 100) / 100,
-        updated_at: new Date().toISOString(),
-      }).eq("id", pos.id);
+      // If wallet has no tokens — force-close position (nothing to sell)
+      const noTokens = errMsg.includes("Brak tokenów") || errMsg.includes("no tokens") || errMsg.includes("insufficient");
+      if (noTokens) {
+        console.warn(`[position-monitor] No tokens in wallet for ${pos.token_symbol} — force-closing as no_tokens`);
+        // Don't return false — fall through to close the position in DB
+        txSignature = null;
+        closeReason = "no_tokens";
+        // Recalculate pnl as -100% since tokens are gone
+        pnlPct = -100;
+      } else {
+        // Retriable error — keep position open
+        await supabase.from("open_positions").update({
+          current_price_usd: currentPrice,
+          highest_price_usd: highestPrice,
+          pnl_pct: Math.round(pnlPct * 100) / 100,
+          updated_at: new Date().toISOString(),
+        }).eq("id", pos.id);
 
-      await supabase.from("notifications").insert({
-        type: "swap_error",
-        title: `❌ Sprzedaż nieudana: ${pos.token_symbol}`,
-        message: `Nie zamknięto pozycji (${closeReason}) — ponowię próbę przy kolejnym skanie. ${sellErr.message?.slice(0, 120)}`,
-        details: { position_id: pos.id, token_mint: pos.token_mint, close_reason: closeReason, error: sellErr.message },
-      });
+        await supabase.from("notifications").insert({
+          type: "swap_error",
+          title: `❌ Sprzedaż nieudana: ${pos.token_symbol}`,
+          message: `Nie zamknięto pozycji (${closeReason}) — ponowię próbę przy kolejnym skanie. ${errMsg.slice(0, 120)}`,
+          details: { position_id: pos.id, token_mint: pos.token_mint, close_reason: closeReason, error: errMsg },
+        });
 
-      return false;
+        return false;
+      }
     }
   }
 
