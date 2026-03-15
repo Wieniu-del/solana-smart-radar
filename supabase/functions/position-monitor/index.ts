@@ -267,6 +267,7 @@ async function closePosition(
     trailing_stop: "🟡 Trailing Stop",
     take_profit: "🟢 Take-Profit",
     dead_token: "💀 Dead Token",
+    no_tokens: "🔻 Brak tokenów w portfelu",
     profit_fade: "🟠 Profit Fade Lock",
     fast_loss_cut: "⚡ Fast Loss Cut",
     time_decay: "⏰ Time Decay (1.5h)",
