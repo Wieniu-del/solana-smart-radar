@@ -943,6 +943,39 @@ Deno.serve(async (req) => {
               }
             }
 
+            // ── MOMENTUM FILTER: reject tokens without upward price movement ──
+            if (!isManuallyApproved) {
+              try {
+                const dexMomRes = await fetch(`https://api.dexscreener.com/tokens/v1/solana/${signal.token_mint}`);
+                if (dexMomRes.ok) {
+                  const dexMomPairs = await dexMomRes.json();
+                  const momPairs = Array.isArray(dexMomPairs) ? dexMomPairs : [];
+                  if (momPairs.length > 0) {
+                    const topPair = momPairs.sort((a: any, b: any) => Number(b?.liquidity?.usd || 0) - Number(a?.liquidity?.usd || 0))[0];
+                    const priceChangeM5 = Number(topPair?.priceChange?.m5 || 0);
+                    const priceChangeH1 = Number(topPair?.priceChange?.h1 || 0);
+                    
+                    // Reject if price is falling in last 5 minutes (no momentum)
+                    if (priceChangeM5 < -3) {
+                      console.log(`[bot] ❌ MOMENTUM REJECT: ${signal.token_symbol} — price falling ${priceChangeM5.toFixed(1)}% in 5min`);
+                      await supabase.from("trading_signals").update({ status: "rejected" }).eq("id", signal.id);
+                      continue;
+                    }
+                    // Reject if flat/negative in both 5m and 1h (dead momentum)
+                    if (priceChangeM5 <= 0 && priceChangeH1 < 0) {
+                      console.log(`[bot] ❌ MOMENTUM REJECT: ${signal.token_symbol} — no momentum: m5=${priceChangeM5.toFixed(1)}%, h1=${priceChangeH1.toFixed(1)}%`);
+                      await supabase.from("trading_signals").update({ status: "rejected" }).eq("id", signal.id);
+                      continue;
+                    }
+                    console.log(`[bot] ✅ MOMENTUM PASS: ${signal.token_symbol} — m5=${priceChangeM5.toFixed(1)}%, h1=${priceChangeH1.toFixed(1)}%`);
+                  }
+                }
+              } catch (momErr) {
+                console.warn(`[bot] Momentum check error for ${signal.token_symbol}:`, momErr);
+                // Don't block on error — proceed without momentum data
+              }
+            }
+
             // Min confidence from pipeline config (manual approval bypasses this check)
             if (!isManuallyApproved && (signal.confidence || 0) < autoExecMinConfidence) {
               console.log(`[bot] Skipping signal ${signal.id}: confidence ${signal.confidence} < ${autoExecMinConfidence}`);
