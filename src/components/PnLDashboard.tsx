@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  TrendingUp, TrendingDown, BarChart3, Target, Award, Activity,
+  TrendingUp, TrendingDown, BarChart3, Target, Award, Activity, AlertTriangle, Wallet,
 } from "lucide-react";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -26,20 +26,32 @@ interface Position {
   trailing_stop_pct: number;
 }
 
+// Realistic PnL calculation — cap gains to avoid fantasy numbers
+// On micro-cap memes, slippage eats most theoretical gains
+function realPnlSol(pnlPct: number, amountSol: number): number {
+  if (pnlPct <= 0) {
+    return (pnlPct / 100) * amountSol;
+  }
+  const theoreticalPnl = (pnlPct / 100) * amountSol;
+  const maxRealisticGain = amountSol * 5; // max 5x return (500%)
+  return Math.min(theoreticalPnl, maxRealisticGain);
+}
+
 export default function PnLDashboard() {
   const [closedPositions, setClosedPositions] = useState<Position[]>([]);
   const [openPositions, setOpenPositions] = useState<Position[]>([]);
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 15000); // refresh every 15s
+    const interval = setInterval(loadData, 15000);
     return () => clearInterval(interval);
   }, []);
 
   async function loadData() {
     setLoading(true);
-    const [{ data: closed }, { data: open }] = await Promise.all([
+    const [{ data: closed }, { data: open }, healthRes] = await Promise.all([
       supabase
         .from("open_positions")
         .select("*")
@@ -50,13 +62,16 @@ export default function PnLDashboard() {
         .select("*")
         .eq("status", "open")
         .order("opened_at", { ascending: false }),
+      supabase.functions.invoke("bot-health"),
     ]);
     if (closed) setClosedPositions(closed as Position[]);
     if (open) setOpenPositions(open as Position[]);
+    if (healthRes.data?.infrastructure?.wallet_balance_sol != null) {
+      setWalletBalance(healthRes.data.infrastructure.wallet_balance_sol);
+    }
     setLoading(false);
   }
 
-  // Calculate stats from closed positions
   const positions = closedPositions;
   const totalTrades = positions.length;
   const wins = positions.filter((p) => (p.pnl_pct || 0) > 0);
@@ -66,26 +81,23 @@ export default function PnLDashboard() {
   const avgLoss = losses.length > 0 ? Math.abs(losses.reduce((s, p) => s + (p.pnl_pct || 0), 0) / losses.length) : 0;
   const profitFactor = avgLoss > 0 ? (avgWin / avgLoss).toFixed(2) : "∞";
 
-  // Total PnL in SOL
+  // Realistic PnL in SOL (capped gains, real losses)
   const totalPnLSol = positions.reduce((s, p) => {
-    const pnl = (p.pnl_pct || 0) / 100 * p.amount_sol;
-    return s + pnl;
+    return s + realPnlSol(p.pnl_pct || 0, p.amount_sol);
   }, 0);
 
-  // Open positions unrealized PnL
+  const totalInvested = positions.reduce((s, p) => s + p.amount_sol, 0);
+
   const unrealizedPnLSol = openPositions.reduce((s, p) => {
-    const pnl = (p.pnl_pct || 0) / 100 * p.amount_sol;
-    return s + pnl;
+    return s + realPnlSol(p.pnl_pct || 0, p.amount_sol);
   }, 0);
 
-  // Best/worst trade
   const bestTrade = positions.length > 0 ? positions.reduce((best, p) => (p.pnl_pct || 0) > (best?.pnl_pct || -Infinity) ? p : best, positions[0]) : null;
   const worstTrade = positions.length > 0 ? positions.reduce((worst, p) => (p.pnl_pct || 0) < (worst?.pnl_pct || Infinity) ? p : worst, positions[0]) : null;
 
-  // Cumulative PnL chart data
   let cumPnL = 0;
   const chartData = positions.map((p, i) => {
-    const pnlSol = (p.pnl_pct || 0) / 100 * p.amount_sol;
+    const pnlSol = realPnlSol(p.pnl_pct || 0, p.amount_sol);
     cumPnL += pnlSol;
     const date = p.closed_at ? new Date(p.closed_at) : new Date(p.opened_at);
     return {
@@ -97,14 +109,13 @@ export default function PnLDashboard() {
     };
   });
 
-  // Close reason distribution
   const reasonCounts: Record<string, number> = {};
   positions.forEach((p) => {
     const r = p.close_reason || "unknown";
     reasonCounts[r] = (reasonCounts[r] || 0) + 1;
   });
   const reasonData = Object.entries(reasonCounts).map(([name, value]) => ({
-    name: name === "trailing_stop" ? "Trailing" : name === "take_profit" ? "TP" : name === "stop_loss" ? "SL" : name === "fast_loss_cut" ? "Fast Cut" : name === "profit_fade" ? "Fade" : name === "time_decay" ? "Decay" : name === "dead_token" ? "Dead" : name,
+    name: name === "trailing_stop" ? "Trailing" : name === "take_profit" ? "TP" : name === "stop_loss" ? "SL" : name === "fast_loss_cut" ? "Fast Cut" : name === "profit_fade" ? "Fade" : name === "time_decay" ? "Decay" : name === "dead_token" ? "Dead" : name === "no_tokens" ? "No Tokens" : name === "max_hold_time" ? "Max Hold" : name,
     value,
   }));
 
@@ -121,6 +132,19 @@ export default function PnLDashboard() {
 
   return (
     <div className="space-y-4">
+      {/* Wallet Balance — source of truth */}
+      {walletBalance != null && (
+        <Card className="border-primary/30 bg-card">
+          <CardContent className="p-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Wallet className="h-4 w-4 text-primary" />
+              <span className="text-sm text-muted-foreground">Saldo portfela (prawda):</span>
+            </div>
+            <span className="text-lg font-bold text-foreground">{walletBalance.toFixed(4)} SOL</span>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Open Positions (Live) */}
       {openPositions.length > 0 && (
         <Card className="border-border bg-card">
@@ -134,7 +158,7 @@ export default function PnLDashboard() {
             <div className="space-y-2">
               {openPositions.map((pos) => {
                 const pnl = pos.pnl_pct || 0;
-                const pnlSol = (pnl / 100) * pos.amount_sol;
+                const pnlSol = realPnlSol(pnl, pos.amount_sol);
                 const isPositive = pnl >= 0;
                 const hoursHeld = ((Date.now() - new Date(pos.opened_at).getTime()) / 3600000).toFixed(1);
                 return (
@@ -181,9 +205,9 @@ export default function PnLDashboard() {
         />
         <MetricCard
           icon={totalPnLSol >= 0 ? TrendingUp : TrendingDown}
-          label="Realized PnL"
+          label="Realized PnL (est.)"
           value={`${totalPnLSol >= 0 ? "+" : ""}${totalPnLSol.toFixed(4)} SOL`}
-          sub={`${totalTrades} zamkniętych`}
+          sub={`${totalTrades} zamkniętych | zainw. ${totalInvested.toFixed(2)} SOL`}
           positive={totalPnLSol >= 0}
         />
         <MetricCard
@@ -202,6 +226,15 @@ export default function PnLDashboard() {
         />
       </div>
 
+      {/* Disclaimer */}
+      <div className="flex items-start gap-2 text-[10px] text-muted-foreground bg-muted/20 rounded-md px-3 py-2">
+        <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-neon-amber" />
+        <span>
+          PnL jest szacunkowy (zyski ograniczone do max 5x per trade z powodu slippage).
+          Saldo portfela powyżej to jedyne wiarygodne źródło prawdy.
+        </span>
+      </div>
+
       {totalTrades === 0 && openPositions.length === 0 && (
         <Card className="border-border bg-card">
           <CardContent className="p-8 text-center text-muted-foreground">
@@ -214,12 +247,11 @@ export default function PnLDashboard() {
 
       {totalTrades > 0 && (
         <>
-          {/* Cumulative PnL Chart */}
           <Card className="border-border bg-card">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm flex items-center gap-2">
                 <TrendingUp className="h-4 w-4 text-primary" />
-                Kumulatywny PnL (SOL)
+                Kumulatywny PnL (SOL) — szacunkowy
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -257,7 +289,6 @@ export default function PnLDashboard() {
             </CardContent>
           </Card>
 
-          {/* Trade Distribution + Per-trade PnL */}
           <div className="grid md:grid-cols-2 gap-4">
             <Card className="border-border bg-card">
               <CardHeader className="pb-2">
