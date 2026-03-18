@@ -134,13 +134,20 @@ Deno.serve(async (req) => {
       }
 
       // ── TIME DECAY: after 1.5h with <5% profit → close (no hodling) ──
+      // SKIP if mega-winner (PnL > 100%) — let trailing stop manage it
       if (hoursHeld >= 1.5 && pnlPct < 5 && pnlPct > -STOP_LOSS_PCT) {
         closeReason = "time_decay";
       }
 
-      // ── MAX HOLD: after 3h force close regardless of PnL (no hodling) ──
-      if (hoursHeld >= 3 && !closeReason) {
+      // ── MAX HOLD: after 3h force close — BUT NOT mega-winners ──
+      // If PnL > 100%, trailing stop handles exit, not a dumb timeout
+      if (hoursHeld >= 3 && !closeReason && pnlPct <= 100) {
         closeReason = "max_hold_time";
+      }
+      
+      // Log mega-winner protection
+      if (pnlPct > 100 && hoursHeld >= 3) {
+        console.log(`[position-monitor] 🚀 MEGA-WINNER PROTECTED: ${pos.token_symbol} +${pnlPct.toFixed(1)}% held ${hoursHeld.toFixed(1)}h — trailing stop manages exit`);
       }
 
       if (closeReason) {

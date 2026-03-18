@@ -272,7 +272,8 @@ Deno.serve(async (req) => {
     for (const row of recentSignals || []) blockedMints.add(row.token_mint);
     for (const row of pendingSignalMints || []) blockedMints.add(row.token_mint);
     for (const row of slCooldownMints || []) blockedMints.add(row.token_mint);
-    console.log(`[bot] Blocked mints: ${blockedMints.size} (open=${openPositions?.length || 0}, executed=${recentSignals?.length || 0}, pending=${pendingSignalMints?.length || 0}, sl_cooldown=${slCooldownMints?.length || 0})`);
+    for (const row of tdCooldownMints || []) blockedMints.add(row.token_mint);
+    console.log(`[bot] Blocked mints: ${blockedMints.size} (open=${openPositions?.length || 0}, executed=${recentSignals?.length || 0}, pending=${pendingSignalMints?.length || 0}, sl_cooldown=${slCooldownMints?.length || 0}, td_cooldown=${tdCooldownMints?.length || 0})`);
 
     for (const wallet of wallets) {
       try {
