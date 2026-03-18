@@ -7,6 +7,8 @@ const corsHeaders = {
 
 // ─── TRAILING STOP TABLE ───
 const TRAILING_TABLE = [
+  { minPnl: 200, trailing: 5 },
+  { minPnl: 100, trailing: 4 },
   { minPnl: 80, trailing: 2 },
   { minPnl: 40, trailing: 2.5 },
   { minPnl: 20, trailing: 3 },
