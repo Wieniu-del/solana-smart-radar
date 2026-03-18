@@ -578,6 +578,8 @@ Deno.serve(async (req) => {
 
             totalTokensFound++;
 
+            const decision = totalScore >= buyThreshold ? "BUY" : totalScore >= watchThreshold ? "WATCH" : "SKIP";
+
             const fallbackSymbol = `${incomingMint.slice(0, 4)}...${incomingMint.slice(-4)}`;
             const resolvedSymbol = incoming?.tokenSymbol || tokenInfo?.symbol || fallbackSymbol;
             const resolvedName = tokenInfo?.name || incoming?.tokenName || resolvedSymbol;
