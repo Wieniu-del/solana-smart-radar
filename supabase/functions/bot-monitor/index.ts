@@ -237,7 +237,7 @@ Deno.serve(async (req) => {
     // FIX #3: Cooldown — block tokens that hit SL in last 48h
     const blockedMints = new Set<string>();
     const SL_COOLDOWN_HOURS = 12;
-    const TD_COOLDOWN_HOURS = 6; // Don't rebuy tokens that ended with time_decay for 6h
+    const TD_COOLDOWN_HOURS = 24; // Don't rebuy tokens that ended with time_decay for 24h (was 6h)
     const [{ data: openPositions }, { data: recentSignals }, { data: pendingSignalMints }, { data: slCooldownMints }, { data: tdCooldownMints }] = await Promise.all([
       supabase.from("open_positions").select("token_mint").eq("status", "open"),
       supabase
@@ -475,9 +475,9 @@ Deno.serve(async (req) => {
               console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: liquidity $${effectiveLiquidity.toFixed(0)} < $${minLiquidityUsd}`);
               continue;
             }
-            // Volume 5m filter ($40k minimum)
-            if (volume5m > 0 && volume5m < 10000) {
-              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: volume5m $${volume5m.toFixed(0)} < $10000`);
+            // Volume 5m filter ($25k minimum — raised from $10k to eliminate low-volume stagnant tokens)
+            if (volume5m > 0 && volume5m < 25000) {
+              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: volume5m $${volume5m.toFixed(0)} < $25000`);
               continue;
             }
             // Token age filter (max 120 minutes)
@@ -567,6 +567,14 @@ Deno.serve(async (req) => {
 
             // Cap at 100
             totalScore = Math.min(100, totalScore);
+
+            // ── QUALITY GATE: require at least 1 quality signal ──
+            // Without TA trigger, LP lock, or high liquidity, token is "blind entry"
+            const hasQualitySignal = taTriggered.length > 0 || lpLocked || realLiquidityUsd > 50000;
+            if (!hasQualitySignal) {
+              console.log(`[bot] ❌ QUALITY GATE: ${incomingMint.slice(0,8)} — no TA, no LP lock, liq=$${realLiquidityUsd.toFixed(0)} < $50k → SKIP`);
+              continue;
+            }
 
             totalTokensFound++;
 
@@ -952,7 +960,7 @@ Deno.serve(async (req) => {
               }
             }
 
-            // ── MOMENTUM FILTER: reject tokens without upward price movement ──
+            // ── MOMENTUM FILTER v2: require ACTIVE upward movement ──
             if (!isManuallyApproved) {
               try {
                 const dexMomRes = await fetch(`https://api.dexscreener.com/tokens/v1/solana/${signal.token_mint}`);
@@ -963,6 +971,7 @@ Deno.serve(async (req) => {
                     const topPair = momPairs.sort((a: any, b: any) => Number(b?.liquidity?.usd || 0) - Number(a?.liquidity?.usd || 0))[0];
                     const priceChangeM5 = Number(topPair?.priceChange?.m5 || 0);
                     const priceChangeH1 = Number(topPair?.priceChange?.h1 || 0);
+                    const volume5m = Number(topPair?.volume?.m5 || 0);
                     
                     // Reject if price is falling in last 5 minutes (no momentum)
                     if (priceChangeM5 < -3) {
@@ -970,13 +979,19 @@ Deno.serve(async (req) => {
                       await supabase.from("trading_signals").update({ status: "rejected" }).eq("id", signal.id);
                       continue;
                     }
-                    // Reject if flat/negative in both 5m and 1h (dead momentum)
-                    if (priceChangeM5 <= 0 && priceChangeH1 < 0) {
-                      console.log(`[bot] ❌ MOMENTUM REJECT: ${signal.token_symbol} — no momentum: m5=${priceChangeM5.toFixed(1)}%, h1=${priceChangeH1.toFixed(1)}%`);
+                    // NEW: Require positive momentum — m5 must be > +1% OR h1 > +5%
+                    if (priceChangeM5 < 1 && priceChangeH1 < 5) {
+                      console.log(`[bot] ❌ MOMENTUM REJECT: ${signal.token_symbol} — weak momentum: m5=${priceChangeM5.toFixed(1)}%, h1=${priceChangeH1.toFixed(1)}% (need m5>+1% or h1>+5%)`);
                       await supabase.from("trading_signals").update({ status: "rejected" }).eq("id", signal.id);
                       continue;
                     }
-                    console.log(`[bot] ✅ MOMENTUM PASS: ${signal.token_symbol} — m5=${priceChangeM5.toFixed(1)}%, h1=${priceChangeH1.toFixed(1)}%`);
+                    // NEW: Re-check volume at execution time (not just at signal time)
+                    if (volume5m > 0 && volume5m < 15000) {
+                      console.log(`[bot] ❌ VOLUME REJECT AT EXEC: ${signal.token_symbol} — vol5m=$${volume5m.toFixed(0)} < $15000`);
+                      await supabase.from("trading_signals").update({ status: "rejected" }).eq("id", signal.id);
+                      continue;
+                    }
+                    console.log(`[bot] ✅ MOMENTUM PASS: ${signal.token_symbol} — m5=+${priceChangeM5.toFixed(1)}%, h1=+${priceChangeH1.toFixed(1)}%, vol5m=$${volume5m.toFixed(0)}`);
                   }
                 }
               } catch (momErr) {
