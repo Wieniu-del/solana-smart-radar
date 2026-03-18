@@ -118,6 +118,15 @@ Deno.serve(async (req) => {
         continue;
       }
 
+      // ── MINI PROFIT TAKE: >2% profit after 45min → take it ──
+      const minutesHeld = hoursHeld * 60;
+      if (minutesHeld >= 45 && pnlPct >= 2 && pnlPct < 8) {
+        console.warn(`[position-monitor] 💰 MINI PROFIT TAKE: ${pos.token_symbol} +${pnlPct.toFixed(1)}% after ${minutesHeld.toFixed(0)}min — securing gains`);
+        const closed = await closePosition(supabase, supabaseUrl, supabaseKey, pos, currentPrice, "mini_profit_take", pnlPct);
+        if (closed) closedCount++;
+        continue;
+      }
+
       // ── CHECK CLOSE CONDITIONS ──
       let closeReason: string | null = null;
 
