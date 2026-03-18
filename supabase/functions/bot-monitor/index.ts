@@ -568,7 +568,13 @@ Deno.serve(async (req) => {
             // Cap at 100
             totalScore = Math.min(100, totalScore);
 
-            totalTokensFound++;
+            // ── QUALITY GATE: require at least 1 quality signal ──
+            // Without TA trigger, LP lock, or high liquidity, token is "blind entry"
+            const hasQualitySignal = taTriggered.length > 0 || lpLocked || realLiquidityUsd > 50000;
+            if (!hasQualitySignal) {
+              console.log(`[bot] ❌ QUALITY GATE: ${incomingMint.slice(0,8)} — no TA, no LP lock, liq=$${realLiquidityUsd.toFixed(0)} < $50k → SKIP`);
+              continue;
+            }
 
             const decision = totalScore >= buyThreshold ? "BUY" : totalScore >= watchThreshold ? "WATCH" : "SKIP";
 
