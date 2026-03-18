@@ -237,7 +237,7 @@ Deno.serve(async (req) => {
     // FIX #3: Cooldown — block tokens that hit SL in last 48h
     const blockedMints = new Set<string>();
     const SL_COOLDOWN_HOURS = 12;
-    const TD_COOLDOWN_HOURS = 6; // Don't rebuy tokens that ended with time_decay for 6h
+    const TD_COOLDOWN_HOURS = 24; // Don't rebuy tokens that ended with time_decay for 24h (was 6h)
     const [{ data: openPositions }, { data: recentSignals }, { data: pendingSignalMints }, { data: slCooldownMints }, { data: tdCooldownMints }] = await Promise.all([
       supabase.from("open_positions").select("token_mint").eq("status", "open"),
       supabase
