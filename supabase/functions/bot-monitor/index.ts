@@ -502,7 +502,7 @@ Deno.serve(async (req) => {
               priceChangeM5 = Number(topPair?.priceChange?.m5 || 0);
               priceChangeH1 = Number(topPair?.priceChange?.h1 || 0);
               // Hard reject: falling fast
-              if (priceChangeM5 < -5) {
+              if (priceChangeM5 < -10) {
                 console.log(`[bot] ❌ MOMENTUM PRE-REJECT: ${incomingMint.slice(0,8)} — m5=${priceChangeM5.toFixed(1)}% (dumping)`);
                 continue;
               }
