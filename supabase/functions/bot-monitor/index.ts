@@ -542,9 +542,11 @@ Deno.serve(async (req) => {
               : 10;
             totalScore += walletScore;
 
-            // ── Technical Strategy Scoring ──
+            // ── SNIPER SCORING ENGINE ──
+            // Multi-signal scoring: the more confirmations, the higher the score
             // Volume explosion → +25, EMA crossover → +20, RSI momentum → +15
             let taTriggered: string[] = [];
+            let velocityBonus = 0;
             if (enabledTAStrategies.length > 0 && realLiquidityUsd > 0) {
               try {
                 const candles = await fetchCandleData(incomingMint);
@@ -571,9 +573,26 @@ Deno.serve(async (req) => {
                     if (rsiVal > 48) totalScore += 15;
                   }
 
+                  // ── VELOCITY DETECTION: tokens gaining momentum FAST get bonus ──
+                  // This is the "cunning sniper" edge — spot acceleration before others
+                  if (priceChangeM5 > 3 && volume5m > 20000) {
+                    velocityBonus = 10; // strong velocity
+                    console.log(`[bot] 🎯 VELOCITY DETECTED: ${incomingMint.slice(0,8)} — m5=+${priceChangeM5.toFixed(1)}%, vol5m=$${volume5m.toFixed(0)} → +${velocityBonus} bonus`);
+                  } else if (priceChangeM5 > 1 && volume5m > 10000) {
+                    velocityBonus = 5; // moderate velocity
+                  }
+                  totalScore += velocityBonus;
+
+                  // ── MULTI-STRATEGY BONUS: 2+ strategies confirm = stronger signal ──
+                  if (taTriggered.length >= 2) {
+                    const multiBonus = Math.min(taTriggered.length * 5, 15);
+                    totalScore += multiBonus;
+                    console.log(`[bot] 🔥 MULTI-CONFIRM: ${incomingMint.slice(0,8)} — ${taTriggered.length} strategies triggered → +${multiBonus} bonus`);
+                  }
+
                   if (taTriggered.length > 0) {
                     const phase = marketData.ageMinutes < 15 ? "launch" : marketData.ageMinutes < 45 ? "momentum" : marketData.ageMinutes < 120 ? "trending" : "mature";
-                    console.log(`[bot] TA score for ${incomingMint.slice(0,8)}: phase=${phase}, triggered=[${taTriggered.join(",")}], total=${totalScore}`);
+                    console.log(`[bot] TA score for ${incomingMint.slice(0,8)}: phase=${phase}, triggered=[${taTriggered.join(",")}], velocity=${velocityBonus}, total=${totalScore}`);
                   }
                 }
               } catch (taErr) {
