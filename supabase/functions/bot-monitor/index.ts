@@ -997,32 +997,25 @@ Deno.serve(async (req) => {
                     const priceChangeH1 = Number(topPair?.priceChange?.h1 || 0);
                     const volume5m = Number(topPair?.volume?.m5 || 0);
                     
-                    // Reject if price is falling in last 5 minutes (no momentum)
+                    // Reject if price is falling fast (dumping)
                     if (priceChangeM5 < -3) {
                       console.log(`[bot] ❌ MOMENTUM REJECT: ${signal.token_symbol} — price falling ${priceChangeM5.toFixed(1)}% in 5min`);
                       await supabase.from("trading_signals").update({ status: "rejected" }).eq("id", signal.id);
                       continue;
                     }
-                    // NEW: Require positive momentum — m5 must be > +1% OR h1 > +5%
-                    if (priceChangeM5 < 1 && priceChangeH1 < 5) {
-                      console.log(`[bot] ❌ MOMENTUM REJECT: ${signal.token_symbol} — weak momentum: m5=${priceChangeM5.toFixed(1)}%, h1=${priceChangeH1.toFixed(1)}% (need m5>+1% or h1>+5%)`);
+                    // Require at least neutral momentum — m5 >= 0% OR h1 >= +2%
+                    if (priceChangeM5 < 0 && priceChangeH1 < 2) {
+                      console.log(`[bot] ❌ MOMENTUM REJECT: ${signal.token_symbol} — negative momentum: m5=${priceChangeM5.toFixed(1)}%, h1=${priceChangeH1.toFixed(1)}%`);
                       await supabase.from("trading_signals").update({ status: "rejected" }).eq("id", signal.id);
                       continue;
                     }
-                    // NEW: Re-check volume at execution time (not just at signal time)
-                    if (volume5m > 0 && volume5m < 15000) {
-                      console.log(`[bot] ❌ VOLUME REJECT AT EXEC: ${signal.token_symbol} — vol5m=$${volume5m.toFixed(0)} < $15000`);
+                    // Re-check volume at execution time
+                    if (volume5m > 0 && volume5m < 8000) {
+                      console.log(`[bot] ❌ VOLUME REJECT AT EXEC: ${signal.token_symbol} — vol5m=$${volume5m.toFixed(0)} < $8000`);
                       await supabase.from("trading_signals").update({ status: "rejected" }).eq("id", signal.id);
                       continue;
                     }
                     console.log(`[bot] ✅ MOMENTUM PASS: ${signal.token_symbol} — m5=+${priceChangeM5.toFixed(1)}%, h1=+${priceChangeH1.toFixed(1)}%, vol5m=$${volume5m.toFixed(0)}`);
-                  }
-                }
-              } catch (momErr) {
-                console.warn(`[bot] Momentum check error for ${signal.token_symbol}:`, momErr);
-                // Don't block on error — proceed without momentum data
-              }
-            }
 
             // Min confidence from pipeline config (manual approval bypasses this check)
             if (!isManuallyApproved && (signal.confidence || 0) < autoExecMinConfidence) {
