@@ -941,18 +941,23 @@ Deno.serve(async (req) => {
           const slotsAvailable = maxOpenPositions - (currentOpen || 0);
           let executed = 0;
 
-          // Execute oldest actionable BUY signals first (pending + approved)
-          // DELAY ENTRY: only execute signals that are at least 5 minutes old (price stability check)
-          const DELAY_ENTRY_MINUTES = 5;
+          // ── SNIPER MODE: fastest execution with smart verification ──
+          // High-confidence signals (>=80) = INSTANT execution (0 delay)
+          // Medium signals (65-79) = 2 min delay (quick verify)
+          // Low signals (<65) = 3 min delay (standard verify)
+          const SNIPER_INSTANT_THRESHOLD = 80;
+          const SNIPER_FAST_DELAY = 2;
+          const SNIPER_NORMAL_DELAY = 3;
+
           const { data: pendingSignals } = await supabase
             .from("trading_signals")
             .select("id, token_mint, token_symbol, token_name, confidence, status, strategy, smart_score, created_at, conditions")
             .eq("signal_type", "BUY")
             .in("status", executableSignalStatuses)
-            .order("created_at", { ascending: true })
+            .order("confidence", { ascending: false }) // SNIPER: execute HIGHEST confidence first, not oldest
             .limit(100);
 
-          // FIX #3: Deduplicate pending signals — only execute first per token_mint
+          // Deduplicate pending signals — only execute first per token_mint
           const executedMints = new Set<string>();
           for (const signal of pendingSignals || []) {
             if (executed >= slotsAvailable) {
@@ -966,12 +971,17 @@ Deno.serve(async (req) => {
               continue;
             }
 
-            // ── DELAY ENTRY: wait 5 min before executing ──
+            // ── SNIPER DELAY: dynamic based on confidence ──
             const signalAge = (Date.now() - new Date(signal.created_at).getTime()) / 60000;
             const isManuallyApproved = signal.status === "approved";
-            if (!isManuallyApproved && signalAge < DELAY_ENTRY_MINUTES) {
-              console.log(`[bot] ⏳ DELAY ENTRY: ${signal.token_symbol} — signal age ${signalAge.toFixed(1)}min < ${DELAY_ENTRY_MINUTES}min, waiting...`);
-              continue; // don't reject, just skip — will be picked up next cycle
+            const signalConfidence = Number(signal.confidence || 0);
+            const delayMinutes = signalConfidence >= SNIPER_INSTANT_THRESHOLD ? 0 
+              : signalConfidence >= 65 ? SNIPER_FAST_DELAY 
+              : SNIPER_NORMAL_DELAY;
+            
+            if (!isManuallyApproved && signalAge < delayMinutes) {
+              console.log(`[bot] ⏳ SNIPER WAIT: ${signal.token_symbol} — conf=${signalConfidence}, age=${signalAge.toFixed(1)}min, need=${delayMinutes}min`);
+              continue;
             }
 
             // ── DELAY ENTRY: price stability check after delay ──
