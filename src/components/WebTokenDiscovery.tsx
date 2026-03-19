@@ -106,7 +106,8 @@ export default function WebTokenDiscovery() {
           <Globe className="h-5 w-5 text-primary" />
           <h2 className="text-lg font-bold text-foreground">Web Discovery</h2>
           {scannedAt && (
-            <span className="text-[10px] text-muted-foreground ml-2">
+            <span className="text-[10px] text-muted-foreground ml-2 flex items-center gap-1">
+              {isCached && <span className="text-yellow-500">⚡ cache</span>}
               Skan: {scannedAt}
             </span>
           )}
