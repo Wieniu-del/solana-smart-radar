@@ -41,6 +41,7 @@ export default function WebTokenDiscovery() {
   const [marketMood, setMarketMood] = useState<string | null>(null);
   const [scanSummary, setScanSummary] = useState<string | null>(null);
   const [scannedAt, setScannedAt] = useState<string | null>(null);
+  const [isCached, setIsCached] = useState(false);
 
   const handleScan = async () => {
     setLoading(true);
@@ -55,8 +56,16 @@ export default function WebTokenDiscovery() {
         setTokens(data.tokens);
         setMarketMood(data.market_mood || null);
         setScanSummary(data.scan_summary || null);
-        setScannedAt(new Date().toLocaleTimeString("pl-PL"));
-        toast.success(`Znaleziono ${data.tokens.length} tokenów`);
+        setIsCached(!!data.cached);
+        setScannedAt(data.cached
+          ? new Date(data.scanned_at).toLocaleTimeString("pl-PL")
+          : new Date().toLocaleTimeString("pl-PL")
+        );
+        toast.success(
+          data.cached
+            ? `Załadowano ${data.tokens.length} tokenów z cache`
+            : `Znaleziono ${data.tokens.length} tokenów`
+        );
       } else {
         setTokens([]);
         toast.info("Brak wyników");
@@ -97,7 +106,8 @@ export default function WebTokenDiscovery() {
           <Globe className="h-5 w-5 text-primary" />
           <h2 className="text-lg font-bold text-foreground">Web Discovery</h2>
           {scannedAt && (
-            <span className="text-[10px] text-muted-foreground ml-2">
+            <span className="text-[10px] text-muted-foreground ml-2 flex items-center gap-1">
+              {isCached && <span className="text-yellow-500">⚡ cache</span>}
               Skan: {scannedAt}
             </span>
           )}

@@ -5,16 +5,65 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
+function getSupabase() {
+  return createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  );
+}
+
+async function getCachedResults(supabase: any, category: string) {
+  const { data } = await supabase
+    .from('cached_token_discoveries')
+    .select('*')
+    .eq('category', category)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return data;
+}
+
+async function saveCachedResults(supabase: any, category: string, tokens: any[], market_mood: string, scan_summary: string) {
+  // Keep only last 5 per category
+  const { data: old } = await supabase
+    .from('cached_token_discoveries')
+    .select('id')
+    .eq('category', category)
+    .order('created_at', { ascending: false })
+    .range(4, 100);
+
+  if (old && old.length > 0) {
+    await supabase.from('cached_token_discoveries').delete().in('id', old.map((r: any) => r.id));
+  }
+
+  await supabase.from('cached_token_discoveries').insert({
+    category,
+    tokens,
+    market_mood,
+    scan_summary,
+  });
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const supabase = getSupabase();
+
   try {
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!LOVABLE_API_KEY) {
+      // No API key — try cache
+      const cached = await getCachedResults(supabase, 'trending');
+      if (cached) {
+        return new Response(
+          JSON.stringify({ success: true, tokens: cached.tokens, market_mood: cached.market_mood, scan_summary: cached.scan_summary, scanned_at: cached.created_at, cached: true }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
       return new Response(
-        JSON.stringify({ success: false, error: 'AI not configured' }),
+        JSON.stringify({ success: false, error: 'AI not configured and no cached data' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -85,20 +134,37 @@ Generuj ${limit} tokenów. Bądź precyzyjny, realistyczny i aktualny. Skup się
       }),
     });
 
+    // === FALLBACK ON 402/429 ===
     if (!aiResponse.ok) {
       const errText = await aiResponse.text();
-      console.error('AI error:', errText);
+      console.error('AI error:', aiResponse.status, errText);
 
-      if (aiResponse.status === 429) {
+      if (aiResponse.status === 429 || aiResponse.status === 402) {
+        // Try to return cached data
+        const cached = await getCachedResults(supabase, category);
+        if (cached) {
+          const ageMin = Math.round((Date.now() - new Date(cached.created_at).getTime()) / 60000);
+          console.log(`[fallback] Returning cached data (${ageMin}min old) for category=${category}`);
+          return new Response(
+            JSON.stringify({
+              success: true,
+              tokens: cached.tokens,
+              market_mood: cached.market_mood,
+              scan_summary: `${cached.scan_summary} [⚡ Cache z ${ageMin} min temu — brak kredytów AI]`,
+              scanned_at: cached.created_at,
+              cached: true,
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // No cache available
+        const msg = aiResponse.status === 429
+          ? 'Rate limit — brak cached danych, spróbuj ponownie za chwilę'
+          : 'Brak kredytów AI i brak cached danych — doładuj konto';
         return new Response(
-          JSON.stringify({ success: false, error: 'Rate limit - spróbuj ponownie za chwilę' }),
-          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      if (aiResponse.status === 402) {
-        return new Response(
-          JSON.stringify({ success: false, error: 'Brak kredytów AI - doładuj konto' }),
-          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          JSON.stringify({ success: false, error: msg }),
+          { status: aiResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
@@ -123,12 +189,10 @@ Generuj ${limit} tokenów. Bądź precyzyjny, realistyczny i aktualny. Skup się
       );
     }
 
-    // Optionally save discovered tokens to notifications for bot awareness
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
+    // === CACHE SUCCESSFUL RESULTS ===
     if (parsed.tokens && parsed.tokens.length > 0) {
+      await saveCachedResults(supabase, category, parsed.tokens, parsed.market_mood, parsed.scan_summary);
+
       const topTokens = parsed.tokens
         .filter((t: any) => t.social_score >= 70 && t.sentiment === 'bullish')
         .slice(0, 3);
@@ -144,7 +208,7 @@ Generuj ${limit} tokenów. Bądź precyzyjny, realistyczny i aktualny. Skup się
     }
 
     return new Response(
-      JSON.stringify({ success: true, ...parsed, scanned_at: new Date().toISOString() }),
+      JSON.stringify({ success: true, ...parsed, scanned_at: new Date().toISOString(), cached: false }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
