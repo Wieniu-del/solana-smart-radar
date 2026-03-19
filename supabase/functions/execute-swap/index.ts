@@ -284,6 +284,40 @@ async function fetchWalletTokenBalanceBaseUnits(rpcUrl: string, owner: string, m
   }
 }
 
+async function confirmTransaction(rpcUrl: string, signature: string): Promise<{ success: boolean; error?: string }> {
+  for (let attempt = 0; attempt < CONFIRMATION_RETRIES; attempt++) {
+    const res = await fetch(rpcUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "getSignatureStatuses",
+        params: [[signature], { searchTransactionHistory: true }],
+      }),
+    });
+
+    const data = await res.json();
+    const status = data?.result?.value?.[0];
+
+    if (status?.err) {
+      return { success: false, error: `Transakcja odrzucona: ${JSON.stringify(status.err)}` };
+    }
+
+    if (status?.confirmationStatus === "confirmed" || status?.confirmationStatus === "finalized") {
+      return { success: true };
+    }
+
+    await delay(CONFIRMATION_INTERVAL_MS);
+  }
+
+  return { success: false, error: "Timeout potwierdzenia transakcji" };
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function parsePrivateKey(raw: string): Uint8Array {
   const trimmed = raw.trim();
   if (trimmed.startsWith("[")) {
