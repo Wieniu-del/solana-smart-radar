@@ -469,15 +469,23 @@ Deno.serve(async (req) => {
 
             const effectiveLiquidity = realLiquidityUsd > 0 ? realLiquidityUsd : valueUsd;
 
-            // ── PUMP.FUN FILTERS ──
+            // ── PUMP.FUN SCAM DETECTION ──
+            const symbolLower = (incoming?.tokenSymbol || tokenInfo?.symbol || "").toLowerCase();
+            const isPumpFun = incomingMint.endsWith("pump") || symbolLower.includes("pump");
+            if (isPumpFun && realLiquidityUsd < 50000) {
+              console.log(`[bot] ❌ PUMP.FUN REJECT: ${incomingMint.slice(0,8)} — pump token with liq=$${realLiquidityUsd.toFixed(0)} < $50k`);
+              continue;
+            }
+
+            // ── MARKET FILTERS ──
             // Liquidity filter
             if (pLiquidity.enabled && effectiveLiquidity < minLiquidityUsd) {
               console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: liquidity $${effectiveLiquidity.toFixed(0)} < $${minLiquidityUsd}`);
               continue;
             }
-            // Volume 5m filter ($25k minimum — raised from $10k to eliminate low-volume stagnant tokens)
-            if (volume5m > 0 && volume5m < 25000) {
-              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: volume5m $${volume5m.toFixed(0)} < $25000`);
+            // Volume 5m filter ($10k minimum — lowered from $25k, TA confirmation compensates)
+            if (volume5m > 0 && volume5m < 10000) {
+              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: volume5m $${volume5m.toFixed(0)} < $10000`);
               continue;
             }
             // Token age filter (max 120 minutes)
@@ -486,8 +494,22 @@ Deno.serve(async (req) => {
               continue;
             }
 
+            // ── MOMENTUM PRE-CHECK: reject tokens with negative short-term momentum ──
+            let priceChangeM5 = 0;
+            let priceChangeH1 = 0;
+            if (dexPairsData.length > 0) {
+              const topPair = dexPairsData.sort((a: any, b: any) => Number(b?.liquidity?.usd || 0) - Number(a?.liquidity?.usd || 0))[0];
+              priceChangeM5 = Number(topPair?.priceChange?.m5 || 0);
+              priceChangeH1 = Number(topPair?.priceChange?.h1 || 0);
+              // Hard reject: falling fast
+              if (priceChangeM5 < -5) {
+                console.log(`[bot] ❌ MOMENTUM PRE-REJECT: ${incomingMint.slice(0,8)} — m5=${priceChangeM5.toFixed(1)}% (dumping)`);
+                continue;
+              }
+            }
+
             if (realLiquidityUsd > 0) {
-              console.log(`[bot] PASS ${incomingMint.slice(0,8)}: liq=$${realLiquidityUsd.toFixed(0)}, vol5m=$${volume5m.toFixed(0)}, age=${tokenAgeMinutes}min`);
+              console.log(`[bot] PASS ${incomingMint.slice(0,8)}: liq=$${realLiquidityUsd.toFixed(0)}, vol5m=$${volume5m.toFixed(0)}, age=${tokenAgeMinutes}min, m5=${priceChangeM5.toFixed(1)}%`);
             }
 
             // ── NEW SCORING SYSTEM ──
