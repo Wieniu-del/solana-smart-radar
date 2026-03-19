@@ -130,7 +130,7 @@ Deno.serve(async (req) => {
       // ── CHECK CLOSE CONDITIONS ──
       let closeReason: string | null = null;
 
-      // Hard stop loss at -15%
+      // Hard stop loss at -12% (sniper: tighter than before)
       if (pnlPct <= -STOP_LOSS_PCT) {
         closeReason = "stop_loss";
       }
