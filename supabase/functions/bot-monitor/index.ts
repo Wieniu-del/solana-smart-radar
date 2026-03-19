@@ -1239,7 +1239,7 @@ Deno.serve(async (req) => {
                     const volume5m = Number(topPair?.volume?.m5 || 0);
                     
                     // Reject if price is falling fast (dumping)
-                    if (priceChangeM5 < -3) {
+                    if (priceChangeM5 < -8) {
                       console.log(`[bot] ❌ MOMENTUM REJECT: ${signal.token_symbol} — price falling ${priceChangeM5.toFixed(1)}% in 5min`);
                       await supabase.from("trading_signals").update({ status: "rejected" }).eq("id", signal.id);
                       continue;
