@@ -8,6 +8,8 @@ const corsHeaders = {
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 const JUPITER_QUOTE_API = "https://lite-api.jup.ag/swap/v1/quote";
 const JUPITER_SWAP_API = "https://lite-api.jup.ag/swap/v1/swap";
+const CONFIRMATION_RETRIES = 12;
+const CONFIRMATION_INTERVAL_MS = 1500;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -31,7 +33,6 @@ Deno.serve(async (req) => {
       ? `https://mainnet.helius-rpc.com/?api-key=${HELIUS_KEY}`
       : "https://api.mainnet-beta.solana.com";
 
-    // 1. Derive keypair first
     const keyBytes = parsePrivateKey(PRIVATE_KEY);
     let keypair: { publicKey: Uint8Array; secretKey: Uint8Array };
     if (keyBytes.length === 32) {
@@ -44,26 +45,28 @@ Deno.serve(async (req) => {
     const userPublicKey = encodeBase58(keypair.publicKey);
     console.log(`[execute-swap] Wallet: ${userPublicKey.slice(0, 8)}...`);
 
-    // 2. Resolve amount in base units
     const inputMint = action === "BUY" ? SOL_MINT : tokenMint;
     const outputMint = action === "BUY" ? tokenMint : SOL_MINT;
 
     let amountLamports = 0;
+    let tokenDecimals = 0;
+    let walletTokenRawBefore = 0;
+
     if (action === "BUY") {
       if (!amountSol || Number(amountSol) <= 0) {
         return jsonRes({ success: false, error: "Nieprawidłowa kwota BUY" }, 400);
       }
       amountLamports = Math.round(Number(amountSol) * 1e9);
     } else {
-      const tokenDecimals = await fetchTokenDecimals(rpcUrl, tokenMint);
-      const walletTokenRaw = await fetchWalletTokenBalanceBaseUnits(rpcUrl, userPublicKey, tokenMint);
+      tokenDecimals = await fetchTokenDecimals(rpcUrl, tokenMint);
+      walletTokenRawBefore = await fetchWalletTokenBalanceBaseUnits(rpcUrl, userPublicKey, tokenMint);
       const requestedRaw = amountSol && Number(amountSol) > 0
         ? Math.floor(Number(amountSol) * Math.pow(10, tokenDecimals))
         : 0;
 
       amountLamports = closeAll === true
-        ? walletTokenRaw
-        : (requestedRaw > 0 ? Math.min(requestedRaw, walletTokenRaw) : walletTokenRaw);
+        ? walletTokenRawBefore
+        : (requestedRaw > 0 ? Math.min(requestedRaw, walletTokenRawBefore) : walletTokenRawBefore);
 
       if (amountLamports <= 0) {
         return jsonRes({ success: false, error: `Brak tokenów ${tokenMint.slice(0, 6)}... do sprzedaży` }, 400);
@@ -72,7 +75,6 @@ Deno.serve(async (req) => {
       console.log(`[execute-swap] SELL amount raw=${amountLamports}, decimals=${tokenDecimals}, closeAll=${closeAll === true}`);
     }
 
-    // 3. Get quote
     const quoteUrl = `${JUPITER_QUOTE_API}?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountLamports}&slippageBps=${slippageBps || 300}`;
     console.log(`[execute-swap] ${action} quote request`);
     const quoteRes = await fetch(quoteUrl);
@@ -82,7 +84,6 @@ Deno.serve(async (req) => {
     }
     const quoteData = await quoteRes.json();
 
-    // 4. Get swap transaction
     const swapRes = await fetch(JUPITER_SWAP_API, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -104,8 +105,7 @@ Deno.serve(async (req) => {
       return jsonRes({ success: false, error: "Brak transakcji swap z Jupiter" }, 502);
     }
 
-    // 5. Deserialize, sign, send
-    const txBytes = Uint8Array.from(atob(swapTransaction), c => c.charCodeAt(0));
+    const txBytes = Uint8Array.from(atob(swapTransaction), (c) => c.charCodeAt(0));
     const numSigs = txBytes[0];
     const sigsEnd = 1 + numSigs * 64;
     const messageBytes = txBytes.slice(sigsEnd);
@@ -114,7 +114,6 @@ Deno.serve(async (req) => {
     signedTx.set(txBytes);
     signedTx.set(signature, 1);
 
-    // base64 encode in chunks
     let b64 = "";
     const chunk = 8192;
     for (let i = 0; i < signedTx.length; i += chunk) {
@@ -126,7 +125,8 @@ Deno.serve(async (req) => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        jsonrpc: "2.0", id: 1,
+        jsonrpc: "2.0",
+        id: 1,
         method: "sendTransaction",
         params: [b64, { encoding: "base64", skipPreflight: false, preflightCommitment: "confirmed" }],
       }),
@@ -137,13 +137,41 @@ Deno.serve(async (req) => {
       return jsonRes({ success: false, error: `RPC error: ${sendResult.error.message}` }, 502);
     }
 
-    console.log(`[execute-swap] ✅ TX: ${sendResult.result}`);
+    const txSignature = sendResult.result as string;
+    const confirmation = await confirmTransaction(rpcUrl, txSignature);
+    if (!confirmation.success) {
+      return jsonRes({ success: false, error: confirmation.error || "Transakcja nie została potwierdzona" }, 502);
+    }
+
+    let remainingRawBalance: number | undefined;
+    let soldRawAmount: number | undefined;
+    if (action === "SELL") {
+      remainingRawBalance = await fetchWalletTokenBalanceBaseUnits(rpcUrl, userPublicKey, tokenMint);
+      soldRawAmount = Math.max(0, walletTokenRawBefore - remainingRawBalance);
+
+      if (closeAll === true) {
+        const dustThresholdRaw = Math.max(1, Math.floor(Math.pow(10, Math.max(tokenDecimals - 4, 0))));
+        if (remainingRawBalance > dustThresholdRaw) {
+          return jsonRes({
+            success: false,
+            error: `Po sprzedaży na portfelu nadal zostały tokeny (${remainingRawBalance} raw units)`,
+            txSignature,
+            remainingRawBalance,
+          }, 409);
+        }
+      }
+    }
+
+    console.log(`[execute-swap] ✅ TX confirmed: ${txSignature}`);
     return jsonRes({
       success: true,
-      txSignature: sendResult.result,
+      txSignature,
       inputAmount: action === "BUY" ? Number(amountSol) : undefined,
       outputAmount: quoteData.outAmount,
       priceImpact: quoteData.priceImpactPct,
+      tokenDecimals: action === "SELL" ? tokenDecimals : undefined,
+      soldRawAmount,
+      remainingRawBalance,
     });
   } catch (err: any) {
     console.error("[execute-swap] Error:", err);
