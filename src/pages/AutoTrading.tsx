@@ -395,6 +395,11 @@ export default function AutoTrading() {
           <WebTokenDiscovery />
         </TabsContent>
 
+        {/* ─── Sniper Live Feed Tab ─── */}
+        <TabsContent value="live-feed">
+          <SniperLiveFeed />
+        </TabsContent>
+
         {/* ─── Signal Diagnostics Tab ─── */}
         <TabsContent value="diagnostics">
           <SignalDiagnostics />
