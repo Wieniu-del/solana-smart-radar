@@ -456,13 +456,12 @@ Deno.serve(async (req) => {
                 console.log(`[bot] ✅ LP LOCKED: ${incomingMint.slice(0,8)} — burned=${hasLpBurn}, locked=${lpLockedPct}%`);
               } else {
                 // Heuristic: if LP has been stable for >30 min and liq > $50k, likely safer
-                if (realLiquidityUsd > 50000 && tokenAgeMinutes > 30) {
+                if (realLiquidityUsd > 20000 && tokenAgeMinutes > 15) {
                   lpLockScore = 5;
-                  console.log(`[bot] ⚠️ LP NOT CONFIRMED LOCKED: ${incomingMint.slice(0,8)} — but liq=$${realLiquidityUsd.toFixed(0)}, age=${tokenAgeMinutes}min (OK)`);
-                } else if (realLiquidityUsd < 30000 && tokenAgeMinutes < 15) {
-                  // New token, low liq, no LP lock — HIGH RISK
+                } else if (realLiquidityUsd < 10000 && tokenAgeMinutes < 5) {
                   console.log(`[bot] ❌ REJECT LP RISK: ${incomingMint.slice(0,8)} — no LP lock, liq=$${realLiquidityUsd.toFixed(0)}, age=${tokenAgeMinutes}min`);
                   continue;
+                }
                 }
               }
             }
