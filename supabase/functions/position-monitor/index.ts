@@ -282,7 +282,7 @@ async function closePosition(
 
   // Notification
   const reasonLabels: Record<string, string> = {
-    stop_loss: "🔴 Stop-Loss (-15%)",
+    stop_loss: "🔴 Stop-Loss (-12%)",
     trailing_stop: "🟡 Trailing Stop",
     take_profit: "🟢 Take-Profit",
     dead_token: "💀 Dead Token",
