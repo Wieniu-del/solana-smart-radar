@@ -118,9 +118,9 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // ── MINI PROFIT TAKE: >2% profit after 45min → take it ──
+      // ── MINI PROFIT TAKE: >2% profit after 30min → take it ──
       const minutesHeld = hoursHeld * 60;
-      if (minutesHeld >= 45 && pnlPct >= 2 && pnlPct < 8) {
+      if (minutesHeld >= 30 && pnlPct >= 2 && pnlPct < 8) {
         console.warn(`[position-monitor] 💰 MINI PROFIT TAKE: ${pos.token_symbol} +${pnlPct.toFixed(1)}% after ${minutesHeld.toFixed(0)}min — securing gains`);
         const closed = await closePosition(supabase, supabaseUrl, supabaseKey, pos, currentPrice, "mini_profit_take", pnlPct);
         if (closed) closedCount++;
@@ -144,10 +144,10 @@ Deno.serve(async (req) => {
         closeReason = "fast_loss_cut";
       }
 
-      // ── TIME DECAY: after 1h with <5% profit → close (no hodling) ──
-      // Reduced from 1.5h to 1h — if token hasn't moved in 60min, it won't
+      // ── TIME DECAY: after 45min with <5% profit → close (aggressive scalper) ──
+      // Reduced from 1h to 45min — stagnant tokens drain capital via fees
       // SKIP if mega-winner (PnL > 100%) — let trailing stop manage it
-      if (hoursHeld >= 1.0 && pnlPct < 5 && pnlPct > -STOP_LOSS_PCT) {
+      if (minutesHeld >= 45 && pnlPct < 5 && pnlPct > -STOP_LOSS_PCT) {
         closeReason = "time_decay";
       }
 
@@ -289,7 +289,7 @@ async function closePosition(
     no_tokens: "🔻 Brak tokenów w portfelu",
     profit_fade: "🟠 Profit Fade Lock",
     fast_loss_cut: "⚡ Fast Loss Cut",
-    time_decay: "⏰ Time Decay (1.5h)",
+    time_decay: "⏰ Time Decay (45min)",
     max_hold_time: "⏳ Max Hold (3h)",
   };
   await supabase.from("notifications").insert({

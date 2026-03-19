@@ -469,15 +469,23 @@ Deno.serve(async (req) => {
 
             const effectiveLiquidity = realLiquidityUsd > 0 ? realLiquidityUsd : valueUsd;
 
-            // ── PUMP.FUN FILTERS ──
+            // ── PUMP.FUN SCAM DETECTION ──
+            const symbolLower = (incoming?.tokenSymbol || tokenInfo?.symbol || "").toLowerCase();
+            const isPumpFun = incomingMint.endsWith("pump") || symbolLower.includes("pump");
+            if (isPumpFun && realLiquidityUsd < 50000) {
+              console.log(`[bot] ❌ PUMP.FUN REJECT: ${incomingMint.slice(0,8)} — pump token with liq=$${realLiquidityUsd.toFixed(0)} < $50k`);
+              continue;
+            }
+
+            // ── MARKET FILTERS ──
             // Liquidity filter
             if (pLiquidity.enabled && effectiveLiquidity < minLiquidityUsd) {
               console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: liquidity $${effectiveLiquidity.toFixed(0)} < $${minLiquidityUsd}`);
               continue;
             }
-            // Volume 5m filter ($25k minimum — raised from $10k to eliminate low-volume stagnant tokens)
-            if (volume5m > 0 && volume5m < 25000) {
-              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: volume5m $${volume5m.toFixed(0)} < $25000`);
+            // Volume 5m filter ($10k minimum — lowered from $25k, TA confirmation compensates)
+            if (volume5m > 0 && volume5m < 10000) {
+              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: volume5m $${volume5m.toFixed(0)} < $10000`);
               continue;
             }
             // Token age filter (max 120 minutes)
@@ -486,8 +494,22 @@ Deno.serve(async (req) => {
               continue;
             }
 
+            // ── MOMENTUM PRE-CHECK: reject tokens with negative short-term momentum ──
+            let priceChangeM5 = 0;
+            let priceChangeH1 = 0;
+            if (dexPairsData.length > 0) {
+              const topPair = dexPairsData.sort((a: any, b: any) => Number(b?.liquidity?.usd || 0) - Number(a?.liquidity?.usd || 0))[0];
+              priceChangeM5 = Number(topPair?.priceChange?.m5 || 0);
+              priceChangeH1 = Number(topPair?.priceChange?.h1 || 0);
+              // Hard reject: falling fast
+              if (priceChangeM5 < -5) {
+                console.log(`[bot] ❌ MOMENTUM PRE-REJECT: ${incomingMint.slice(0,8)} — m5=${priceChangeM5.toFixed(1)}% (dumping)`);
+                continue;
+              }
+            }
+
             if (realLiquidityUsd > 0) {
-              console.log(`[bot] PASS ${incomingMint.slice(0,8)}: liq=$${realLiquidityUsd.toFixed(0)}, vol5m=$${volume5m.toFixed(0)}, age=${tokenAgeMinutes}min`);
+              console.log(`[bot] PASS ${incomingMint.slice(0,8)}: liq=$${realLiquidityUsd.toFixed(0)}, vol5m=$${volume5m.toFixed(0)}, age=${tokenAgeMinutes}min, m5=${priceChangeM5.toFixed(1)}%`);
             }
 
             // ── NEW SCORING SYSTEM ──
@@ -568,11 +590,13 @@ Deno.serve(async (req) => {
             // Cap at 100
             totalScore = Math.min(100, totalScore);
 
-            // ── QUALITY GATE: require at least 1 quality signal ──
-            // Without TA trigger, LP lock, or high liquidity, token is "blind entry"
-            const hasQualitySignal = taTriggered.length > 0 || lpLocked || realLiquidityUsd > 50000;
-            if (!hasQualitySignal) {
-              console.log(`[bot] ❌ QUALITY GATE: ${incomingMint.slice(0,8)} — no TA, no LP lock, liq=$${realLiquidityUsd.toFixed(0)} < $50k → SKIP`);
+            // ── QUALITY GATE v2: TA confirmation is MANDATORY ──
+            // No more blind entries. High liquidity alone is NOT enough.
+            // Require: TA trigger OR (LP locked AND positive momentum AND liq > $75k)
+            const hasStrongQuality = taTriggered.length > 0;
+            const hasDefensiveQuality = lpLocked && priceChangeM5 > 0 && realLiquidityUsd > 75000;
+            if (!hasStrongQuality && !hasDefensiveQuality) {
+              console.log(`[bot] ❌ QUALITY GATE v2: ${incomingMint.slice(0,8)} — no TA trigger${lpLocked ? ', LP locked but' : ','} liq=$${realLiquidityUsd.toFixed(0)}, m5=${priceChangeM5.toFixed(1)}% → SKIP`);
               continue;
             }
 
@@ -973,32 +997,25 @@ Deno.serve(async (req) => {
                     const priceChangeH1 = Number(topPair?.priceChange?.h1 || 0);
                     const volume5m = Number(topPair?.volume?.m5 || 0);
                     
-                    // Reject if price is falling in last 5 minutes (no momentum)
+                    // Reject if price is falling fast (dumping)
                     if (priceChangeM5 < -3) {
                       console.log(`[bot] ❌ MOMENTUM REJECT: ${signal.token_symbol} — price falling ${priceChangeM5.toFixed(1)}% in 5min`);
                       await supabase.from("trading_signals").update({ status: "rejected" }).eq("id", signal.id);
                       continue;
                     }
-                    // NEW: Require positive momentum — m5 must be > +1% OR h1 > +5%
-                    if (priceChangeM5 < 1 && priceChangeH1 < 5) {
-                      console.log(`[bot] ❌ MOMENTUM REJECT: ${signal.token_symbol} — weak momentum: m5=${priceChangeM5.toFixed(1)}%, h1=${priceChangeH1.toFixed(1)}% (need m5>+1% or h1>+5%)`);
+                    // Require at least neutral momentum — m5 >= 0% OR h1 >= +2%
+                    if (priceChangeM5 < 0 && priceChangeH1 < 2) {
+                      console.log(`[bot] ❌ MOMENTUM REJECT: ${signal.token_symbol} — negative momentum: m5=${priceChangeM5.toFixed(1)}%, h1=${priceChangeH1.toFixed(1)}%`);
                       await supabase.from("trading_signals").update({ status: "rejected" }).eq("id", signal.id);
                       continue;
                     }
-                    // NEW: Re-check volume at execution time (not just at signal time)
-                    if (volume5m > 0 && volume5m < 15000) {
-                      console.log(`[bot] ❌ VOLUME REJECT AT EXEC: ${signal.token_symbol} — vol5m=$${volume5m.toFixed(0)} < $15000`);
+                    // Re-check volume at execution time
+                    if (volume5m > 0 && volume5m < 8000) {
+                      console.log(`[bot] ❌ VOLUME REJECT AT EXEC: ${signal.token_symbol} — vol5m=$${volume5m.toFixed(0)} < $8000`);
                       await supabase.from("trading_signals").update({ status: "rejected" }).eq("id", signal.id);
                       continue;
                     }
                     console.log(`[bot] ✅ MOMENTUM PASS: ${signal.token_symbol} — m5=+${priceChangeM5.toFixed(1)}%, h1=+${priceChangeH1.toFixed(1)}%, vol5m=$${volume5m.toFixed(0)}`);
-                  }
-                }
-              } catch (momErr) {
-                console.warn(`[bot] Momentum check error for ${signal.token_symbol}:`, momErr);
-                // Don't block on error — proceed without momentum data
-              }
-            }
 
             // Min confidence from pipeline config (manual approval bypasses this check)
             if (!isManuallyApproved && (signal.confidence || 0) < autoExecMinConfidence) {
@@ -1404,42 +1421,69 @@ function evaluateTAStrategies(enabled: string[], md: { candles: TACandle[]; ageM
 }
 
 async function fetchCandleData(tokenMint: string): Promise<TACandle[]> {
-  // Use DexScreener OHLCV-like data from pairs
   try {
+    // Try Birdeye-style OHLCV from DexScreener pairs data
     const res = await fetch(`https://api.dexscreener.com/tokens/v1/solana/${tokenMint}`);
     if (!res.ok) return [];
     const pairs = await res.json();
-    const pair = Array.isArray(pairs) && pairs.length > 0 ? pairs[0] : null;
+    const pair = Array.isArray(pairs) && pairs.length > 0 
+      ? pairs.sort((a: any, b: any) => Number(b?.liquidity?.usd || 0) - Number(a?.liquidity?.usd || 0))[0] 
+      : null;
     if (!pair) return [];
 
-    // DexScreener doesn't provide raw OHLCV, synthesize from price history
-    // Use txns data to approximate candles
     const price = Number(pair.priceUsd || 0);
     const volume24h = Number(pair.volume?.h24 || 0);
+    const volume6h = Number(pair.volume?.h6 || 0);
     const volume1h = Number(pair.volume?.h1 || 0);
     const volume5m = Number(pair.volume?.m5 || 0);
     const priceChange5m = Number(pair.priceChange?.m5 || 0) / 100;
     const priceChange1h = Number(pair.priceChange?.h1 || 0) / 100;
+    const priceChange6h = Number(pair.priceChange?.h6 || 0) / 100;
 
     if (price <= 0) return [];
 
     const now = Math.floor(Date.now() / 1000);
-    // Synthesize ~20 candles from available data
     const candles: TACandle[] = [];
+
+    // Build more realistic candles using available multi-timeframe price changes
+    const price6hAgo = price / (1 + priceChange6h);
     const price1hAgo = price / (1 + priceChange1h);
     const price5mAgo = price / (1 + priceChange5m);
 
-    for (let i = 0; i < 20; i++) {
-      const t = now - (20 - i) * 180; // 3-min intervals
-      const progress = i / 19;
-      const p = price1hAgo + (price - price1hAgo) * progress;
-      const noise = 1 + (Math.sin(i * 1.7) * 0.01);
+    // 30 candles at 3-min intervals (90 min of data)
+    const numCandles = 30;
+    for (let i = 0; i < numCandles; i++) {
+      const t = now - (numCandles - i) * 180;
+      const progress = i / (numCandles - 1);
+
+      // Piecewise interpolation: 0-0.67 uses 6h→1h, 0.67-0.97 uses 1h→5m, 0.97-1.0 uses 5m→now
+      let p: number;
+      if (progress < 0.67) {
+        const localProg = progress / 0.67;
+        p = price6hAgo + (price1hAgo - price6hAgo) * localProg;
+      } else if (progress < 0.97) {
+        const localProg = (progress - 0.67) / 0.30;
+        p = price1hAgo + (price5mAgo - price1hAgo) * localProg;
+      } else {
+        const localProg = (progress - 0.97) / 0.03;
+        p = price5mAgo + (price - price5mAgo) * localProg;
+      }
+
+      // Volume distribution: concentrate recent volume
+      let vol: number;
+      if (i >= numCandles - 2) vol = volume5m / 2;
+      else if (i >= numCandles - 5) vol = volume1h / 8;
+      else vol = (volume6h - volume1h) / Math.max(numCandles - 5, 1);
+
+      // Realistic spread based on volume
+      const spread = vol > 0 ? Math.min(0.03, 500 / (vol + 1)) : 0.01;
+
       candles.push({
-        open: p * noise,
-        high: p * (1 + Math.abs(Math.sin(i)) * 0.02),
-        low: p * (1 - Math.abs(Math.cos(i)) * 0.02),
-        close: i === 19 ? price : p * noise,
-        volume: i >= 18 ? volume5m : volume1h / 12,
+        open: p * (1 - spread * 0.3),
+        high: p * (1 + spread),
+        low: p * (1 - spread),
+        close: i === numCandles - 1 ? price : p,
+        volume: Math.max(vol, 1),
         timestamp: t,
       });
     }
