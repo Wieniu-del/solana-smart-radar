@@ -244,9 +244,10 @@ export default function TradingTerminal() {
                       const highest = Number(pos.highest_price_usd) || 0;
                       const stopPrice = Number(pos.stop_price_usd) || 0;
                       const amountSol = Number(pos.amount_sol) || 0;
-                      const pnl = entry > 0 ? ((current - entry) / entry) * 100 : (Number(pos.pnl_pct) || 0);
+                      const rawPnl = entry > 0 ? ((current - entry) / entry) * 100 : (Number(pos.pnl_pct) || 0);
+                      const pnl = capPnl(rawPnl);
                       const isPos = pnl >= 0;
-                      const pnlSol = entry > 0 ? (pnl / 100) * amountSol : 0;
+                      const pnlSol = (pnl / 100) * amountSol;
                       const distToSL = current > 0 && stopPrice > 0 ? ((current - stopPrice) / current) * 100 : null;
 
                       return (
