@@ -1428,42 +1428,69 @@ function evaluateTAStrategies(enabled: string[], md: { candles: TACandle[]; ageM
 }
 
 async function fetchCandleData(tokenMint: string): Promise<TACandle[]> {
-  // Use DexScreener OHLCV-like data from pairs
   try {
+    // Try Birdeye-style OHLCV from DexScreener pairs data
     const res = await fetch(`https://api.dexscreener.com/tokens/v1/solana/${tokenMint}`);
     if (!res.ok) return [];
     const pairs = await res.json();
-    const pair = Array.isArray(pairs) && pairs.length > 0 ? pairs[0] : null;
+    const pair = Array.isArray(pairs) && pairs.length > 0 
+      ? pairs.sort((a: any, b: any) => Number(b?.liquidity?.usd || 0) - Number(a?.liquidity?.usd || 0))[0] 
+      : null;
     if (!pair) return [];
 
-    // DexScreener doesn't provide raw OHLCV, synthesize from price history
-    // Use txns data to approximate candles
     const price = Number(pair.priceUsd || 0);
     const volume24h = Number(pair.volume?.h24 || 0);
+    const volume6h = Number(pair.volume?.h6 || 0);
     const volume1h = Number(pair.volume?.h1 || 0);
     const volume5m = Number(pair.volume?.m5 || 0);
     const priceChange5m = Number(pair.priceChange?.m5 || 0) / 100;
     const priceChange1h = Number(pair.priceChange?.h1 || 0) / 100;
+    const priceChange6h = Number(pair.priceChange?.h6 || 0) / 100;
 
     if (price <= 0) return [];
 
     const now = Math.floor(Date.now() / 1000);
-    // Synthesize ~20 candles from available data
     const candles: TACandle[] = [];
+
+    // Build more realistic candles using available multi-timeframe price changes
+    const price6hAgo = price / (1 + priceChange6h);
     const price1hAgo = price / (1 + priceChange1h);
     const price5mAgo = price / (1 + priceChange5m);
 
-    for (let i = 0; i < 20; i++) {
-      const t = now - (20 - i) * 180; // 3-min intervals
-      const progress = i / 19;
-      const p = price1hAgo + (price - price1hAgo) * progress;
-      const noise = 1 + (Math.sin(i * 1.7) * 0.01);
+    // 30 candles at 3-min intervals (90 min of data)
+    const numCandles = 30;
+    for (let i = 0; i < numCandles; i++) {
+      const t = now - (numCandles - i) * 180;
+      const progress = i / (numCandles - 1);
+
+      // Piecewise interpolation: 0-0.67 uses 6h→1h, 0.67-0.97 uses 1h→5m, 0.97-1.0 uses 5m→now
+      let p: number;
+      if (progress < 0.67) {
+        const localProg = progress / 0.67;
+        p = price6hAgo + (price1hAgo - price6hAgo) * localProg;
+      } else if (progress < 0.97) {
+        const localProg = (progress - 0.67) / 0.30;
+        p = price1hAgo + (price5mAgo - price1hAgo) * localProg;
+      } else {
+        const localProg = (progress - 0.97) / 0.03;
+        p = price5mAgo + (price - price5mAgo) * localProg;
+      }
+
+      // Volume distribution: concentrate recent volume
+      let vol: number;
+      if (i >= numCandles - 2) vol = volume5m / 2;
+      else if (i >= numCandles - 5) vol = volume1h / 8;
+      else vol = (volume6h - volume1h) / Math.max(numCandles - 5, 1);
+
+      // Realistic spread based on volume
+      const spread = vol > 0 ? Math.min(0.03, 500 / (vol + 1)) : 0.01;
+
       candles.push({
-        open: p * noise,
-        high: p * (1 + Math.abs(Math.sin(i)) * 0.02),
-        low: p * (1 - Math.abs(Math.cos(i)) * 0.02),
-        close: i === 19 ? price : p * noise,
-        volume: i >= 18 ? volume5m : volume1h / 12,
+        open: p * (1 - spread * 0.3),
+        high: p * (1 + spread),
+        low: p * (1 - spread),
+        close: i === numCandles - 1 ? price : p,
+        volume: Math.max(vol, 1),
         timestamp: t,
       });
     }
