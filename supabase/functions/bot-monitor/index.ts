@@ -729,6 +729,212 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ══════════════════════════════════════════════════════════════
+    // ── DISCOVERY ENGINE: find tokens BEYOND tracked wallets ──
+    // Sources: DexScreener Trending, Volume Scanner, New Pools
+    // ══════════════════════════════════════════════════════════════
+    const { data: discoveryConfig } = await supabase
+      .from("bot_config").select("value").eq("key", "discovery_sources").maybeSingle();
+    const discSrc = (discoveryConfig?.value as any) || {
+      dexscreener_trending: true, volume_scanner: true, new_pools: true,
+    };
+
+    const discoveredMints: Array<{ mint: string; source: string }> = [];
+
+    // ── Source 1: DexScreener Trending/Boosted Tokens ──
+    if (discSrc.dexscreener_trending !== false) {
+      try {
+        const trendRes = await fetch("https://api.dexscreener.com/token-boosts/top/v1");
+        if (trendRes.ok) {
+          const data = await trendRes.json();
+          const solTokens = (Array.isArray(data) ? data : [])
+            .filter((t: any) => t.chainId === "solana" && t.tokenAddress)
+            .slice(0, 10);
+          for (const t of solTokens) discoveredMints.push({ mint: t.tokenAddress, source: "trending" });
+          console.log(`[discovery] 🔥 Trending: found ${solTokens.length} Solana tokens`);
+        }
+      } catch (e) { console.warn("[discovery] trending error:", e); }
+    }
+
+    // ── Source 2: DexScreener Latest Token Profiles (New Pools) ──
+    if (discSrc.new_pools !== false) {
+      try {
+        const profRes = await fetch("https://api.dexscreener.com/token-profiles/latest/v1");
+        if (profRes.ok) {
+          const data = await profRes.json();
+          const solTokens = (Array.isArray(data) ? data : [])
+            .filter((t: any) => t.chainId === "solana" && t.tokenAddress)
+            .slice(0, 15);
+          for (const t of solTokens) discoveredMints.push({ mint: t.tokenAddress, source: "new_pool" });
+          console.log(`[discovery] 🆕 New pools: found ${solTokens.length} Solana tokens`);
+        }
+      } catch (e) { console.warn("[discovery] new pools error:", e); }
+    }
+
+    // ── Source 3: Volume Scanner — high-volume Solana pairs ──
+    if (discSrc.volume_scanner !== false) {
+      try {
+        const volRes = await fetch("https://api.dexscreener.com/latest/dex/search?q=SOL");
+        if (volRes.ok) {
+          const volData = await volRes.json();
+          const pairs = Array.isArray(volData?.pairs) ? volData.pairs : [];
+          const highVolPairs = pairs
+            .filter((p: any) =>
+              p.chainId === "solana" &&
+              Number(p?.volume?.h1 || 0) > 50000 &&
+              Number(p?.liquidity?.usd || 0) > 20000 &&
+              p.baseToken?.address
+            )
+            .sort((a: any, b: any) => Number(b?.volume?.h1 || 0) - Number(a?.volume?.h1 || 0))
+            .slice(0, 10);
+          for (const p of highVolPairs) discoveredMints.push({ mint: p.baseToken.address, source: "volume_scan" });
+          console.log(`[discovery] 📊 Volume scanner: found ${highVolPairs.length} high-volume pairs`);
+        }
+      } catch (e) { console.warn("[discovery] volume scanner error:", e); }
+    }
+
+    // ── Process discovered tokens through the SAME pipeline ──
+    const discDedup = new Set<string>();
+    const uniqueDiscovered = discoveredMints.filter(d => {
+      if (seenMints.has(d.mint) || blockedMints.has(d.mint) || BASE_ASSET_MINTS.has(d.mint) || discDedup.has(d.mint)) return false;
+      discDedup.add(d.mint);
+      return true;
+    });
+
+    console.log(`[discovery] Processing ${uniqueDiscovered.length} unique discovered tokens`);
+
+    for (const disc of uniqueDiscovered) {
+      try {
+        seenMints.add(disc.mint);
+
+        // Full DexScreener evaluation
+        let realLiquidityUsd = 0, volume5m = 0, tokenAgeMinutes = 0;
+        let priceChangeM5 = 0, priceChangeH1 = 0;
+        let dexPairsData: any[] = [];
+        let tokenSymbol = "", tokenName = "", tokenPrice = 0;
+
+        const dexRes = await fetch(`https://api.dexscreener.com/tokens/v1/solana/${disc.mint}`);
+        if (dexRes.ok) {
+          const pairs = await dexRes.json();
+          dexPairsData = Array.isArray(pairs) ? pairs : [];
+          if (dexPairsData.length > 0) {
+            const topPair = dexPairsData.sort((a: any, b: any) => Number(b?.liquidity?.usd || 0) - Number(a?.liquidity?.usd || 0))[0];
+            realLiquidityUsd = dexPairsData.reduce((max: number, p: any) => Math.max(max, Number(p?.liquidity?.usd || 0)), 0);
+            volume5m = Number(topPair?.volume?.m5 || 0);
+            priceChangeM5 = Number(topPair?.priceChange?.m5 || 0);
+            priceChangeH1 = Number(topPair?.priceChange?.h1 || 0);
+            tokenPrice = Number(topPair?.priceUsd || 0);
+            tokenSymbol = topPair?.baseToken?.symbol || `${disc.mint.slice(0, 4)}...${disc.mint.slice(-4)}`;
+            tokenName = topPair?.baseToken?.name || tokenSymbol;
+            if (topPair?.pairCreatedAt) tokenAgeMinutes = Math.round((Date.now() - topPair.pairCreatedAt) / 60000);
+          }
+        }
+
+        if (realLiquidityUsd <= 0 || tokenPrice <= 0) continue;
+
+        // Market filters (same thresholds as wallet-sourced)
+        const minLiq = Number(pLiquidity.min_value_usd || 15000);
+        if (realLiquidityUsd < minLiq) { console.log(`[discovery] REJECT ${tokenSymbol}: liq $${realLiquidityUsd.toFixed(0)} < $${minLiq}`); continue; }
+        if (volume5m > 0 && volume5m < 10000) continue;
+        if (tokenAgeMinutes > 120) continue;
+        if (priceChangeM5 < -5) { console.log(`[discovery] ❌ MOMENTUM REJECT ${tokenSymbol}: m5=${priceChangeM5.toFixed(1)}%`); continue; }
+
+        // Pump.fun filter
+        const isPump = disc.mint.endsWith("pump") || tokenSymbol.toLowerCase().includes("pump");
+        if (isPump && realLiquidityUsd < 50000) continue;
+
+        // LP Lock check
+        let lpLocked = false, lpLockScore = 0;
+        if (dexPairsData.length > 0) {
+          const topPair = dexPairsData[0];
+          const hasLpBurn = topPair?.info?.lpBurned === true;
+          const lpLockedPct = Number(topPair?.info?.lpLockedPct || 0);
+          if (hasLpBurn || lpLockedPct >= 90) { lpLocked = true; lpLockScore = 10; }
+          else if (realLiquidityUsd > 50000 && tokenAgeMinutes > 30) lpLockScore = 5;
+          else if (realLiquidityUsd < 30000 && tokenAgeMinutes < 15) continue;
+        }
+
+        // Scoring
+        let totalScore = 0;
+        const securityScore = tokenPrice > 0 ? 7 : 3;
+        const liquidityScore = realLiquidityUsd > 100000 ? 10 : realLiquidityUsd > 30000 ? 8 : 6;
+        const walletScore = disc.source === "trending" ? 8 : disc.source === "volume_scan" ? 7 : 5;
+        totalScore += securityScore + liquidityScore + walletScore;
+
+        // TA analysis
+        let taTriggered: string[] = [];
+        let velocityBonus = 0;
+        if (enabledTAStrategies.length > 0) {
+          try {
+            const candles = await fetchCandleData(disc.mint);
+            if (candles.length >= 3) {
+              const marketData = { candles, ageMinutes: tokenAgeMinutes };
+              taTriggered = evaluateTAStrategies(enabledTAStrategies, marketData);
+              if (taTriggered.includes("volume_explosion")) totalScore += 25;
+              if (taTriggered.includes("triple_momentum")) totalScore += 20;
+              if (taTriggered.includes("ema_ribbon")) totalScore += 20;
+              if (taTriggered.includes("rsi_divergence") || taTriggered.includes("vwap_reversion")) totalScore += 15;
+              if (taTriggered.length > 0) {
+                const rsiVal = taRsi(14, candles.map(c => c.close));
+                if (rsiVal > 48) totalScore += 15;
+              }
+              if (priceChangeM5 > 3 && volume5m > 20000) velocityBonus = 10;
+              else if (priceChangeM5 > 1 && volume5m > 10000) velocityBonus = 5;
+              totalScore += velocityBonus;
+              if (taTriggered.length >= 2) totalScore += Math.min(taTriggered.length * 5, 15);
+            }
+          } catch (_) { /* TA error */ }
+        }
+
+        totalScore += 10 + lpLockScore; // holder dist + LP
+        totalScore = Math.min(100, totalScore);
+
+        // Quality Gate v2 — same as wallet-sourced
+        const hasTA = taTriggered.length > 0;
+        const hasDefensive = lpLocked && priceChangeM5 > 0 && realLiquidityUsd > 75000;
+        if (!hasTA && !hasDefensive) {
+          console.log(`[discovery] ❌ QUALITY GATE: ${tokenSymbol} — no TA, liq=$${realLiquidityUsd.toFixed(0)}`);
+          continue;
+        }
+
+        totalTokensFound++;
+        const decision = totalScore >= buyThreshold ? "BUY" : totalScore >= watchThreshold ? "WATCH" : "SKIP";
+
+        let initialPriceUsd = 0;
+        try { initialPriceUsd = await fetchTokenUsdPrice(disc.mint); } catch (_) {}
+
+        allCandidates.push({
+          mint: disc.mint,
+          symbol: tokenSymbol,
+          name: tokenName,
+          sourceWallet: `discovery:${disc.source}`,
+          securityScore,
+          liquidityScore,
+          walletScore,
+          totalScore,
+          decision,
+          valueUsd: realLiquidityUsd,
+          totalValueUsd: 0,
+          ta_strategies: taTriggered,
+          initialPriceUsd,
+          lpLocked,
+          lpLockScore,
+          velocityBonus,
+          priceChangeM5,
+          source: disc.source,
+        });
+
+        if (decision === "BUY") {
+          totalBuySignals++;
+          console.log(`[discovery] 🎯 BUY: ${tokenSymbol} (${disc.source}) — score=${totalScore}, liq=$${realLiquidityUsd.toFixed(0)}, TA=[${taTriggered.join(",")}]`);
+        }
+      } catch (discErr) {
+        console.warn(`[discovery] Error ${disc.mint.slice(0, 8)}:`, discErr);
+      }
+    }
+
+    console.log(`[discovery] Done. Total candidates after discovery: ${allCandidates.length}`);
+
     // 4b. Smart Money Correlation — bonus if 2+ wallets bought same token
     if (pCorrelation.enabled) {
       const mintWalletCount: Record<string, Set<string>> = {};
