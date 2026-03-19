@@ -1245,7 +1245,7 @@ Deno.serve(async (req) => {
                       continue;
                     }
                     // Require at least neutral momentum — m5 >= 0% OR h1 >= +2%
-                    if (priceChangeM5 < 0 && priceChangeH1 < 2) {
+                    if (priceChangeM5 < -3 && priceChangeH1 < 0) {
                       console.log(`[bot] ❌ MOMENTUM REJECT: ${signal.token_symbol} — negative momentum: m5=${priceChangeM5.toFixed(1)}%, h1=${priceChangeH1.toFixed(1)}%`);
                       await supabase.from("trading_signals").update({ status: "rejected" }).eq("id", signal.id);
                       continue;
