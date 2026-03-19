@@ -361,47 +361,41 @@ export default function SystemStatusPanel() {
     <div className="space-y-4">
       {/* Summary bar */}
       <Card className="border-border bg-card">
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary/10">
-                <Activity className="h-5 w-5 text-primary" />
+        <CardContent className="p-3">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-md bg-primary/10">
+                <Activity className="h-4 w-4 text-primary" />
               </div>
-              <div>
-                <h3 className="font-bold text-foreground">Status Systemu</h3>
-                <p className="text-xs text-muted-foreground">
-                  Ostatni check: {lastCheck.toLocaleTimeString("pl-PL")}
-                </p>
-              </div>
+              <h3 className="text-sm font-bold text-foreground">Status Systemu</h3>
             </div>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-4 text-sm">
-                <span className="flex items-center gap-1.5">
-                  <CheckCircle2 className="h-4 w-4 text-primary" />
-                  <span className="font-bold text-foreground">{activeCount}</span>
-                  <span className="text-muted-foreground text-xs">aktywnych</span>
-                </span>
-                {warningCount > 0 && (
-                  <span className="flex items-center gap-1.5">
-                    <AlertTriangle className="h-4 w-4 text-neon-amber" />
-                    <span className="font-bold text-foreground">{warningCount}</span>
-                    <span className="text-muted-foreground text-xs">wymagających uwagi</span>
-                  </span>
-                )}
-                <span className="text-muted-foreground text-xs">/ {modules.length} modułów</span>
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={checkAllSystems}
-                disabled={loading}
-                className="gap-1.5"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-                Odśwież
-              </Button>
-            </div>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={checkAllSystems}
+              disabled={loading}
+              className="h-7 px-2 text-xs gap-1"
+            >
+              <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
+              Odśwież
+            </Button>
           </div>
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1">
+              <CheckCircle2 className="h-3 w-3 text-primary" />
+              <span className="font-semibold text-foreground">{activeCount}</span> aktywnych
+            </span>
+            {warningCount > 0 && (
+              <span className="flex items-center gap-1">
+                <AlertTriangle className="h-3 w-3 text-neon-amber" />
+                <span className="font-semibold text-foreground">{warningCount}</span> uwag
+              </span>
+            )}
+            <span>/ {modules.length} modułów</span>
+          </div>
+          <p className="text-[10px] text-muted-foreground mt-1">
+            Check: {lastCheck.toLocaleTimeString("pl-PL")}
+          </p>
         </CardContent>
       </Card>
 
