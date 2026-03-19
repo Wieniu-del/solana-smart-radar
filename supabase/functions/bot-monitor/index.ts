@@ -851,8 +851,8 @@ Deno.serve(async (req) => {
           const hasLpBurn = topPair?.info?.lpBurned === true;
           const lpLockedPct = Number(topPair?.info?.lpLockedPct || 0);
           if (hasLpBurn || lpLockedPct >= 90) { lpLocked = true; lpLockScore = 10; }
-          else if (realLiquidityUsd > 50000 && tokenAgeMinutes > 30) lpLockScore = 5;
-          else if (realLiquidityUsd < 30000 && tokenAgeMinutes < 15) continue;
+          else if (realLiquidityUsd > 20000 && tokenAgeMinutes > 15) lpLockScore = 5;
+          else if (realLiquidityUsd < 10000 && tokenAgeMinutes < 5) continue;
         }
 
         // Scoring
