@@ -1275,15 +1275,15 @@ Deno.serve(async (req) => {
             }
 
             // ── SNIPER SIZING: aggressive scaling for high-confidence signals ──
-            let positionSol = 0.03; // minimum
+            let positionSol = 0.03;
             const confidence = Number(signal.confidence || 0);
             const conditions = signal.conditions as any || {};
             const hasVelocity = Number(conditions.velocity_bonus || 0) > 0;
-            if (confidence >= 90) positionSol = 0.15;       // max conviction
-            else if (confidence >= 80) positionSol = 0.12;   // high confidence
-            else if (confidence >= 75) positionSol = 0.10;
-            else if (confidence >= 70) positionSol = 0.07;
-            else positionSol = 0.05; // raised minimum from 0.03 — if we're entering, commit
+            if (confidence >= 85) positionSol = 0.20;
+            else if (confidence >= 75) positionSol = 0.15;
+            else if (confidence >= 65) positionSol = 0.12;
+            else if (confidence >= 55) positionSol = 0.08;
+            else positionSol = 0.05;
             
             // Velocity bonus: +20% position size for accelerating tokens
             if (hasVelocity && positionSol < 0.15) {
