@@ -139,8 +139,8 @@ Deno.serve(async (req) => {
         closeReason = "trailing_stop";
       }
 
-      // ── FAST LOSS CUT: -5% in first 30min ──
-      if (pnlPct <= -5 && hoursHeld < 0.5) {
+      // ── SNIPER FAST LOSS CUT: -4% in first 20min → cut immediately ──
+      if (pnlPct <= -4 && hoursHeld < 0.33) {
         closeReason = "fast_loss_cut";
       }
 
