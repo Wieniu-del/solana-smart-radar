@@ -231,184 +231,177 @@ export default function AutoTrading() {
         </CardContent>
       </Card>
 
-      <Tabs defaultValue="bot247" className="space-y-4">
+      <Tabs defaultValue="command" className="space-y-4">
         <TabsList className="bg-muted">
-          <TabsTrigger value="bot247">
-            🤖 Bot 24/7
+          <TabsTrigger value="command">
+            <Bot className="h-3.5 w-3.5 mr-1" />
+            Centrum Dowodzenia
           </TabsTrigger>
-          <TabsTrigger value="pipeline">
-            Wyniki Pipeline
-            {pipelineResults.length > 0 &&
-            <span className="ml-1.5 bg-primary/20 text-primary text-[10px] px-1.5 py-0.5 rounded-full">
-                {pipelineResults.length}
-              </span>
-            }
+          <TabsTrigger value="pipeline-strat">
+            <Filter className="h-3.5 w-3.5 mr-1" />
+            Pipeline & Strategie
           </TabsTrigger>
-          <TabsTrigger value="strategies">Strategie</TabsTrigger>
-          <TabsTrigger value="signals">
-            Sygnały
+          <TabsTrigger value="signals-pnl">
+            <Zap className="h-3.5 w-3.5 mr-1" />
+            Sygnały & PnL
             {pendingSignals > 0 &&
             <span className="ml-1.5 bg-neon-amber/20 text-neon-amber text-[10px] px-1.5 py-0.5 rounded-full">
                 {pendingSignals}
               </span>
             }
           </TabsTrigger>
-          <TabsTrigger value="history">Historia</TabsTrigger>
-          <TabsTrigger value="pnl">
-            <BarChart3 className="h-3.5 w-3.5 mr-1" />
-            PnL
-          </TabsTrigger>
-          <TabsTrigger value="tech-strategies">
-            <TrendingUp className="h-3.5 w-3.5 mr-1" />
-            Strategie TA
-          </TabsTrigger>
-          <TabsTrigger value="pipeline-config">
-            <Filter className="h-3.5 w-3.5 mr-1" />
-            Pipeline
-          </TabsTrigger>
-          <TabsTrigger value="web-discovery">
-            <Globe className="h-3.5 w-3.5 mr-1" />
-            Web Discovery
-          </TabsTrigger>
-          <TabsTrigger value="live-feed">
+          <TabsTrigger value="live-monitor">
             <Eye className="h-3.5 w-3.5 mr-1" />
-            Live Feed
-          </TabsTrigger>
-          <TabsTrigger value="diagnostics">
-            <BarChart3 className="h-3.5 w-3.5 mr-1" />
-            Diagnostyka
-          </TabsTrigger>
-          <TabsTrigger value="status">
-            <Activity className="h-3.5 w-3.5 mr-1" />
-            Status
+            Live Monitor
           </TabsTrigger>
         </TabsList>
 
-        {/* ─── Bot 24/7 Control Panel ─── */}
-        <TabsContent value="bot247">
-          <BotControlPanel />
+        {/* ═══ TAB 1: Centrum Dowodzenia ═══ */}
+        <TabsContent value="command" className="space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="lg:col-span-2">
+              <BotControlPanel />
+            </div>
+            <div className="space-y-4">
+              <DiscoverySourcesPanel />
+              <SystemStatusPanel />
+            </div>
+          </div>
         </TabsContent>
 
-        {/* ─── Technical Strategies Tab ─── */}
-        <TabsContent value="tech-strategies">
-          <TechnicalStrategiesPanel />
-        </TabsContent>
+        {/* ═══ TAB 2: Pipeline & Strategie ═══ */}
+        <TabsContent value="pipeline-strat" className="space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <PipelineConfigPanel />
+            <TechnicalStrategiesPanel />
+          </div>
 
-        {/* ─── Pipeline Config Tab ─── */}
-        <TabsContent value="pipeline-config">
-          <PipelineConfigPanel />
-        </TabsContent>
-
-        {/* ─── Pipeline Results Tab ─── */}
-        <TabsContent value="pipeline" className="space-y-3">
-          {pipelineResults.length === 0 ?
-          <Card className="border-border bg-card">
-              <CardContent className="p-8 text-center text-muted-foreground">
-                <Bot className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                <p>Brak wyników pipeline</p>
-                <p className="text-xs mt-1">Kliknij "Uruchom skan" aby przeskanować śledzone portfele</p>
-              </CardContent>
-            </Card> :
-
-          pipelineResults.map((result, i) =>
-          <PipelineResultCard key={`${result.token.mint}-${i}`} result={result} />
-          )
-          }
-        </TabsContent>
-
-        {/* ─── Strategies Tab ─── */}
-        <TabsContent value="strategies" className="space-y-4">
-          {strategies.map((strategy) =>
-          <Card key={strategy.id} className="border-border bg-card">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3 flex-1">
-                    <div className={`p-2 rounded-lg ${strategy.signal_type === "BUY" ? "bg-primary/10" : "bg-destructive/10"}`}>
-                      {strategy.signal_type === "BUY" ?
-                    <TrendingUp className="h-5 w-5 text-primary" /> :
-
-                    <TrendingDown className="h-5 w-5 text-destructive" />
-                    }
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-foreground">{strategy.name}</span>
-                        <Badge variant="outline" className="text-[10px]">{strategy.signal_type}</Badge>
+          {/* Strategies list */}
+          <div>
+            <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+              <Target className="h-4 w-4 text-primary" />
+              Strategie handlowe ({strategies.length})
+            </h3>
+            <div className="space-y-2">
+              {strategies.map((strategy) =>
+              <Card key={strategy.id} className="border-border bg-card">
+                <CardContent className="p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3 flex-1">
+                      <div className={`p-1.5 rounded-lg ${strategy.signal_type === "BUY" ? "bg-primary/10" : "bg-destructive/10"}`}>
+                        {strategy.signal_type === "BUY" ?
+                        <TrendingUp className="h-4 w-4 text-primary" /> :
+                        <TrendingDown className="h-4 w-4 text-destructive" />
+                        }
                       </div>
-                      <p className="text-xs text-muted-foreground mt-0.5">{strategy.description}</p>
-                      <div className="flex gap-3 mt-2 text-[10px] text-muted-foreground">
-                        <span>Max: {strategy.max_position_sol} SOL</span>
-                        {strategy.stop_loss_pct && <span>SL: {strategy.stop_loss_pct}%</span>}
-                        {strategy.take_profit_pct && <span>TP: {strategy.take_profit_pct}%</span>}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-sm text-foreground">{strategy.name}</span>
+                          <Badge variant="outline" className="text-[10px]">{strategy.signal_type}</Badge>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground truncate">{strategy.description}</p>
+                        <div className="flex gap-3 mt-1 text-[10px] text-muted-foreground">
+                          <span>Max: {strategy.max_position_sol} SOL</span>
+                          {strategy.stop_loss_pct && <span>SL: {strategy.stop_loss_pct}%</span>}
+                          {strategy.take_profit_pct && <span>TP: {strategy.take_profit_pct}%</span>}
+                        </div>
                       </div>
                     </div>
+                    <Switch
+                    checked={strategy.enabled}
+                    onCheckedChange={(checked) => handleToggle(strategy.id, checked)} />
                   </div>
-                  <Switch
-                  checked={strategy.enabled}
-                  onCheckedChange={(checked) => handleToggle(strategy.id, checked)} />
-                
-                </div>
-              </CardContent>
-            </Card>
-          )}
+                </CardContent>
+              </Card>
+              )}
+            </div>
+          </div>
         </TabsContent>
 
-        {/* ─── Signals Tab ─── */}
-        <TabsContent value="signals" className="space-y-3">
-          {signals.filter((s) => s.status === "pending").length === 0 ?
-          <Card className="border-border bg-card">
-              <CardContent className="p-8 text-center text-muted-foreground">
-                <Bot className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                <p>Brak oczekujących sygnałów</p>
-                <p className="text-xs mt-1">Uruchom skan pipeline lub przeanalizuj portfel</p>
-              </CardContent>
-            </Card> :
+        {/* ═══ TAB 3: Sygnały & PnL ═══ */}
+        <TabsContent value="signals-pnl" className="space-y-4">
+          {/* Sub-tabs for signals area */}
+          <Tabs defaultValue="results" className="space-y-3">
+            <TabsList className="bg-muted/50 h-8">
+              <TabsTrigger value="results" className="text-xs h-7">
+                Wyniki Pipeline
+                {pipelineResults.length > 0 &&
+                <span className="ml-1 bg-primary/20 text-primary text-[10px] px-1.5 py-0.5 rounded-full">
+                    {pipelineResults.length}
+                  </span>
+                }
+              </TabsTrigger>
+              <TabsTrigger value="pending" className="text-xs h-7">
+                Oczekujące
+                {pendingSignals > 0 &&
+                <span className="ml-1 bg-neon-amber/20 text-neon-amber text-[10px] px-1.5 py-0.5 rounded-full">
+                    {pendingSignals}
+                  </span>
+                }
+              </TabsTrigger>
+              <TabsTrigger value="history" className="text-xs h-7">Historia</TabsTrigger>
+              <TabsTrigger value="pnl" className="text-xs h-7">
+                <BarChart3 className="h-3 w-3 mr-1" />
+                PnL
+              </TabsTrigger>
+            </TabsList>
 
-          signals.
-          filter((s) => s.status === "pending").
-          map((signal) => <SignalCard key={signal.id} signal={signal} onAction={handleSignalAction} />)
-          }
+            <TabsContent value="results" className="space-y-3">
+              {pipelineResults.length === 0 ?
+              <Card className="border-border bg-card">
+                <CardContent className="p-8 text-center text-muted-foreground">
+                  <Bot className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                  <p>Brak wyników pipeline</p>
+                  <p className="text-xs mt-1">Kliknij "Uruchom skan" aby przeskanować</p>
+                </CardContent>
+              </Card> :
+              pipelineResults.map((result, i) =>
+              <PipelineResultCard key={`${result.token.mint}-${i}`} result={result} />
+              )
+              }
+            </TabsContent>
+
+            <TabsContent value="pending" className="space-y-3">
+              {signals.filter((s) => s.status === "pending").length === 0 ?
+              <Card className="border-border bg-card">
+                <CardContent className="p-8 text-center text-muted-foreground">
+                  <Bot className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                  <p>Brak oczekujących sygnałów</p>
+                </CardContent>
+              </Card> :
+              signals.filter((s) => s.status === "pending").map((signal) =>
+                <SignalCard key={signal.id} signal={signal} onAction={handleSignalAction} />
+              )
+              }
+            </TabsContent>
+
+            <TabsContent value="history" className="space-y-3">
+              {signals.filter((s) => s.status !== "pending").length === 0 ?
+              <Card className="border-border bg-card">
+                <CardContent className="p-8 text-center text-muted-foreground">
+                  <Clock className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                  <p>Brak historii sygnałów</p>
+                </CardContent>
+              </Card> :
+              signals.filter((s) => s.status !== "pending").map((signal) =>
+                <SignalCard key={signal.id} signal={signal} readonly />
+              )
+              }
+            </TabsContent>
+
+            <TabsContent value="pnl">
+              <PnLDashboard />
+            </TabsContent>
+          </Tabs>
         </TabsContent>
 
-        {/* ─── History Tab ─── */}
-        <TabsContent value="history" className="space-y-3">
-          {signals.filter((s) => s.status !== "pending").length === 0 ?
-          <Card className="border-border bg-card">
-              <CardContent className="p-8 text-center text-muted-foreground">
-                <Clock className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                <p>Brak historii sygnałów</p>
-              </CardContent>
-            </Card> :
-
-          signals.
-          filter((s) => s.status !== "pending").
-          map((signal) => <SignalCard key={signal.id} signal={signal} readonly />)
-          }
-        </TabsContent>
-
-        {/* ─── PnL Dashboard Tab ─── */}
-        <TabsContent value="pnl">
-          <PnLDashboard />
-        </TabsContent>
-
-        {/* ─── Web Token Discovery Tab ─── */}
-        <TabsContent value="web-discovery">
-          <WebTokenDiscovery />
-        </TabsContent>
-
-        {/* ─── Sniper Live Feed Tab ─── */}
-        <TabsContent value="live-feed">
-          <SniperLiveFeed />
-        </TabsContent>
-
-        {/* ─── Signal Diagnostics Tab ─── */}
-        <TabsContent value="diagnostics">
+        {/* ═══ TAB 4: Live Monitor ═══ */}
+        <TabsContent value="live-monitor" className="space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <SniperLiveFeed />
+            <WebTokenDiscovery />
+          </div>
           <SignalDiagnostics />
-        </TabsContent>
-
-        {/* ─── System Status Tab ─── */}
-        <TabsContent value="status">
-          <SystemStatusPanel />
         </TabsContent>
       </Tabs>
     </div>);
