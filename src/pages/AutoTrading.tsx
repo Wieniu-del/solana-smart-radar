@@ -269,6 +269,10 @@ export default function AutoTrading() {
             <Globe className="h-3.5 w-3.5 mr-1" />
             Web Discovery
           </TabsTrigger>
+          <TabsTrigger value="live-feed">
+            <Eye className="h-3.5 w-3.5 mr-1" />
+            Live Feed
+          </TabsTrigger>
           <TabsTrigger value="diagnostics">
             <BarChart3 className="h-3.5 w-3.5 mr-1" />
             Diagnostyka
