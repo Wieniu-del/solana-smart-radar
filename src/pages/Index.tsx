@@ -11,6 +11,7 @@ import { useSolanaLiveStats } from "@/hooks/useSolanaLiveStats";
 import LivePulse from "@/components/LivePulse";
 import BotHealthMonitor from "@/components/BotHealthMonitor";
 import PortfolioHealth from "@/components/PortfolioHealth";
+import FeeDrainTracker from "@/components/FeeDrainTracker";
 import AnimatedCounter from "@/components/AnimatedCounter";
 import PositionDetailModal from "@/components/PositionDetailModal";
 import {
@@ -261,7 +262,12 @@ const Index = () => {
       <BotHealthMonitor />
 
       {/* Portfolio Health Widget */}
-      <PortfolioHealth />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2">
+          <PortfolioHealth />
+        </div>
+        <FeeDrainTracker />
+      </div>
 
       {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
