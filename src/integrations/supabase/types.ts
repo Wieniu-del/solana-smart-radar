@@ -77,6 +77,33 @@ export type Database = {
         }
         Relationships: []
       }
+      cached_token_discoveries: {
+        Row: {
+          category: string
+          created_at: string
+          id: string
+          market_mood: string | null
+          scan_summary: string | null
+          tokens: Json
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          id?: string
+          market_mood?: string | null
+          scan_summary?: string | null
+          tokens?: Json
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          id?: string
+          market_mood?: string | null
+          scan_summary?: string | null
+          tokens?: Json
+        }
+        Relationships: []
+      }
       journal_entries: {
         Row: {
           action: string | null
