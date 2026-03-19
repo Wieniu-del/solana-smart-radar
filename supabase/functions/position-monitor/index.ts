@@ -101,8 +101,8 @@ Deno.serve(async (req) => {
       const pnlPct = ((currentPrice - entryPrice) / entryPrice) * 100;
       const hoursHeld = (Date.now() - new Date(pos.opened_at).getTime()) / (1000 * 60 * 60);
 
-      // ── DYNAMIC TRAILING STOP from table ──
-      // Only activate trailing if pnl >= trailing start threshold (8%)
+      // ── SNIPER TRAILING: activate earlier for faster profit capture ──
+      // Trailing activates at 5% profit (was 8%) — sniper locks gains faster
       const trailingActive = pnlPct >= TRAILING_START_PCT;
       const trailingStopPct = getTrailingStopPct(pnlPct);
       const stopPrice = trailingActive
