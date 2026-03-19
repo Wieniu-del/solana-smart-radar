@@ -233,12 +233,12 @@ Deno.serve(async (req) => {
     const seenMints = new Set<string>();
 
     // Avoid re-buying already open/recently executed tokens
-    // FIX #1: Also block ALL pending signals (no time limit) to prevent spam
-    // FIX #3: Cooldown — block tokens that hit SL in last 48h
+    // Block only FRESH pending signals to avoid deadlocking a mint forever.
     const blockedMints = new Set<string>();
     const SL_COOLDOWN_HOURS = 12;
-    const TD_COOLDOWN_HOURS = 24; // Don't rebuy tokens that ended with time_decay for 24h (was 6h)
-    const [{ data: openPositions }, { data: recentSignals }, { data: pendingSignalMints }, { data: slCooldownMints }, { data: tdCooldownMints }] = await Promise.all([
+    const TD_COOLDOWN_HOURS = 24;
+    const FRESH_PENDING_BLOCK_MINUTES = 10;
+    const [{ data: openPositions }, { data: recentSignals }, { data: freshPendingSignalMints }, { data: slCooldownMints }, { data: tdCooldownMints }] = await Promise.all([
       supabase.from("open_positions").select("token_mint").eq("status", "open"),
       supabase
         .from("trading_signals")
@@ -246,20 +246,18 @@ Deno.serve(async (req) => {
         .eq("signal_type", "BUY")
         .eq("status", "executed")
         .gte("created_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
-      // Block ALL pending signal mints — prevents duplicate spam
       supabase
         .from("trading_signals")
         .select("token_mint")
         .eq("signal_type", "BUY")
-        .eq("status", "pending"),
-      // Cooldown: block tokens closed by stop_loss in last 12h
+        .eq("status", "pending")
+        .gte("created_at", new Date(Date.now() - FRESH_PENDING_BLOCK_MINUTES * 60 * 1000).toISOString()),
       supabase
         .from("open_positions")
         .select("token_mint")
         .eq("status", "closed")
         .eq("close_reason", "stop_loss")
         .gte("closed_at", new Date(Date.now() - SL_COOLDOWN_HOURS * 60 * 60 * 1000).toISOString()),
-      // Cooldown: block tokens closed by time_decay in last 6h (no rebuy stagnant tokens)
       supabase
         .from("open_positions")
         .select("token_mint")
@@ -270,10 +268,10 @@ Deno.serve(async (req) => {
 
     for (const row of openPositions || []) blockedMints.add(row.token_mint);
     for (const row of recentSignals || []) blockedMints.add(row.token_mint);
-    for (const row of pendingSignalMints || []) blockedMints.add(row.token_mint);
+    for (const row of freshPendingSignalMints || []) blockedMints.add(row.token_mint);
     for (const row of slCooldownMints || []) blockedMints.add(row.token_mint);
     for (const row of tdCooldownMints || []) blockedMints.add(row.token_mint);
-    console.log(`[bot] Blocked mints: ${blockedMints.size} (open=${openPositions?.length || 0}, executed=${recentSignals?.length || 0}, pending=${pendingSignalMints?.length || 0}, sl_cooldown=${slCooldownMints?.length || 0}, td_cooldown=${tdCooldownMints?.length || 0})`);
+    console.log(`[bot] Blocked mints: ${blockedMints.size} (open=${openPositions?.length || 0}, executed=${recentSignals?.length || 0}, fresh_pending=${freshPendingSignalMints?.length || 0}, sl_cooldown=${slCooldownMints?.length || 0}, td_cooldown=${tdCooldownMints?.length || 0})`);
 
     for (const wallet of wallets) {
       try {
