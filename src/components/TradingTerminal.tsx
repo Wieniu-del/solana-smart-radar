@@ -166,8 +166,9 @@ export default function TradingTerminal() {
   const totalPnlSol = openPositions.reduce((sum, p) => {
     const entry = Number(p.entry_price_usd) || 0;
     const current = Number(p.current_price_usd) || 0;
-    const pnl = entry > 0 ? ((current - entry) / entry) * Number(p.amount_sol) : 0;
-    return sum + pnl;
+    const rawPct = entry > 0 ? ((current - entry) / entry) * 100 : 0;
+    const pnl = capPnl(rawPct);
+    return sum + (pnl / 100) * Number(p.amount_sol);
   }, 0);
 
   const reasonLabels: Record<string, { label: string; color: string; bg: string }> = {
@@ -244,9 +245,10 @@ export default function TradingTerminal() {
                       const highest = Number(pos.highest_price_usd) || 0;
                       const stopPrice = Number(pos.stop_price_usd) || 0;
                       const amountSol = Number(pos.amount_sol) || 0;
-                      const pnl = entry > 0 ? ((current - entry) / entry) * 100 : (Number(pos.pnl_pct) || 0);
+                      const rawPnl = entry > 0 ? ((current - entry) / entry) * 100 : (Number(pos.pnl_pct) || 0);
+                      const pnl = capPnl(rawPnl);
                       const isPos = pnl >= 0;
-                      const pnlSol = entry > 0 ? (pnl / 100) * amountSol : 0;
+                      const pnlSol = (pnl / 100) * amountSol;
                       const distToSL = current > 0 && stopPrice > 0 ? ((current - stopPrice) / current) * 100 : null;
 
                       return (
@@ -368,7 +370,7 @@ export default function TradingTerminal() {
                 </TableHeader>
                 <TableBody>
                   {closedPositions.map((pos) => {
-                    const pnl = Number(pos.pnl_pct) || 0;
+                    const pnl = capPnl(Number(pos.pnl_pct) || 0);
                     const isPos = pnl >= 0;
                     const pnlSol = (pnl / 100) * Number(pos.amount_sol);
                     return (
@@ -491,16 +493,23 @@ export default function TradingTerminal() {
   );
 }
 
+const PNL_CAP_PCT = 500; // max 5x — powyżej to phantom liquidity
+
+function capPnl(pnlPct: number): number {
+  return Math.max(Math.min(pnlPct, PNL_CAP_PCT), -100);
+}
+
 function PnLSummary({ open, closed }: { open: Position[]; closed: Position[] }) {
-  const totalClosedPnl = closed.reduce((s, p) => s + ((Number(p.pnl_pct) || 0) / 100) * Number(p.amount_sol), 0);
+  const totalClosedPnl = closed.reduce((s, p) => s + (capPnl(Number(p.pnl_pct) || 0) / 100) * Number(p.amount_sol), 0);
   const totalOpenPnl = open.reduce((s, p) => {
     const e = Number(p.entry_price_usd) || 0;
     const c = Number(p.current_price_usd) || 0;
-    return s + (e > 0 ? ((c - e) / e) * Number(p.amount_sol) : 0);
+    const rawPct = e > 0 ? ((c - e) / e) * 100 : 0;
+    return s + (capPnl(rawPct) / 100) * Number(p.amount_sol);
   }, 0);
 
-  const wins = closed.filter(p => (Number(p.pnl_pct) || 0) > 0).length;
-  const losses = closed.filter(p => (Number(p.pnl_pct) || 0) < 0).length;
+  const wins = closed.filter(p => capPnl(Number(p.pnl_pct) || 0) > 0).length;
+  const losses = closed.filter(p => capPnl(Number(p.pnl_pct) || 0) < 0).length;
   const winRate = closed.length > 0 ? (wins / closed.length * 100) : 0;
   const totalInvested = [...open, ...closed].reduce((s, p) => s + Number(p.amount_sol), 0);
 
