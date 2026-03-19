@@ -472,8 +472,8 @@ Deno.serve(async (req) => {
             // ── PUMP.FUN SCAM DETECTION ──
             const symbolLower = (incoming?.tokenSymbol || tokenInfo?.symbol || "").toLowerCase();
             const isPumpFun = incomingMint.endsWith("pump") || symbolLower.includes("pump");
-            if (isPumpFun && realLiquidityUsd < 50000) {
-              console.log(`[bot] ❌ PUMP.FUN REJECT: ${incomingMint.slice(0,8)} — pump token with liq=$${realLiquidityUsd.toFixed(0)} < $50k`);
+            if (isPumpFun && realLiquidityUsd < 20000) {
+              console.log(`[bot] ❌ PUMP.FUN REJECT: ${incomingMint.slice(0,8)} — pump token with liq=$${realLiquidityUsd.toFixed(0)} < $20k`);
               continue;
             }
 
