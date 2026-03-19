@@ -893,7 +893,7 @@ Deno.serve(async (req) => {
 
         // Quality Gate v2 — same as wallet-sourced
         const hasTA = taTriggered.length > 0;
-        const hasDefensive = lpLocked && priceChangeM5 > 0 && realLiquidityUsd > 75000;
+        const hasDefensive = realLiquidityUsd > 20000 && priceChangeM5 > -3;
         if (!hasTA && !hasDefensive) {
           console.log(`[discovery] ❌ QUALITY GATE: ${tokenSymbol} — no TA, liq=$${realLiquidityUsd.toFixed(0)}`);
           continue;
