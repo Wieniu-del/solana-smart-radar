@@ -11,6 +11,7 @@ import { useSolanaLiveStats } from "@/hooks/useSolanaLiveStats";
 import LivePulse from "@/components/LivePulse";
 import BotHealthMonitor from "@/components/BotHealthMonitor";
 import PortfolioHealth from "@/components/PortfolioHealth";
+import FeeDrainTracker from "@/components/FeeDrainTracker";
 import AnimatedCounter from "@/components/AnimatedCounter";
 import PositionDetailModal from "@/components/PositionDetailModal";
 import {
