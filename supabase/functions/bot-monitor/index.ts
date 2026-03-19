@@ -216,8 +216,8 @@ Deno.serve(async (req) => {
     const lookbackSinceTs = Date.now() / 1000 - lookbackHours * 3600;
 
     // Use pipeline scoring thresholds if set, otherwise fall back to global
-    const buyThreshold = pScoring.buy_threshold || 50;
-    const watchThreshold = pScoring.watch_threshold || 30;
+    const buyThreshold = pScoring.buy_threshold || 45;
+    const watchThreshold = pScoring.watch_threshold || 25;
 
     // ── COOLDOWN: DISABLED per user request ──
     const cooldownActive = false;
