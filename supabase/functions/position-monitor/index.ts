@@ -289,7 +289,7 @@ async function closePosition(
     no_tokens: "🔻 Brak tokenów w portfelu",
     profit_fade: "🟠 Profit Fade Lock",
     fast_loss_cut: "⚡ Fast Loss Cut",
-    time_decay: "⏰ Time Decay (1.5h)",
+    time_decay: "⏰ Time Decay (45min)",
     max_hold_time: "⏳ Max Hold (3h)",
   };
   await supabase.from("notifications").insert({
