@@ -609,13 +609,11 @@ Deno.serve(async (req) => {
             // Cap at 100
             totalScore = Math.min(100, totalScore);
 
-            // ── QUALITY GATE v2: TA confirmation is MANDATORY ──
-            // No more blind entries. High liquidity alone is NOT enough.
-            // Require: TA trigger OR (LP locked AND positive momentum AND liq > $75k)
+            // ── QUALITY GATE v3 (AGGRESSIVE): accept with TA OR decent liquidity ──
             const hasStrongQuality = taTriggered.length > 0;
-            const hasDefensiveQuality = lpLocked && priceChangeM5 > 0 && realLiquidityUsd > 75000;
+            const hasDefensiveQuality = realLiquidityUsd > 20000 && priceChangeM5 > -3;
             if (!hasStrongQuality && !hasDefensiveQuality) {
-              console.log(`[bot] ❌ QUALITY GATE v2: ${incomingMint.slice(0,8)} — no TA trigger${lpLocked ? ', LP locked but' : ','} liq=$${realLiquidityUsd.toFixed(0)}, m5=${priceChangeM5.toFixed(1)}% → SKIP`);
+              console.log(`[bot] ❌ QUALITY GATE v3: ${incomingMint.slice(0,8)} — no TA, liq=$${realLiquidityUsd.toFixed(0)}, m5=${priceChangeM5.toFixed(1)}% → SKIP`);
               continue;
             }
 
