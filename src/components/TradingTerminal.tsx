@@ -493,13 +493,32 @@ export default function TradingTerminal() {
   );
 }
 
-const PNL_CAP_PCT = 500; // max 5x — powyżej to phantom liquidity
+const PNL_CAP_PCT = 50; // max 50% — mikro-tokeny rzadko dają więcej realnie
 
 function capPnl(pnlPct: number): number {
   return Math.max(Math.min(pnlPct, PNL_CAP_PCT), -100);
 }
 
 function PnLSummary({ open, closed }: { open: Position[]; closed: Position[] }) {
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
+
+  useEffect(() => {
+    const fetchBalance = async () => {
+      try {
+        const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+        const res = await fetch(
+          `https://${projectId}.supabase.co/functions/v1/bot-health`,
+          { headers: { Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` } }
+        );
+        if (res.ok) {
+          const data = await res.json();
+          if (data.wallet_balance_sol != null) setWalletBalance(data.wallet_balance_sol);
+        }
+      } catch { /* ignore */ }
+    };
+    fetchBalance();
+  }, []);
+
   const totalClosedPnl = closed.reduce((s, p) => s + (capPnl(Number(p.pnl_pct) || 0) / 100) * Number(p.amount_sol), 0);
   const totalOpenPnl = open.reduce((s, p) => {
     const e = Number(p.entry_price_usd) || 0;
@@ -514,22 +533,27 @@ function PnLSummary({ open, closed }: { open: Position[]; closed: Position[] }) 
   const totalInvested = [...open, ...closed].reduce((s, p) => s + Number(p.amount_sol), 0);
 
   const stats = [
+    ...(walletBalance != null ? [{
+      label: "💰 Saldo portfela (rzeczywiste)",
+      value: `${walletBalance.toFixed(4)} SOL`,
+      color: "text-primary",
+      highlight: true,
+    }] : []),
+    { label: "Zainwestowano łącznie", value: `${totalInvested.toFixed(3)} SOL`, color: "text-foreground" },
     { label: "Otwarte pozycje", value: open.length.toString(), color: "text-foreground" },
     { label: "Zamknięte pozycje", value: closed.length.toString(), color: "text-foreground" },
-    { label: "Niezrealizowany PnL", value: `${totalOpenPnl >= 0 ? "+" : ""}${totalOpenPnl.toFixed(4)} SOL`, color: totalOpenPnl >= 0 ? "text-primary" : "text-destructive" },
-    { label: "Zrealizowany PnL", value: `${totalClosedPnl >= 0 ? "+" : ""}${totalClosedPnl.toFixed(4)} SOL`, color: totalClosedPnl >= 0 ? "text-primary" : "text-destructive" },
-    { label: "Łączny PnL", value: `${(totalOpenPnl + totalClosedPnl) >= 0 ? "+" : ""}${(totalOpenPnl + totalClosedPnl).toFixed(4)} SOL`, color: (totalOpenPnl + totalClosedPnl) >= 0 ? "text-primary" : "text-destructive" },
+    { label: "Szacunkowy PnL (cap 50%)", value: `${(totalOpenPnl + totalClosedPnl) >= 0 ? "+" : ""}${(totalOpenPnl + totalClosedPnl).toFixed(4)} SOL`, color: (totalOpenPnl + totalClosedPnl) >= 0 ? "text-primary" : "text-destructive" },
     { label: "Win Rate", value: `${winRate.toFixed(1)}%`, color: winRate >= 50 ? "text-primary" : "text-destructive" },
     { label: "Wygrane / Przegrane", value: `${wins} / ${losses}`, color: "text-foreground" },
-    { label: "Zainwestowano łącznie", value: `${totalInvested.toFixed(3)} SOL`, color: "text-foreground" },
+    { label: "Niezrealizowany PnL", value: `${totalOpenPnl >= 0 ? "+" : ""}${totalOpenPnl.toFixed(4)} SOL`, color: totalOpenPnl >= 0 ? "text-primary" : "text-destructive" },
   ];
 
   return (
     <div className="p-5 grid grid-cols-2 md:grid-cols-4 gap-4">
       {stats.map((s, i) => (
-        <div key={i} className="bg-muted/20 rounded-lg p-4 border border-border/50">
+        <div key={i} className={`rounded-lg p-4 border ${(s as any).highlight ? "bg-primary/10 border-primary/30 col-span-2" : "bg-muted/20 border-border/50"}`}>
           <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1.5 font-medium">{s.label}</p>
-          <p className={`text-xl font-black ${s.color}`}>{s.value}</p>
+          <p className={`${(s as any).highlight ? "text-2xl" : "text-xl"} font-black ${s.color}`}>{s.value}</p>
         </div>
       ))}
     </div>

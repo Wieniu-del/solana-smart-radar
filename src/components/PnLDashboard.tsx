@@ -30,11 +30,10 @@ interface Position {
 // On micro-cap memes, slippage eats most theoretical gains
 function realPnlSol(pnlPct: number, amountSol: number): number {
   if (pnlPct <= 0) {
-    return (pnlPct / 100) * amountSol;
+    return (Math.max(pnlPct, -100) / 100) * amountSol;
   }
-  const theoreticalPnl = (pnlPct / 100) * amountSol;
-  const maxRealisticGain = amountSol * 5; // max 5x return (500%)
-  return Math.min(theoreticalPnl, maxRealisticGain);
+  const cappedPct = Math.min(pnlPct, 50); // max 50% — realistyczny cap dla mikro-tokenów
+  return (cappedPct / 100) * amountSol;
 }
 
 export default function PnLDashboard() {
