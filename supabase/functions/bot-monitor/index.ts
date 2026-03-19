@@ -484,8 +484,8 @@ Deno.serve(async (req) => {
               continue;
             }
             // Volume 5m filter ($5k minimum — relaxed to allow more signals through)
-            if (volume5m > 0 && volume5m < 5000) {
-              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: volume5m $${volume5m.toFixed(0)} < $5000`);
+            if (volume5m > 0 && volume5m < 2000) {
+              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: volume5m $${volume5m.toFixed(0)} < $2000`);
               continue;
             }
             // Token age filter (max 360 minutes — expanded from 120min to catch established tokens)
