@@ -1214,7 +1214,7 @@ async function executeBuySignal({
         action: "BUY",
         tokenMint: signal.token_mint,
         amountSol: positionSol,
-        slippageBps: 150,
+        slippageBps: 100, // SNIPER: tight slippage — we want good fills or no fill
       }),
     });
 
