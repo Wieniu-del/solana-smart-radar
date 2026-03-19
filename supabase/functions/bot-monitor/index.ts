@@ -649,6 +649,8 @@ Deno.serve(async (req) => {
               initialPriceUsd,
               lpLocked,
               lpLockScore,
+              velocityBonus,
+              priceChangeM5,
             });
 
             if (decision === "BUY") totalBuySignals++;
