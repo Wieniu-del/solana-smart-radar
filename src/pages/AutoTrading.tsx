@@ -12,6 +12,7 @@ import SystemStatusPanel from "@/components/SystemStatusPanel";
 import PipelineConfigPanel from "@/components/PipelineConfigPanel";
 import TechnicalStrategiesPanel from "@/components/TechnicalStrategiesPanel";
 import SignalDiagnostics from "@/components/SignalDiagnostics";
+import DiscoverySourcesPanel from "@/components/DiscoverySourcesPanel";
 import SniperLiveFeed from "@/components/SniperLiveFeed";
 import WebTokenDiscovery from "@/components/WebTokenDiscovery";
 import {
