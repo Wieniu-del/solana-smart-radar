@@ -1000,7 +1000,7 @@ Deno.serve(async (req) => {
       token_symbol: c.symbol,
       token_name: c.name,
       signal_type: "BUY",
-      strategy: c.source ? `Discovery (${c.source})` : "Bot Pipeline (auto)",
+      strategy: (c.source === "trending" || c.source === "volume_scan" || c.source === "new_pool") ? `Discovery (${c.source})` : "Bot Pipeline (auto)",
       smart_score: c.walletScore,
       risk_score: 100 - c.securityScore,
       confidence: c.totalScore,
