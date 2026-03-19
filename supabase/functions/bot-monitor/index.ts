@@ -814,6 +814,8 @@ Deno.serve(async (req) => {
         sentiment_score: c.sentiment?.sentiment_score || 0,
         sentiment_adjust: c.sentimentAdjust || 0,
         ta_strategies: c.ta_strategies || [],
+        velocity_bonus: c.velocityBonus || 0,
+        price_change_m5: c.priceChangeM5 || 0,
       },
       status: "pending",
     }));
