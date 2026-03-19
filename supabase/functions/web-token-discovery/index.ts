@@ -158,10 +158,33 @@ Generuj ${limit} tokenów. Bądź precyzyjny, realistyczny i aktualny. Skup się
           );
         }
 
-        // No cache available
+        // No cache available — try ANY category as last resort
+        const { data: anyCache } = await supabase
+          .from('cached_token_discoveries')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (anyCache) {
+          const ageMin = Math.round((Date.now() - new Date(anyCache.created_at).getTime()) / 60000);
+          console.log(`[fallback] Returning cross-category cache (${ageMin}min old)`);
+          return new Response(
+            JSON.stringify({
+              success: true,
+              tokens: anyCache.tokens,
+              market_mood: anyCache.market_mood,
+              scan_summary: `${anyCache.scan_summary} [⚡ Cache z ${ageMin} min temu]`,
+              scanned_at: anyCache.created_at,
+              cached: true,
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
         const msg = aiResponse.status === 429
-          ? 'Rate limit — brak cached danych, spróbuj ponownie za chwilę'
-          : 'Brak kredytów AI i brak cached danych — doładuj konto';
+          ? 'Rate limit — spróbuj ponownie za chwilę'
+          : 'Brak kredytów AI — doładuj konto w Settings → Workspace → Usage';
         return new Response(
           JSON.stringify({ success: false, error: msg }),
           { status: aiResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
