@@ -1099,9 +1099,9 @@ Deno.serve(async (req) => {
             }
           }
 
-          // FIX #5: Cleanup old pending signals (>6h old) — reject them to prevent infinite accumulation
+          // SNIPER: expire signals after 30min — stale signals are worthless
           try {
-            const cutoff = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+            const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
             const { data: expiredRows } = await supabase
               .from("trading_signals")
               .update({ status: "expired" })
