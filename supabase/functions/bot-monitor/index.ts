@@ -803,8 +803,12 @@ Deno.serve(async (req) => {
 
     console.log(`[discovery] Processing ${uniqueDiscovered.length} unique discovered tokens`);
 
+    let discProcessed = 0;
     for (const disc of uniqueDiscovered) {
       try {
+        // Rate limit: max 15 tokens from discovery per cycle + small delay
+        if (discProcessed >= 15) break;
+        discProcessed++;
         seenMints.add(disc.mint);
 
         // Full DexScreener evaluation
