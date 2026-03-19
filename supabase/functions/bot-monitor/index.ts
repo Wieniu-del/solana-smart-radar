@@ -1157,9 +1157,9 @@ Deno.serve(async (req) => {
           // High-confidence signals (>=80) = INSTANT execution (0 delay)
           // Medium signals (65-79) = 2 min delay (quick verify)
           // Low signals (<65) = 3 min delay (standard verify)
-          const SNIPER_INSTANT_THRESHOLD = 80;
-          const SNIPER_FAST_DELAY = 2;
-          const SNIPER_NORMAL_DELAY = 3;
+          const SNIPER_INSTANT_THRESHOLD = 70;
+          const SNIPER_FAST_DELAY = 1;
+          const SNIPER_NORMAL_DELAY = 2;
 
           const { data: pendingSignals } = await supabase
             .from("trading_signals")
