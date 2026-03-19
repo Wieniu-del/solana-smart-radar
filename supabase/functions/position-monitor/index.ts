@@ -193,83 +193,97 @@ async function closePosition(
   const highestPrice = Math.max(Number(pos.highest_price_usd) || 0, currentPrice);
   const pnlSol = (pnlPct / 100) * Number(pos.amount_sol);
 
-  // Try to execute SELL first (for non-dead tokens)
   let txSignature: string | null = null;
-  if (currentPrice > 0 && closeReason !== "dead_token") {
-    try {
-      const swapRes = await fetch(`${supabaseUrl}/functions/v1/execute-swap`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${supabaseKey}`,
-        },
-        body: JSON.stringify({
-          action: "SELL",
-          tokenMint: pos.token_mint,
-          amountSol: pos.token_amount || pos.amount_sol,
-          closeAll: true,
-          slippageBps: 300,
-        }),
-      });
+  let soldTokenAmount = Number(pos.token_amount) || null;
 
-      if (!swapRes.ok) {
-        const errText = await swapRes.text();
-        throw new Error(`HTTP ${swapRes.status}: ${errText.slice(0, 160)}`);
-      }
-
-      const swapData = await swapRes.json();
-      if (!swapData?.success || !swapData?.txSignature) {
-        throw new Error(swapData?.error || "Swap SELL failed (no tx signature)");
-      }
-
-      txSignature = swapData.txSignature;
-
-      await supabase.from("trade_executions").insert({
-        signal_id: pos.signal_id || null,
+  try {
+    const swapRes = await fetch(`${supabaseUrl}/functions/v1/execute-swap`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${supabaseKey}`,
+      },
+      body: JSON.stringify({
         action: "SELL",
-        token_mint: pos.token_mint,
-        token_symbol: pos.token_symbol,
-        amount_sol: Number(pos.amount_sol) || 0,
-        token_amount: Number(pos.token_amount) || null,
-        price_usd: currentPrice,
-        tx_signature: txSignature,
-        status: "executed",
+        tokenMint: pos.token_mint,
+        amountSol: pos.token_amount || pos.amount_sol,
+        closeAll: true,
+        slippageBps: 300,
+      }),
+    });
+
+    const swapData = await swapRes.json().catch(() => null);
+    if (!swapRes.ok || !swapData?.success || !swapData?.txSignature) {
+      throw new Error(swapData?.error || `HTTP ${swapRes.status}: SELL execution failed`);
+    }
+
+    txSignature = swapData.txSignature;
+
+    if (typeof swapData?.soldRawAmount === "number" && typeof swapData?.tokenDecimals === "number") {
+      soldTokenAmount = swapData.soldRawAmount / Math.pow(10, swapData.tokenDecimals);
+    }
+
+    const { error: executionInsertError } = await supabase.from("trade_executions").insert({
+      signal_id: pos.signal_id || null,
+      action: "SELL",
+      token_mint: pos.token_mint,
+      token_symbol: pos.token_symbol,
+      amount_sol: Number(pos.amount_sol) || 0,
+      token_amount: soldTokenAmount,
+      price_usd: currentPrice,
+      tx_signature: txSignature,
+      status: "executed",
+    });
+
+    if (executionInsertError) {
+      console.error(`[position-monitor] Failed to insert SELL execution for ${pos.token_symbol}:`, executionInsertError);
+    }
+  } catch (sellErr: any) {
+    console.error(`Sell error for ${pos.token_symbol}:`, sellErr);
+    const errMsg = sellErr.message || "";
+    const noTokens = errMsg.includes("Brak tokenów") || errMsg.includes("no tokens") || errMsg.includes("insufficient");
+
+    const { error: executionInsertError } = await supabase.from("trade_executions").insert({
+      signal_id: pos.signal_id || null,
+      action: "SELL",
+      token_mint: pos.token_mint,
+      token_symbol: pos.token_symbol,
+      amount_sol: Number(pos.amount_sol) || 0,
+      token_amount: Number(pos.token_amount) || null,
+      price_usd: currentPrice,
+      tx_signature: txSignature,
+      status: "failed",
+      error_message: errMsg.slice(0, 500),
+    });
+
+    if (executionInsertError) {
+      console.error(`[position-monitor] Failed to insert failed SELL execution for ${pos.token_symbol}:`, executionInsertError);
+    }
+
+    if (noTokens) {
+      console.warn(`[position-monitor] No tokens in wallet for ${pos.token_symbol} — force-closing as no_tokens`);
+      txSignature = null;
+      closeReason = "no_tokens";
+      pnlPct = -100;
+    } else {
+      await supabase.from("open_positions").update({
+        current_price_usd: currentPrice,
+        highest_price_usd: highestPrice,
+        pnl_pct: Math.round(pnlPct * 100) / 100,
+        updated_at: new Date().toISOString(),
+      }).eq("id", pos.id);
+
+      await supabase.from("notifications").insert({
+        type: "swap_error",
+        title: `❌ Sprzedaż nieudana: ${pos.token_symbol}`,
+        message: `Pozycja NIE została zamknięta dopóki bot nie sprzeda wszystkiego. Powód: ${errMsg.slice(0, 140)}`,
+        details: { position_id: pos.id, token_mint: pos.token_mint, close_reason: closeReason, error: errMsg },
       });
-    } catch (sellErr: any) {
-      console.error(`Sell error for ${pos.token_symbol}:`, sellErr);
-      const errMsg = sellErr.message || "";
 
-      // If wallet has no tokens — force-close position (nothing to sell)
-      const noTokens = errMsg.includes("Brak tokenów") || errMsg.includes("no tokens") || errMsg.includes("insufficient");
-      if (noTokens) {
-        console.warn(`[position-monitor] No tokens in wallet for ${pos.token_symbol} — force-closing as no_tokens`);
-        // Don't return false — fall through to close the position in DB
-        txSignature = null;
-        closeReason = "no_tokens";
-        // Recalculate pnl as -100% since tokens are gone
-        pnlPct = -100;
-      } else {
-        // Retriable error — keep position open
-        await supabase.from("open_positions").update({
-          current_price_usd: currentPrice,
-          highest_price_usd: highestPrice,
-          pnl_pct: Math.round(pnlPct * 100) / 100,
-          updated_at: new Date().toISOString(),
-        }).eq("id", pos.id);
-
-        await supabase.from("notifications").insert({
-          type: "swap_error",
-          title: `❌ Sprzedaż nieudana: ${pos.token_symbol}`,
-          message: `Nie zamknięto pozycji (${closeReason}) — ponowię próbę przy kolejnym skanie. ${errMsg.slice(0, 120)}`,
-          details: { position_id: pos.id, token_mint: pos.token_mint, close_reason: closeReason, error: errMsg },
-        });
-
-        return false;
-      }
+      return false;
     }
   }
 
-  // Close position in DB only after SELL success (or dead token force-close)
   await supabase.from("open_positions").update({
     status: "closed",
     close_reason: closeReason,
@@ -280,7 +294,6 @@ async function closePosition(
     updated_at: new Date().toISOString(),
   }).eq("id", pos.id);
 
-  // Notification
   const reasonLabels: Record<string, string> = {
     stop_loss: "🔴 Stop-Loss (-12%)",
     trailing_stop: "🟡 Trailing Stop",
@@ -304,7 +317,6 @@ async function closePosition(
     },
   });
 
-  // Journal entry
   try {
     const { data: profile } = await supabase.from("profiles").select("id").limit(1).single();
     if (profile) {
