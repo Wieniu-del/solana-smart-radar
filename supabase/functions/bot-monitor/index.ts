@@ -174,10 +174,10 @@ Deno.serve(async (req) => {
     const dynamicSizing = {
       enabled: true,
       table: [
-        { minScore: 80, sol: 0.15 },
-        { minScore: 65, sol: 0.10 },
-        { minScore: 55, sol: 0.07 },
-        { minScore: 50, sol: 0.03 },
+        { minScore: 85, sol: 0.20 },
+        { minScore: 70, sol: 0.15 },
+        { minScore: 55, sol: 0.10 },
+        { minScore: 45, sol: 0.05 },
       ],
     };
 
