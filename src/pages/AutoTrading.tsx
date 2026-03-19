@@ -12,11 +12,12 @@ import SystemStatusPanel from "@/components/SystemStatusPanel";
 import PipelineConfigPanel from "@/components/PipelineConfigPanel";
 import TechnicalStrategiesPanel from "@/components/TechnicalStrategiesPanel";
 import SignalDiagnostics from "@/components/SignalDiagnostics";
+import SniperLiveFeed from "@/components/SniperLiveFeed";
 import WebTokenDiscovery from "@/components/WebTokenDiscovery";
 import {
   Bot, Zap, ShieldAlert, TrendingUp, TrendingDown, Clock, AlertTriangle,
   CheckCircle2, XCircle, Activity, Target, DollarSign, Play, Square,
-  Filter, Shield, Droplets, Users, Loader2, BarChart3, Globe } from
+  Filter, Shield, Droplets, Users, Loader2, BarChart3, Globe, Eye } from
 "lucide-react";
 import {
   getStrategies, toggleStrategy, getRecentSignals, updateSignalStatus,
@@ -268,6 +269,10 @@ export default function AutoTrading() {
             <Globe className="h-3.5 w-3.5 mr-1" />
             Web Discovery
           </TabsTrigger>
+          <TabsTrigger value="live-feed">
+            <Eye className="h-3.5 w-3.5 mr-1" />
+            Live Feed
+          </TabsTrigger>
           <TabsTrigger value="diagnostics">
             <BarChart3 className="h-3.5 w-3.5 mr-1" />
             Diagnostyka
@@ -388,6 +393,11 @@ export default function AutoTrading() {
         {/* ─── Web Token Discovery Tab ─── */}
         <TabsContent value="web-discovery">
           <WebTokenDiscovery />
+        </TabsContent>
+
+        {/* ─── Sniper Live Feed Tab ─── */}
+        <TabsContent value="live-feed">
+          <SniperLiveFeed />
         </TabsContent>
 
         {/* ─── Signal Diagnostics Tab ─── */}
