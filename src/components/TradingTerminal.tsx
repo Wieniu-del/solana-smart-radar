@@ -491,16 +491,23 @@ export default function TradingTerminal() {
   );
 }
 
+const PNL_CAP_PCT = 500; // max 5x — powyżej to phantom liquidity
+
+function capPnl(pnlPct: number): number {
+  return Math.max(Math.min(pnlPct, PNL_CAP_PCT), -100);
+}
+
 function PnLSummary({ open, closed }: { open: Position[]; closed: Position[] }) {
-  const totalClosedPnl = closed.reduce((s, p) => s + ((Number(p.pnl_pct) || 0) / 100) * Number(p.amount_sol), 0);
+  const totalClosedPnl = closed.reduce((s, p) => s + (capPnl(Number(p.pnl_pct) || 0) / 100) * Number(p.amount_sol), 0);
   const totalOpenPnl = open.reduce((s, p) => {
     const e = Number(p.entry_price_usd) || 0;
     const c = Number(p.current_price_usd) || 0;
-    return s + (e > 0 ? ((c - e) / e) * Number(p.amount_sol) : 0);
+    const rawPct = e > 0 ? ((c - e) / e) * 100 : 0;
+    return s + (capPnl(rawPct) / 100) * Number(p.amount_sol);
   }, 0);
 
-  const wins = closed.filter(p => (Number(p.pnl_pct) || 0) > 0).length;
-  const losses = closed.filter(p => (Number(p.pnl_pct) || 0) < 0).length;
+  const wins = closed.filter(p => capPnl(Number(p.pnl_pct) || 0) > 0).length;
+  const losses = closed.filter(p => capPnl(Number(p.pnl_pct) || 0) < 0).length;
   const winRate = closed.length > 0 ? (wins / closed.length * 100) : 0;
   const totalInvested = [...open, ...closed].reduce((s, p) => s + Number(p.amount_sol), 0);
 
