@@ -189,9 +189,9 @@ Deno.serve(async (req) => {
       .single();
     const pipelineConfig = (pipelineConfigData?.value as any) || {};
     const pSecurity = pipelineConfig.security_check ?? { enabled: true, min_score: 30 };
-    const pLiquidity = pipelineConfig.liquidity_check ?? { enabled: true, min_value_usd: 30000 };
-    const pWallet = pipelineConfig.wallet_analysis ?? { enabled: true, min_wallet_value_usd: 50 };
-    const pScoring = pipelineConfig.scoring ?? { buy_threshold: 60, watch_threshold: 40 };
+    const pLiquidity = pipelineConfig.liquidity_check ?? { enabled: true, min_value_usd: 3000 };
+    const pWallet = pipelineConfig.wallet_analysis ?? { enabled: true, min_wallet_value_usd: 20 };
+    const pScoring = pipelineConfig.scoring ?? { buy_threshold: 45, watch_threshold: 25 };
     const pCorrelation = pipelineConfig.correlation ?? { enabled: true, min_wallets: 2, bonus_per_wallet: 10, max_bonus: 20 };
     const pSentiment = pipelineConfig.sentiment ?? { enabled: true, block_on_avoid: true };
 
