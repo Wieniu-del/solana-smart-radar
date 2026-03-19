@@ -803,8 +803,12 @@ Deno.serve(async (req) => {
 
     console.log(`[discovery] Processing ${uniqueDiscovered.length} unique discovered tokens`);
 
+    let discProcessed = 0;
     for (const disc of uniqueDiscovered) {
       try {
+        // Rate limit: max 15 tokens from discovery per cycle + small delay
+        if (discProcessed >= 15) break;
+        discProcessed++;
         seenMints.add(disc.mint);
 
         // Full DexScreener evaluation
@@ -1000,7 +1004,7 @@ Deno.serve(async (req) => {
       token_symbol: c.symbol,
       token_name: c.name,
       signal_type: "BUY",
-      strategy: c.source ? `Discovery (${c.source})` : "Bot Pipeline (auto)",
+      strategy: (c.source === "trending" || c.source === "volume_scan" || c.source === "new_pool") ? `Discovery (${c.source})` : "Bot Pipeline (auto)",
       smart_score: c.walletScore,
       risk_score: 100 - c.securityScore,
       confidence: c.totalScore,
