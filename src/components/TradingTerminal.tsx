@@ -369,7 +369,7 @@ export default function TradingTerminal() {
                 </TableHeader>
                 <TableBody>
                   {closedPositions.map((pos) => {
-                    const pnl = Number(pos.pnl_pct) || 0;
+                    const pnl = capPnl(Number(pos.pnl_pct) || 0);
                     const isPos = pnl >= 0;
                     const pnlSol = (pnl / 100) * Number(pos.amount_sol);
                     return (
