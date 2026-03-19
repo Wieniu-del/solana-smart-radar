@@ -166,8 +166,9 @@ export default function TradingTerminal() {
   const totalPnlSol = openPositions.reduce((sum, p) => {
     const entry = Number(p.entry_price_usd) || 0;
     const current = Number(p.current_price_usd) || 0;
-    const pnl = entry > 0 ? ((current - entry) / entry) * Number(p.amount_sol) : 0;
-    return sum + pnl;
+    const rawPct = entry > 0 ? ((current - entry) / entry) * 100 : 0;
+    const pnl = capPnl(rawPct);
+    return sum + (pnl / 100) * Number(p.amount_sol);
   }, 0);
 
   const reasonLabels: Record<string, { label: string; color: string; bg: string }> = {
