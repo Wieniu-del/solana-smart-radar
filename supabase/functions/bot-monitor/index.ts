@@ -374,7 +374,7 @@ Deno.serve(async (req) => {
             const valueUsd = tokenInfo?.valueUsd || 0;
 
             // FIX #2: Real liquidity check via DexScreener API
-            const minLiquidityUsd = Number(pLiquidity.min_value_usd || 15000);
+            const minLiquidityUsd = Number(pLiquidity.min_value_usd || 5000);
             let realLiquidityUsd = 0;
             let volume5m = 0;
             let topHolderPct = 0;
@@ -483,14 +483,14 @@ Deno.serve(async (req) => {
               console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: liquidity $${effectiveLiquidity.toFixed(0)} < $${minLiquidityUsd}`);
               continue;
             }
-            // Volume 5m filter ($10k minimum — lowered from $25k, TA confirmation compensates)
-            if (volume5m > 0 && volume5m < 10000) {
-              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: volume5m $${volume5m.toFixed(0)} < $10000`);
+            // Volume 5m filter ($5k minimum — relaxed to allow more signals through)
+            if (volume5m > 0 && volume5m < 5000) {
+              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: volume5m $${volume5m.toFixed(0)} < $5000`);
               continue;
             }
-            // Token age filter (max 120 minutes)
-            if (tokenAgeMinutes > 0 && tokenAgeMinutes > 120) {
-              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: age ${tokenAgeMinutes}min > 120min`);
+            // Token age filter (max 360 minutes — expanded from 120min to catch established tokens)
+            if (tokenAgeMinutes > 0 && tokenAgeMinutes > 360) {
+              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: age ${tokenAgeMinutes}min > 360min`);
               continue;
             }
 
@@ -837,10 +837,10 @@ Deno.serve(async (req) => {
         if (realLiquidityUsd <= 0 || tokenPrice <= 0) continue;
 
         // Market filters (same thresholds as wallet-sourced)
-        const minLiq = Number(pLiquidity.min_value_usd || 15000);
+        const minLiq = Number(pLiquidity.min_value_usd || 5000);
         if (realLiquidityUsd < minLiq) { console.log(`[discovery] REJECT ${tokenSymbol}: liq $${realLiquidityUsd.toFixed(0)} < $${minLiq}`); continue; }
-        if (volume5m > 0 && volume5m < 10000) continue;
-        if (tokenAgeMinutes > 120) continue;
+        if (volume5m > 0 && volume5m < 5000) continue;
+        if (tokenAgeMinutes > 360) continue;
         if (priceChangeM5 < -5) { console.log(`[discovery] ❌ MOMENTUM REJECT ${tokenSymbol}: m5=${priceChangeM5.toFixed(1)}%`); continue; }
 
         // Pump.fun filter
@@ -1253,8 +1253,8 @@ Deno.serve(async (req) => {
                       continue;
                     }
                     // Re-check volume at execution time
-                    if (volume5m > 0 && volume5m < 8000) {
-                      console.log(`[bot] ❌ VOLUME REJECT AT EXEC: ${signal.token_symbol} — vol5m=$${volume5m.toFixed(0)} < $8000`);
+                    if (volume5m > 0 && volume5m < 3000) {
+                      console.log(`[bot] ❌ VOLUME REJECT AT EXEC: ${signal.token_symbol} — vol5m=$${volume5m.toFixed(0)} < $3000`);
                       await supabase.from("trading_signals").update({ status: "rejected" }).eq("id", signal.id);
                       continue;
                     }

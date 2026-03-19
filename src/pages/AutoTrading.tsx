@@ -14,34 +14,29 @@ import TechnicalStrategiesPanel from "@/components/TechnicalStrategiesPanel";
 import SignalDiagnostics from "@/components/SignalDiagnostics";
 import DiscoverySourcesPanel from "@/components/DiscoverySourcesPanel";
 import SniperLiveFeed from "@/components/SniperLiveFeed";
-import WebTokenDiscovery from "@/components/WebTokenDiscovery";
 import {
-  Bot, Zap, ShieldAlert, TrendingUp, TrendingDown, Clock, AlertTriangle,
-  CheckCircle2, XCircle, Activity, Target, DollarSign, Play, Square,
-  Filter, Shield, Droplets, Users, Loader2, BarChart3, Globe, Eye } from
-"lucide-react";
+  Bot, Zap, TrendingUp, TrendingDown, Clock, AlertTriangle,
+  CheckCircle2, XCircle, Target, Play, Filter, Loader2, BarChart3, Eye
+} from "lucide-react";
 import {
   getStrategies, toggleStrategy, getRecentSignals, updateSignalStatus,
-  type StrategyConfig } from
-"@/services/tradingEngine";
+  type StrategyConfig
+} from "@/services/tradingEngine";
 import {
-  runPipeline, savePipelineSignals, type PipelineResult } from
-"@/services/botPipeline";
+  runPipeline, savePipelineSignals, type PipelineResult
+} from "@/services/botPipeline";
 import { getHeliusApiKey } from "@/services/helius";
 
 export default function AutoTrading() {
   const [strategies, setStrategies] = useState<StrategyConfig[]>([]);
   const [signals, setSignals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [botRunning, setBotRunning] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [pipelineResults, setPipelineResults] = useState<PipelineResult[]>([]);
   const { toast } = useToast();
   const lastNoWalletToastAtRef = useRef(0);
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  useEffect(() => { loadData(); }, []);
 
   async function loadData() {
     setLoading(true);
@@ -82,7 +77,6 @@ export default function AutoTrading() {
       return;
     }
 
-    // Resolve tracked wallets from DB + localStorage (with strong fallback)
     const normalizeWallets = (value: unknown): string[] => {
       const walletRegex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
       if (!Array.isArray(value)) return [];
@@ -90,28 +84,13 @@ export default function AutoTrading() {
     };
 
     let trackedWallets: string[] = [];
-
     try {
       const stored = localStorage.getItem("tracked_wallets");
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        trackedWallets = normalizeWallets(parsed);
-      }
-    } catch {
+      if (stored) trackedWallets = normalizeWallets(JSON.parse(stored));
+    } catch { }
 
-      // Ignore invalid localStorage format
-    }
     try {
-      const { data, error } = await supabase.
-      from("bot_config").
-      select("value").
-      eq("key", "tracked_wallets").
-      maybeSingle();
-
-      if (error) {
-        console.warn("[Bot] tracked_wallets query warning:", error.message);
-      }
-
+      const { data } = await supabase.from("bot_config").select("value").eq("key", "tracked_wallets").maybeSingle();
       const dbWallets = normalizeWallets(data?.value);
       if (dbWallets.length > 0) {
         trackedWallets = dbWallets;
@@ -124,23 +103,17 @@ export default function AutoTrading() {
     if (trackedWallets.length === 0) {
       const now = Date.now();
       if (now - lastNoWalletToastAtRef.current > 15000) {
-        toast({ title: "Brak portfeli", description: "Dodaj śledzone portfele w Ustawieniach lub w panelu bota", variant: "destructive" });
+        toast({ title: "Brak portfeli", description: "Dodaj śledzone portfele w panelu bota", variant: "destructive" });
         lastNoWalletToastAtRef.current = now;
       }
       return;
     }
 
-    console.log("[Bot] Using", trackedWallets.length, "tracked wallets");
-
     setScanning(true);
     try {
       const results = await runPipeline(trackedWallets);
       setPipelineResults(results);
-
-      // Save BUY signals to DB
       await savePipelineSignals(results);
-
-      // Reload signals
       const sigs = await getRecentSignals();
       setSignals(sigs);
 
@@ -159,10 +132,7 @@ export default function AutoTrading() {
     }
   }, [toast]);
 
-  const activeStrategies = strategies.filter((s) => s.enabled).length;
   const pendingSignals = signals.filter((s) => s.status === "pending").length;
-  const buySignals = signals.filter((s) => s.signal_type === "BUY").length;
-  const sellSignals = signals.filter((s) => s.signal_type === "SELL").length;
 
   return (
     <div className="space-y-6">
@@ -172,91 +142,33 @@ export default function AutoTrading() {
           <Bot className="h-8 w-8 text-primary" />
           <div>
             <h1 className="text-2xl font-bold text-foreground">Auto Trading Bot</h1>
-            <p className="text-sm text-muted-foreground">Pipeline: Detekcja → Bezpieczeństwo → Płynność → Smart Money → Scoring → Wykonanie</p>
+            <p className="text-sm text-muted-foreground">Skanowanie → Filtracja → Scoring → Egzekucja</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            onClick={runBotScan}
-            disabled={scanning}
-            size="sm"
-            className="bg-primary text-primary-foreground">
-            
-            {scanning ?
-            <Loader2 className="h-4 w-4 animate-spin mr-2" /> :
-
-            <Play className="h-4 w-4 mr-2" />
-            }
-            {scanning ? "Skanowanie..." : "Uruchom skan"}
-          </Button>
-        </div>
+        <Button onClick={runBotScan} disabled={scanning} size="sm" className="bg-primary text-primary-foreground">
+          {scanning ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Play className="h-4 w-4 mr-2" />}
+          {scanning ? "Skanowanie..." : "Uruchom skan"}
+        </Button>
       </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <StatCard icon={Target} label="Aktywne strategie" value={activeStrategies} color="text-primary" />
-        <StatCard icon={Zap} label="Sygnały łącznie" value={signals.length} color="text-secondary" />
-        <StatCard icon={TrendingUp} label="Sygnały BUY" value={buySignals} color="text-primary" />
-        <StatCard icon={TrendingDown} label="Sygnały SELL" value={sellSignals} color="text-destructive" />
-        <StatCard icon={AlertTriangle} label="Oczekujące" value={pendingSignals} color="text-neon-amber" />
-      </div>
-
-      {/* Pipeline Visualization */}
-      <Card className="border-border bg-card">
-        <CardContent className="p-4">
-          <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-            <Filter className="h-4 w-4 text-primary" />
-            Pipeline Decyzyjny Bota
-          </h3>
-          <div className="flex items-center gap-2 overflow-x-auto pb-2">
-            {[
-            { icon: Users, label: "Detekcja tokenów", desc: "Smart wallets" },
-            { icon: Shield, label: "Bezpieczeństwo", desc: "Rugpull scan" },
-            { icon: Droplets, label: "Płynność", desc: "LP + Volume" },
-            { icon: Activity, label: "Aktywność portfeli", desc: "Smart Money" },
-            { icon: Target, label: "Scoring", desc: "70+ = KUP" },
-            { icon: Zap, label: "Jupiter DEX", desc: "Wykonanie" },
-            { icon: ShieldAlert, label: "Risk Manager", desc: "SL/TP/Trail" }].
-            map((step, i) =>
-            <div key={i} className="flex items-center gap-2 shrink-0">
-                <div className="flex flex-col items-center gap-1 bg-muted/30 rounded-lg px-3 py-2 min-w-[90px]">
-                  <step.icon className="h-4 w-4 text-primary" />
-                  <span className="text-[10px] font-semibold text-foreground text-center">{step.label}</span>
-                  <span className="text-[9px] text-muted-foreground">{step.desc}</span>
-                </div>
-                {i < 6 && <span className="text-muted-foreground text-lg">→</span>}
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
 
       <Tabs defaultValue="command" className="space-y-4">
         <TabsList className="bg-muted">
           <TabsTrigger value="command">
-            <Bot className="h-3.5 w-3.5 mr-1" />
-            Centrum Dowodzenia
+            <Bot className="h-3.5 w-3.5 mr-1" /> Kontrola
           </TabsTrigger>
-          <TabsTrigger value="pipeline-strat">
-            <Filter className="h-3.5 w-3.5 mr-1" />
-            Pipeline & Strategie
+          <TabsTrigger value="config">
+            <Filter className="h-3.5 w-3.5 mr-1" /> Konfiguracja
           </TabsTrigger>
           <TabsTrigger value="signals-pnl">
-            <Zap className="h-3.5 w-3.5 mr-1" />
-            Sygnały & PnL
-            {pendingSignals > 0 &&
-            <span className="ml-1.5 bg-neon-amber/20 text-neon-amber text-[10px] px-1.5 py-0.5 rounded-full">
-                {pendingSignals}
-              </span>
-            }
+            <Zap className="h-3.5 w-3.5 mr-1" /> Sygnały
+            {pendingSignals > 0 && <span className="ml-1.5 bg-neon-amber/20 text-neon-amber text-[10px] px-1.5 py-0.5 rounded-full">{pendingSignals}</span>}
           </TabsTrigger>
-          <TabsTrigger value="live-monitor">
-            <Eye className="h-3.5 w-3.5 mr-1" />
-            Live Monitor
+          <TabsTrigger value="live">
+            <Eye className="h-3.5 w-3.5 mr-1" /> Live Feed
           </TabsTrigger>
         </TabsList>
 
-        {/* ═══ TAB 1: Centrum Dowodzenia ═══ */}
+        {/* ═══ TAB 1: Kontrola ═══ */}
         <TabsContent value="command" className="space-y-4">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div className="lg:col-span-2">
@@ -269,50 +181,44 @@ export default function AutoTrading() {
           </div>
         </TabsContent>
 
-        {/* ═══ TAB 2: Pipeline & Strategie ═══ */}
-        <TabsContent value="pipeline-strat" className="space-y-4">
+        {/* ═══ TAB 2: Konfiguracja ═══ */}
+        <TabsContent value="config" className="space-y-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <PipelineConfigPanel />
             <TechnicalStrategiesPanel />
           </div>
 
-          {/* Strategies list */}
           <div>
             <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
               <Target className="h-4 w-4 text-primary" />
-              Strategie handlowe ({strategies.length})
+              Strategie ({strategies.length})
             </h3>
             <div className="space-y-2">
               {strategies.map((strategy) =>
-              <Card key={strategy.id} className="border-border bg-card">
-                <CardContent className="p-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3 flex-1">
-                      <div className={`p-1.5 rounded-lg ${strategy.signal_type === "BUY" ? "bg-primary/10" : "bg-destructive/10"}`}>
-                        {strategy.signal_type === "BUY" ?
-                        <TrendingUp className="h-4 w-4 text-primary" /> :
-                        <TrendingDown className="h-4 w-4 text-destructive" />
-                        }
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-sm text-foreground">{strategy.name}</span>
-                          <Badge variant="outline" className="text-[10px]">{strategy.signal_type}</Badge>
+                <Card key={strategy.id} className="border-border bg-card">
+                  <CardContent className="p-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3 flex-1">
+                        <div className={`p-1.5 rounded-lg ${strategy.signal_type === "BUY" ? "bg-primary/10" : "bg-destructive/10"}`}>
+                          {strategy.signal_type === "BUY" ? <TrendingUp className="h-4 w-4 text-primary" /> : <TrendingDown className="h-4 w-4 text-destructive" />}
                         </div>
-                        <p className="text-[11px] text-muted-foreground truncate">{strategy.description}</p>
-                        <div className="flex gap-3 mt-1 text-[10px] text-muted-foreground">
-                          <span>Max: {strategy.max_position_sol} SOL</span>
-                          {strategy.stop_loss_pct && <span>SL: {strategy.stop_loss_pct}%</span>}
-                          {strategy.take_profit_pct && <span>TP: {strategy.take_profit_pct}%</span>}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-sm text-foreground">{strategy.name}</span>
+                            <Badge variant="outline" className="text-[10px]">{strategy.signal_type}</Badge>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground truncate">{strategy.description}</p>
+                          <div className="flex gap-3 mt-1 text-[10px] text-muted-foreground">
+                            <span>Max: {strategy.max_position_sol} SOL</span>
+                            {strategy.stop_loss_pct && <span>SL: {strategy.stop_loss_pct}%</span>}
+                            {strategy.take_profit_pct && <span>TP: {strategy.take_profit_pct}%</span>}
+                          </div>
                         </div>
                       </div>
+                      <Switch checked={strategy.enabled} onCheckedChange={(checked) => handleToggle(strategy.id, checked)} />
                     </div>
-                    <Switch
-                    checked={strategy.enabled}
-                    onCheckedChange={(checked) => handleToggle(strategy.id, checked)} />
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
               )}
             </div>
           </div>
@@ -320,73 +226,51 @@ export default function AutoTrading() {
 
         {/* ═══ TAB 3: Sygnały & PnL ═══ */}
         <TabsContent value="signals-pnl" className="space-y-4">
-          {/* Sub-tabs for signals area */}
-          <Tabs defaultValue="results" className="space-y-3">
+          <Tabs defaultValue="pending" className="space-y-3">
             <TabsList className="bg-muted/50 h-8">
-              <TabsTrigger value="results" className="text-xs h-7">
-                Wyniki Pipeline
-                {pipelineResults.length > 0 &&
-                <span className="ml-1 bg-primary/20 text-primary text-[10px] px-1.5 py-0.5 rounded-full">
-                    {pipelineResults.length}
-                  </span>
-                }
-              </TabsTrigger>
               <TabsTrigger value="pending" className="text-xs h-7">
                 Oczekujące
-                {pendingSignals > 0 &&
-                <span className="ml-1 bg-neon-amber/20 text-neon-amber text-[10px] px-1.5 py-0.5 rounded-full">
-                    {pendingSignals}
-                  </span>
-                }
+                {pendingSignals > 0 && <span className="ml-1 bg-neon-amber/20 text-neon-amber text-[10px] px-1.5 py-0.5 rounded-full">{pendingSignals}</span>}
               </TabsTrigger>
               <TabsTrigger value="history" className="text-xs h-7">Historia</TabsTrigger>
+              <TabsTrigger value="diagnostics" className="text-xs h-7">Diagnostyka</TabsTrigger>
               <TabsTrigger value="pnl" className="text-xs h-7">
-                <BarChart3 className="h-3 w-3 mr-1" />
-                PnL
+                <BarChart3 className="h-3 w-3 mr-1" /> PnL
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="results" className="space-y-3">
-              {pipelineResults.length === 0 ?
-              <Card className="border-border bg-card">
-                <CardContent className="p-8 text-center text-muted-foreground">
-                  <Bot className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                  <p>Brak wyników pipeline</p>
-                  <p className="text-xs mt-1">Kliknij "Uruchom skan" aby przeskanować</p>
-                </CardContent>
-              </Card> :
-              pipelineResults.map((result, i) =>
-              <PipelineResultCard key={`${result.token.mint}-${i}`} result={result} />
-              )
-              }
-            </TabsContent>
-
             <TabsContent value="pending" className="space-y-3">
-              {signals.filter((s) => s.status === "pending").length === 0 ?
-              <Card className="border-border bg-card">
-                <CardContent className="p-8 text-center text-muted-foreground">
-                  <Bot className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                  <p>Brak oczekujących sygnałów</p>
-                </CardContent>
-              </Card> :
-              signals.filter((s) => s.status === "pending").map((signal) =>
-                <SignalCard key={signal.id} signal={signal} onAction={handleSignalAction} />
-              )
-              }
+              {signals.filter((s) => s.status === "pending").length === 0 ? (
+                <Card className="border-border bg-card">
+                  <CardContent className="p-8 text-center text-muted-foreground">
+                    <Bot className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                    <p>Brak oczekujących sygnałów</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                signals.filter((s) => s.status === "pending").map((signal) =>
+                  <SignalCard key={signal.id} signal={signal} onAction={handleSignalAction} />
+                )
+              )}
             </TabsContent>
 
             <TabsContent value="history" className="space-y-3">
-              {signals.filter((s) => s.status !== "pending").length === 0 ?
-              <Card className="border-border bg-card">
-                <CardContent className="p-8 text-center text-muted-foreground">
-                  <Clock className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                  <p>Brak historii sygnałów</p>
-                </CardContent>
-              </Card> :
-              signals.filter((s) => s.status !== "pending").map((signal) =>
-                <SignalCard key={signal.id} signal={signal} readonly />
-              )
-              }
+              {signals.filter((s) => s.status !== "pending").length === 0 ? (
+                <Card className="border-border bg-card">
+                  <CardContent className="p-8 text-center text-muted-foreground">
+                    <Clock className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                    <p>Brak historii sygnałów</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                signals.filter((s) => s.status !== "pending").map((signal) =>
+                  <SignalCard key={signal.id} signal={signal} readonly />
+                )
+              )}
+            </TabsContent>
+
+            <TabsContent value="diagnostics">
+              <SignalDiagnostics />
             </TabsContent>
 
             <TabsContent value="pnl">
@@ -395,233 +279,57 @@ export default function AutoTrading() {
           </Tabs>
         </TabsContent>
 
-        {/* ═══ TAB 4: Live Monitor ═══ */}
-        <TabsContent value="live-monitor" className="space-y-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <SniperLiveFeed />
-            <WebTokenDiscovery />
-          </div>
-          <SignalDiagnostics />
+        {/* ═══ TAB 4: Live Feed ═══ */}
+        <TabsContent value="live" className="space-y-4">
+          <SniperLiveFeed />
         </TabsContent>
       </Tabs>
-    </div>);
-
+    </div>
+  );
 }
 
-// ─── Pipeline Result Card ───
-
-function PipelineResultCard({ result }: {result: PipelineResult;}) {
-  const decisionColors = {
-    BUY: "bg-primary/10 text-primary border-primary/30",
-    WATCH: "bg-neon-amber/10 text-neon-amber border-neon-amber/30",
-    SKIP: "bg-destructive/10 text-destructive border-destructive/30"
-  };
-
-  const decisionLabels = { BUY: "🟢 KUP", WATCH: "🟡 OBSERWUJ", SKIP: "🔴 POMIŃ" };
-
-  return (
-    <Card className="border-border bg-card">
-      <CardContent className="p-4">
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
-            <div className="flex items-center gap-2 mb-2 flex-wrap">
-             <span className="font-bold text-foreground text-xl">{result.token.symbol}</span>
-              {result.token.name && result.token.name !== result.token.symbol &&
-              <span className="text-sm text-muted-foreground">({result.token.name})</span>
-              }
-              <Badge className={`${decisionColors[result.decision]} text-sm px-3 py-1`}>
-                {decisionLabels[result.decision]}
-              </Badge>
-              <Badge variant="outline" className="text-xs px-2 py-0.5">
-                Score: {result.totalScore}/100
-              </Badge>
-              <Badge variant="outline" className="text-xs px-2 py-0.5">
-                {result.token.source === "smart_wallet" ? "Smart Money" :
-                result.token.source === "whale_buy" ? "Wieloryb" : "Nowa para"}
-              </Badge>
-            </div>
-
-            <p className="text-sm font-mono text-muted-foreground mb-1 truncate">{result.token.mint}</p>
-            <p className="text-sm text-muted-foreground mb-3">
-              Sygnał: {new Date(result.timestamp).toLocaleDateString("pl-PL")} · {new Date(result.timestamp).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-            </p>
-
-            {/* Score breakdown */}
-            <div className="grid grid-cols-3 gap-3 mb-3">
-              <ScoreBreakdownItem
-                icon={Shield}
-                label="Bezpieczeństwo"
-                score={result.securityScore}
-                color={result.securityScore >= 60 ? "text-primary" : result.securityScore >= 30 ? "text-neon-amber" : "text-destructive"} />
-              
-              <ScoreBreakdownItem
-                icon={Droplets}
-                label="Płynność"
-                score={result.liquidityScore}
-                color={result.liquidityScore >= 60 ? "text-primary" : result.liquidityScore >= 30 ? "text-neon-amber" : "text-destructive"} />
-              
-              <ScoreBreakdownItem
-                icon={Users}
-                label="Smart Money"
-                score={result.walletScore}
-                color={result.walletScore >= 50 ? "text-primary" : result.walletScore >= 25 ? "text-neon-amber" : "text-destructive"} />
-              
-            </div>
-
-            {/* Wallet data */}
-            <div className="flex gap-4 text-xs text-muted-foreground mb-2">
-              <span>Smart wallets kupujące: {result.walletData.smartWalletsBuying}</span>
-              <span>Wieloryby kupujące: {result.walletData.whaleWalletsBuying}</span>
-              <span>Łącznie kupujących: {result.walletData.totalBuyers}</span>
-            </div>
-
-            {/* Reasons */}
-            <div className="space-y-0.5">
-              {result.reasons.map((reason, i) =>
-              <p key={i} className="text-xs text-muted-foreground">{reason}</p>
-              )}
-            </div>
-          </div>
-        </div>
-      </CardContent>
-    </Card>);
-
-}
-
-function ScoreBreakdownItem({ icon: Icon, label, score, color
-
-}: {icon: any;label: string;score: number;color: string;}) {
-  return (
-    <div className="bg-muted/30 rounded-lg p-2 text-center">
-      <Icon className={`h-5 w-5 mx-auto mb-1 ${color}`} />
-      <p className={`text-2xl font-bold ${color}`}>{score}</p>
-      <p className="text-xs text-muted-foreground">{label}</p>
-    </div>);
-
-}
-
-function StatCard({ icon: Icon, label, value, color }: {icon: any;label: string;value: number;color: string;}) {
-  return (
-    <Card className="border-border bg-card">
-      <CardContent className="p-3 flex items-center gap-3">
-        <Icon className={`h-4 w-4 ${color}`} />
-        <div>
-          <p className="text-xl font-bold text-neon-amber">{value}</p>
-          <p className="text-[10px] text-muted-foreground">{label}</p>
-        </div>
-      </CardContent>
-    </Card>);
-
-}
-
-function SignalCard({
-  signal,
-  onAction,
-  readonly = false
-
-
-
-
-}: {signal: any;onAction?: (id: string, action: "approved" | "rejected") => void;readonly?: boolean;}) {
-  const isBuy = signal.signal_type === "BUY";
+// ─── Signal Card ───
+function SignalCard({ signal, onAction, readonly }: { signal: any; onAction?: (id: string, action: "approved" | "rejected") => void; readonly?: boolean; }) {
   const statusColors: Record<string, string> = {
-    pending: "bg-neon-amber/10 text-neon-amber border-neon-amber/30",
-    approved: "bg-primary/10 text-primary border-primary/30",
-    rejected: "bg-destructive/10 text-destructive border-destructive/30",
-    executed: "bg-secondary/10 text-secondary border-secondary/30",
-    expired: "bg-muted text-muted-foreground border-border"
+    pending: "text-neon-amber bg-neon-amber/10 border-neon-amber/30",
+    approved: "text-primary bg-primary/10 border-primary/30",
+    rejected: "text-destructive bg-destructive/10 border-destructive/30",
+    executed: "text-secondary bg-secondary/10 border-secondary/30",
+    expired: "text-muted-foreground bg-muted/10 border-border",
   };
-  const fallbackToken = signal.token_mint ? `${signal.token_mint.slice(0, 4)}...${signal.token_mint.slice(-4)}` : "Nieznany";
-  const normalizedSymbol = signal.token_symbol && signal.token_symbol !== "???" ? signal.token_symbol : "";
-  const normalizedName = signal.token_name && signal.token_name !== "???" ? signal.token_name : "";
-  const displayToken = normalizedSymbol || normalizedName || fallbackToken;
 
   return (
     <Card className="border-border bg-card">
-      <CardContent className="p-4">
-        <div className="flex items-start justify-between">
-          <div className="flex items-start gap-3">
-            <div className={`p-2 rounded-lg mt-0.5 ${isBuy ? "bg-primary/10" : "bg-destructive/10"}`}>
-              {isBuy ?
-              <TrendingUp className="h-5 w-5 text-primary" /> :
-
-              <TrendingDown className="h-5 w-5 text-destructive" />
-              }
-            </div>
-            <div>
+      <CardContent className="p-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            {signal.signal_type === "BUY" ? <TrendingUp className="h-4 w-4 text-primary shrink-0" /> : <TrendingDown className="h-4 w-4 text-destructive shrink-0" />}
+            <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
-                <span className="font-bold text-foreground text-lg">
-                  {signal.signal_type} {displayToken}
-                </span>
-                <Badge className={statusColors[signal.status] || ""}>
-                  {signal.status}
-                </Badge>
+                <span className="font-medium text-sm text-foreground">{signal.token_symbol || signal.token_name}</span>
+                <Badge variant="outline" className="text-[10px]">{signal.signal_type}</Badge>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded border ${statusColors[signal.status] || ""}`}>{signal.status}</span>
               </div>
-              <p className="text-sm text-muted-foreground mt-0.5">
-                Strategia: {signal.strategy}
-              </p>
-              <p className="text-sm text-foreground/90 mt-1">
-                Token: <span className="font-medium">{normalizedName || displayToken}</span>
-              </p>
-              <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
-                <span className="flex items-center gap-1">
-                  <Target className="h-3 w-3" />
-                  Score: {signal.smart_score}
-                </span>
-                <span className="flex items-center gap-1">
-                  <ShieldAlert className="h-3 w-3" />
-                  Ryzyko: {signal.risk_score}
-                </span>
-                <span className="flex items-center gap-1">
-                  <Zap className="h-3 w-3" />
-                  Pewność: {signal.confidence}%
-                </span>
-                {signal.conditions?.correlation_wallets > 1 &&
-                <span className="flex items-center gap-1 text-primary">
-                    <Users className="h-3 w-3" />
-                    Konsensus: {signal.conditions.correlation_wallets} portfeli (+{signal.conditions.correlation_bonus}pts)
-                  </span>
-                }
-                {signal.conditions?.sentiment && signal.conditions.sentiment !== "unknown" &&
-                <span className={`flex items-center gap-1 ${
-                signal.conditions.sentiment === "bullish" ? "text-primary" :
-                signal.conditions.sentiment === "bearish" ? "text-destructive" : "text-muted-foreground"}`
-                }>
-                    🧠 {signal.conditions.sentiment} ({signal.conditions.sentiment_score > 0 ? "+" : ""}{signal.conditions.sentiment_score})
-                  </span>
-                }
+              <div className="flex gap-3 text-[10px] text-muted-foreground mt-0.5">
+                <span>📊 {signal.strategy}</span>
+                <span>💪 {signal.confidence}%</span>
+                {signal.smart_score && <span>🧠 {signal.smart_score}</span>}
+                <span>{new Date(signal.created_at).toLocaleString("pl-PL")}</span>
               </div>
-              <p className="text-xs text-muted-foreground mt-1 font-mono truncate max-w-md">
-                {signal.wallet_address}
-              </p>
-              <p className="text-sm text-muted-foreground mt-1">
-                📅 {new Date(signal.created_at).toLocaleDateString("pl-PL")} · 🕐 {new Date(signal.created_at).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-              </p>
             </div>
           </div>
-
-          {!readonly && signal.status === "pending" && onAction &&
-          <div className="flex gap-2">
-              <Button
-              size="sm"
-              variant="outline"
-              className="border-primary/30 text-primary hover:bg-primary/10"
-              onClick={() => onAction(signal.id, "approved")}>
-              
+          {!readonly && signal.status === "pending" && onAction && (
+            <div className="flex gap-1 shrink-0">
+              <Button size="sm" variant="ghost" className="h-7 px-2 text-primary hover:text-primary" onClick={() => onAction(signal.id, "approved")}>
                 <CheckCircle2 className="h-4 w-4" />
               </Button>
-              <Button
-              size="sm"
-              variant="outline"
-              className="border-destructive/30 text-destructive hover:bg-destructive/10"
-              onClick={() => onAction(signal.id, "rejected")}>
-              
+              <Button size="sm" variant="ghost" className="h-7 px-2 text-destructive hover:text-destructive" onClick={() => onAction(signal.id, "rejected")}>
                 <XCircle className="h-4 w-4" />
               </Button>
             </div>
-          }
+          )}
         </div>
       </CardContent>
-    </Card>);
-
+    </Card>
+  );
 }
