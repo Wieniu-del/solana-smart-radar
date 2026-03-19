@@ -489,8 +489,8 @@ Deno.serve(async (req) => {
               continue;
             }
             // Token age filter (max 360 minutes — expanded from 120min to catch established tokens)
-            if (tokenAgeMinutes > 0 && tokenAgeMinutes > 360) {
-              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: age ${tokenAgeMinutes}min > 360min`);
+            if (tokenAgeMinutes > 0 && tokenAgeMinutes > 720) {
+              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: age ${tokenAgeMinutes}min > 720min`);
               continue;
             }
 
