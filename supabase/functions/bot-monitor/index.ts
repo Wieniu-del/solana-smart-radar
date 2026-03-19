@@ -984,8 +984,8 @@ Deno.serve(async (req) => {
               continue;
             }
 
-            // ── DELAY ENTRY: price stability check after delay ──
-            if (!isManuallyApproved && signalAge >= DELAY_ENTRY_MINUTES) {
+            // ── SNIPER: price stability check (only if delay was > 0) ──
+            if (!isManuallyApproved && delayMinutes > 0 && signalAge >= delayMinutes) {
               const conditions = signal.conditions as any || {};
               const initialPrice = Number(conditions.initial_price_usd || 0);
               if (initialPrice > 0) {
