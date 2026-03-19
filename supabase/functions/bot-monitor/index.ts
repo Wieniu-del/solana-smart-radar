@@ -374,7 +374,7 @@ Deno.serve(async (req) => {
             const valueUsd = tokenInfo?.valueUsd || 0;
 
             // FIX #2: Real liquidity check via DexScreener API
-            const minLiquidityUsd = Number(pLiquidity.min_value_usd || 5000);
+            const minLiquidityUsd = Number(pLiquidity.min_value_usd || 3000);
             let realLiquidityUsd = 0;
             let volume5m = 0;
             let topHolderPct = 0;
