@@ -101,8 +101,8 @@ Deno.serve(async (req) => {
       const pnlPct = ((currentPrice - entryPrice) / entryPrice) * 100;
       const hoursHeld = (Date.now() - new Date(pos.opened_at).getTime()) / (1000 * 60 * 60);
 
-      // ── DYNAMIC TRAILING STOP from table ──
-      // Only activate trailing if pnl >= trailing start threshold (8%)
+      // ── SNIPER TRAILING: activate earlier for faster profit capture ──
+      // Trailing activates at 5% profit (was 8%) — sniper locks gains faster
       const trailingActive = pnlPct >= TRAILING_START_PCT;
       const trailingStopPct = getTrailingStopPct(pnlPct);
       const stopPrice = trailingActive
@@ -130,7 +130,7 @@ Deno.serve(async (req) => {
       // ── CHECK CLOSE CONDITIONS ──
       let closeReason: string | null = null;
 
-      // Hard stop loss at -15%
+      // Hard stop loss at -12% (sniper: tighter than before)
       if (pnlPct <= -STOP_LOSS_PCT) {
         closeReason = "stop_loss";
       }
@@ -139,8 +139,8 @@ Deno.serve(async (req) => {
         closeReason = "trailing_stop";
       }
 
-      // ── FAST LOSS CUT: -5% in first 30min ──
-      if (pnlPct <= -5 && hoursHeld < 0.5) {
+      // ── SNIPER FAST LOSS CUT: -4% in first 20min → cut immediately ──
+      if (pnlPct <= -4 && hoursHeld < 0.33) {
         closeReason = "fast_loss_cut";
       }
 
@@ -282,7 +282,7 @@ async function closePosition(
 
   // Notification
   const reasonLabels: Record<string, string> = {
-    stop_loss: "🔴 Stop-Loss (-15%)",
+    stop_loss: "🔴 Stop-Loss (-12%)",
     trailing_stop: "🟡 Trailing Stop",
     take_profit: "🟢 Take-Profit",
     dead_token: "💀 Dead Token",

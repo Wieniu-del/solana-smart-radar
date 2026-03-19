@@ -542,9 +542,11 @@ Deno.serve(async (req) => {
               : 10;
             totalScore += walletScore;
 
-            // ── Technical Strategy Scoring ──
+            // ── SNIPER SCORING ENGINE ──
+            // Multi-signal scoring: the more confirmations, the higher the score
             // Volume explosion → +25, EMA crossover → +20, RSI momentum → +15
             let taTriggered: string[] = [];
+            let velocityBonus = 0;
             if (enabledTAStrategies.length > 0 && realLiquidityUsd > 0) {
               try {
                 const candles = await fetchCandleData(incomingMint);
@@ -571,9 +573,26 @@ Deno.serve(async (req) => {
                     if (rsiVal > 48) totalScore += 15;
                   }
 
+                  // ── VELOCITY DETECTION: tokens gaining momentum FAST get bonus ──
+                  // This is the "cunning sniper" edge — spot acceleration before others
+                  if (priceChangeM5 > 3 && volume5m > 20000) {
+                    velocityBonus = 10; // strong velocity
+                    console.log(`[bot] 🎯 VELOCITY DETECTED: ${incomingMint.slice(0,8)} — m5=+${priceChangeM5.toFixed(1)}%, vol5m=$${volume5m.toFixed(0)} → +${velocityBonus} bonus`);
+                  } else if (priceChangeM5 > 1 && volume5m > 10000) {
+                    velocityBonus = 5; // moderate velocity
+                  }
+                  totalScore += velocityBonus;
+
+                  // ── MULTI-STRATEGY BONUS: 2+ strategies confirm = stronger signal ──
+                  if (taTriggered.length >= 2) {
+                    const multiBonus = Math.min(taTriggered.length * 5, 15);
+                    totalScore += multiBonus;
+                    console.log(`[bot] 🔥 MULTI-CONFIRM: ${incomingMint.slice(0,8)} — ${taTriggered.length} strategies triggered → +${multiBonus} bonus`);
+                  }
+
                   if (taTriggered.length > 0) {
                     const phase = marketData.ageMinutes < 15 ? "launch" : marketData.ageMinutes < 45 ? "momentum" : marketData.ageMinutes < 120 ? "trending" : "mature";
-                    console.log(`[bot] TA score for ${incomingMint.slice(0,8)}: phase=${phase}, triggered=[${taTriggered.join(",")}], total=${totalScore}`);
+                    console.log(`[bot] TA score for ${incomingMint.slice(0,8)}: phase=${phase}, triggered=[${taTriggered.join(",")}], velocity=${velocityBonus}, total=${totalScore}`);
                   }
                 }
               } catch (taErr) {
@@ -630,6 +649,8 @@ Deno.serve(async (req) => {
               initialPriceUsd,
               lpLocked,
               lpLockScore,
+              velocityBonus,
+              priceChangeM5,
             });
 
             if (decision === "BUY") totalBuySignals++;
@@ -793,6 +814,8 @@ Deno.serve(async (req) => {
         sentiment_score: c.sentiment?.sentiment_score || 0,
         sentiment_adjust: c.sentimentAdjust || 0,
         ta_strategies: c.ta_strategies || [],
+        velocity_bonus: c.velocityBonus || 0,
+        price_change_m5: c.priceChangeM5 || 0,
       },
       status: "pending",
     }));
@@ -922,18 +945,23 @@ Deno.serve(async (req) => {
           const slotsAvailable = maxOpenPositions - (currentOpen || 0);
           let executed = 0;
 
-          // Execute oldest actionable BUY signals first (pending + approved)
-          // DELAY ENTRY: only execute signals that are at least 5 minutes old (price stability check)
-          const DELAY_ENTRY_MINUTES = 5;
+          // ── SNIPER MODE: fastest execution with smart verification ──
+          // High-confidence signals (>=80) = INSTANT execution (0 delay)
+          // Medium signals (65-79) = 2 min delay (quick verify)
+          // Low signals (<65) = 3 min delay (standard verify)
+          const SNIPER_INSTANT_THRESHOLD = 80;
+          const SNIPER_FAST_DELAY = 2;
+          const SNIPER_NORMAL_DELAY = 3;
+
           const { data: pendingSignals } = await supabase
             .from("trading_signals")
             .select("id, token_mint, token_symbol, token_name, confidence, status, strategy, smart_score, created_at, conditions")
             .eq("signal_type", "BUY")
             .in("status", executableSignalStatuses)
-            .order("created_at", { ascending: true })
+            .order("confidence", { ascending: false }) // SNIPER: execute HIGHEST confidence first, not oldest
             .limit(100);
 
-          // FIX #3: Deduplicate pending signals — only execute first per token_mint
+          // Deduplicate pending signals — only execute first per token_mint
           const executedMints = new Set<string>();
           for (const signal of pendingSignals || []) {
             if (executed >= slotsAvailable) {
@@ -947,16 +975,21 @@ Deno.serve(async (req) => {
               continue;
             }
 
-            // ── DELAY ENTRY: wait 5 min before executing ──
+            // ── SNIPER DELAY: dynamic based on confidence ──
             const signalAge = (Date.now() - new Date(signal.created_at).getTime()) / 60000;
             const isManuallyApproved = signal.status === "approved";
-            if (!isManuallyApproved && signalAge < DELAY_ENTRY_MINUTES) {
-              console.log(`[bot] ⏳ DELAY ENTRY: ${signal.token_symbol} — signal age ${signalAge.toFixed(1)}min < ${DELAY_ENTRY_MINUTES}min, waiting...`);
-              continue; // don't reject, just skip — will be picked up next cycle
+            const signalConfidence = Number(signal.confidence || 0);
+            const delayMinutes = signalConfidence >= SNIPER_INSTANT_THRESHOLD ? 0 
+              : signalConfidence >= 65 ? SNIPER_FAST_DELAY 
+              : SNIPER_NORMAL_DELAY;
+            
+            if (!isManuallyApproved && signalAge < delayMinutes) {
+              console.log(`[bot] ⏳ SNIPER WAIT: ${signal.token_symbol} — conf=${signalConfidence}, age=${signalAge.toFixed(1)}min, need=${delayMinutes}min`);
+              continue;
             }
 
-            // ── DELAY ENTRY: price stability check after delay ──
-            if (!isManuallyApproved && signalAge >= DELAY_ENTRY_MINUTES) {
+            // ── SNIPER: price stability check (only if delay was > 0) ──
+            if (!isManuallyApproved && delayMinutes > 0 && signalAge >= delayMinutes) {
               const conditions = signal.conditions as any || {};
               const initialPrice = Number(conditions.initial_price_usd || 0);
               if (initialPrice > 0) {
@@ -1033,13 +1066,22 @@ Deno.serve(async (req) => {
               continue;
             }
 
-            // Dynamic sizing based on score table
+            // ── SNIPER SIZING: aggressive scaling for high-confidence signals ──
             let positionSol = 0.03; // minimum
             const confidence = Number(signal.confidence || 0);
-            if (confidence >= 85) positionSol = 0.15;
+            const conditions = signal.conditions as any || {};
+            const hasVelocity = Number(conditions.velocity_bonus || 0) > 0;
+            if (confidence >= 90) positionSol = 0.15;       // max conviction
+            else if (confidence >= 80) positionSol = 0.12;   // high confidence
             else if (confidence >= 75) positionSol = 0.10;
-            else if (confidence >= 65) positionSol = 0.07;
-            else positionSol = 0.03;
+            else if (confidence >= 70) positionSol = 0.07;
+            else positionSol = 0.05; // raised minimum from 0.03 — if we're entering, commit
+            
+            // Velocity bonus: +20% position size for accelerating tokens
+            if (hasVelocity && positionSol < 0.15) {
+              positionSol = Math.min(0.15, positionSol * 1.2);
+              console.log(`[bot] 🎯 VELOCITY SIZE BOOST: ${signal.token_symbol} → ${positionSol.toFixed(3)} SOL`);
+            }
 
             const success = await executeBuySignal({
               supabase,
@@ -1057,9 +1099,9 @@ Deno.serve(async (req) => {
             }
           }
 
-          // FIX #5: Cleanup old pending signals (>6h old) — reject them to prevent infinite accumulation
+          // SNIPER: expire signals after 30min — stale signals are worthless
           try {
-            const cutoff = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+            const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
             const { data: expiredRows } = await supabase
               .from("trading_signals")
               .update({ status: "expired" })
@@ -1174,7 +1216,7 @@ async function executeBuySignal({
         action: "BUY",
         tokenMint: signal.token_mint,
         amountSol: positionSol,
-        slippageBps: 150,
+        slippageBps: 100, // SNIPER: tight slippage — we want good fills or no fill
       }),
     });
 
