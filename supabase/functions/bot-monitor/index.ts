@@ -842,7 +842,7 @@ Deno.serve(async (req) => {
 
         // Pump.fun filter
         const isPump = disc.mint.endsWith("pump") || tokenSymbol.toLowerCase().includes("pump");
-        if (isPump && realLiquidityUsd < 50000) continue;
+        if (isPump && realLiquidityUsd < 20000) continue;
 
         // LP Lock check
         let lpLocked = false, lpLockScore = 0;
