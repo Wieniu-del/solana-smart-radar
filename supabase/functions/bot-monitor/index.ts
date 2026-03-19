@@ -1253,8 +1253,8 @@ Deno.serve(async (req) => {
                       continue;
                     }
                     // Re-check volume at execution time
-                    if (volume5m > 0 && volume5m < 8000) {
-                      console.log(`[bot] ❌ VOLUME REJECT AT EXEC: ${signal.token_symbol} — vol5m=$${volume5m.toFixed(0)} < $8000`);
+                    if (volume5m > 0 && volume5m < 3000) {
+                      console.log(`[bot] ❌ VOLUME REJECT AT EXEC: ${signal.token_symbol} — vol5m=$${volume5m.toFixed(0)} < $3000`);
                       await supabase.from("trading_signals").update({ status: "rejected" }).eq("id", signal.id);
                       continue;
                     }
