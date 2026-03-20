@@ -1114,7 +1114,9 @@ Deno.serve(async (req) => {
           .select("value")
           .eq("key", "max_open_positions")
           .single();
-        const maxOpenPositions = (maxPosConfig?.value as number) || 5;
+        const maxOpenPositions = maxPosConfig?.value !== null && maxPosConfig?.value !== undefined 
+          ? Number(maxPosConfig.value) 
+          : 5;
 
         const { count: currentOpen } = await supabase
           .from("open_positions")
