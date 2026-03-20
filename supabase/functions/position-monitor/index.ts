@@ -5,6 +5,15 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const SOLANA_RPC_DEFAULT = "https://api.mainnet-beta.solana.com";
+const SELL_SLIPPAGE_STEPS = [300, 500, 800, 1200];
+const SELL_FAILURE_LOOKBACK_MINUTES = 30;
+const SELL_RATE_LIMIT_COOLDOWN_MS = 3 * 60 * 1000;
+const SELL_NO_ROUTE_COOLDOWN_MS = 5 * 60 * 1000;
+const MAX_NO_ROUTE_ATTEMPTS_BEFORE_DUST_CLOSE = 3;
+const DUST_VALUE_USD_THRESHOLD = 0.25;
+const DUST_TOKEN_RATIO_THRESHOLD = 0.02;
+
 // ─── TRAILING STOP TABLE ───
 const TRAILING_TABLE = [
   { minPnl: 200, trailing: 5 },
@@ -184,6 +193,270 @@ Deno.serve(async (req) => {
   }
 });
 
+type SellFailureKind = "rate_limit" | "no_route" | "no_tokens" | "other";
+
+type WalletTokenContext = {
+  decimals: number;
+  rawBalance: number;
+  tokenBalance: number;
+};
+
+type SellAttemptResult = {
+  success: boolean;
+  txSignature?: string | null;
+  soldTokenAmount?: number | null;
+  tokenDecimals?: number;
+  soldRawAmount?: number;
+  remainingRawBalance?: number;
+  error?: string;
+};
+
+type RecentSellStats = {
+  rateLimitCount: number;
+  noRouteCount: number;
+  noTokensCount: number;
+  lastRateLimitAt: number | null;
+  lastNoRouteAt: number | null;
+};
+
+function classifySellError(message?: string): SellFailureKind {
+  const normalized = (message || "").toLowerCase();
+  if (normalized.includes("rate limit")) return "rate_limit";
+  if (normalized.includes("no routes found") || normalized.includes("no route")) return "no_route";
+  if (normalized.includes("brak tokenów") || normalized.includes("no tokens") || normalized.includes("insufficient")) return "no_tokens";
+  return "other";
+}
+
+function getRpcUrl(): string {
+  const heliusKey = Deno.env.get("HELIUS_API_KEY");
+  return heliusKey
+    ? `https://mainnet.helius-rpc.com/?api-key=${heliusKey}`
+    : SOLANA_RPC_DEFAULT;
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function updatePositionSnapshot(
+  supabase: any,
+  pos: any,
+  currentPrice: number,
+  highestPrice: number,
+  pnlPct: number,
+) {
+  await supabase.from("open_positions").update({
+    current_price_usd: currentPrice,
+    highest_price_usd: highestPrice,
+    pnl_pct: Math.round(pnlPct * 100) / 100,
+    updated_at: new Date().toISOString(),
+  }).eq("id", pos.id);
+}
+
+async function getRecentSellStats(supabase: any, tokenMint: string): Promise<RecentSellStats> {
+  const since = new Date(Date.now() - SELL_FAILURE_LOOKBACK_MINUTES * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from("trade_executions")
+    .select("created_at,error_message,status")
+    .eq("action", "SELL")
+    .eq("token_mint", tokenMint)
+    .gte("created_at", since)
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  if (error || !data) {
+    if (error) console.warn(`[position-monitor] Failed loading recent SELL stats for ${tokenMint}:`, error);
+    return {
+      rateLimitCount: 0,
+      noRouteCount: 0,
+      noTokensCount: 0,
+      lastRateLimitAt: null,
+      lastNoRouteAt: null,
+    };
+  }
+
+  const stats: RecentSellStats = {
+    rateLimitCount: 0,
+    noRouteCount: 0,
+    noTokensCount: 0,
+    lastRateLimitAt: null,
+    lastNoRouteAt: null,
+  };
+
+  for (const row of data) {
+    if (row.status !== "failed") continue;
+    const kind = classifySellError(row.error_message || "");
+    const createdAt = row.created_at ? new Date(row.created_at).getTime() : null;
+
+    if (kind === "rate_limit") {
+      stats.rateLimitCount += 1;
+      if (!stats.lastRateLimitAt && createdAt) stats.lastRateLimitAt = createdAt;
+    }
+
+    if (kind === "no_route") {
+      stats.noRouteCount += 1;
+      if (!stats.lastNoRouteAt && createdAt) stats.lastNoRouteAt = createdAt;
+    }
+
+    if (kind === "no_tokens") {
+      stats.noTokensCount += 1;
+    }
+  }
+
+  return stats;
+}
+
+function shouldPauseSell(stats: RecentSellStats): string | null {
+  const now = Date.now();
+
+  if (stats.lastRateLimitAt && now - stats.lastRateLimitAt < SELL_RATE_LIMIT_COOLDOWN_MS) {
+    return "rate_limit_cooldown";
+  }
+
+  if (
+    stats.noRouteCount >= 2 &&
+    stats.lastNoRouteAt &&
+    now - stats.lastNoRouteAt < SELL_NO_ROUTE_COOLDOWN_MS
+  ) {
+    return "no_route_cooldown";
+  }
+
+  return null;
+}
+
+async function fetchTokenDecimals(rpcUrl: string, mint: string): Promise<number> {
+  try {
+    const res = await fetch(rpcUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "getTokenSupply",
+        params: [mint],
+      }),
+    });
+    const data = await res.json();
+    const decimals = Number(data?.result?.value?.decimals);
+    return Number.isFinite(decimals) ? decimals : 6;
+  } catch {
+    return 6;
+  }
+}
+
+async function fetchWalletTokenBalanceBaseUnits(rpcUrl: string, owner: string, mint: string): Promise<number> {
+  try {
+    const res = await fetch(rpcUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "getTokenAccountsByOwner",
+        params: [
+          owner,
+          { mint },
+          { encoding: "jsonParsed" },
+        ],
+      }),
+    });
+
+    const data = await res.json();
+    const accounts = data?.result?.value || [];
+
+    return accounts.reduce((sum: number, acc: any) => {
+      const rawAmount = Number(acc?.account?.data?.parsed?.info?.tokenAmount?.amount || 0);
+      return sum + (Number.isFinite(rawAmount) ? rawAmount : 0);
+    }, 0);
+  } catch {
+    return 0;
+  }
+}
+
+async function fetchWalletTokenContext(tokenMint: string): Promise<WalletTokenContext | null> {
+  const owner = Deno.env.get("SOLANA_PUBLIC_KEY");
+  if (!owner) return null;
+
+  const rpcUrl = getRpcUrl();
+  const [decimals, rawBalance] = await Promise.all([
+    fetchTokenDecimals(rpcUrl, tokenMint),
+    fetchWalletTokenBalanceBaseUnits(rpcUrl, owner, tokenMint),
+  ]);
+
+  return {
+    decimals,
+    rawBalance,
+    tokenBalance: rawBalance / Math.pow(10, decimals),
+  };
+}
+
+async function executeSellWithRetries(
+  supabaseUrl: string,
+  supabaseKey: string,
+  pos: any,
+): Promise<SellAttemptResult> {
+  let lastError = "SELL execution failed";
+
+  for (let attempt = 0; attempt < SELL_SLIPPAGE_STEPS.length; attempt++) {
+    const slippageBps = SELL_SLIPPAGE_STEPS[attempt];
+
+    try {
+      const swapRes = await fetch(`${supabaseUrl}/functions/v1/execute-swap`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${supabaseKey}`,
+        },
+        body: JSON.stringify({
+          action: "SELL",
+          tokenMint: pos.token_mint,
+          amountSol: pos.token_amount || pos.amount_sol,
+          closeAll: true,
+          slippageBps,
+        }),
+      });
+
+      const swapData = await swapRes.json().catch(() => null);
+      if (swapRes.ok && swapData?.success && swapData?.txSignature) {
+        return {
+          success: true,
+          txSignature: swapData.txSignature,
+          soldTokenAmount: typeof swapData?.soldRawAmount === "number" && typeof swapData?.tokenDecimals === "number"
+            ? swapData.soldRawAmount / Math.pow(10, swapData.tokenDecimals)
+            : Number(pos.token_amount) || null,
+          tokenDecimals: swapData?.tokenDecimals,
+          soldRawAmount: swapData?.soldRawAmount,
+          remainingRawBalance: swapData?.remainingRawBalance,
+        };
+      }
+
+      lastError = swapData?.error || `HTTP ${swapRes.status}: SELL execution failed`;
+      const kind = classifySellError(lastError);
+
+      if (kind === "rate_limit" && attempt < SELL_SLIPPAGE_STEPS.length - 1) {
+        await delay(1200 * (attempt + 1));
+        continue;
+      }
+
+      if (kind === "other" && attempt < 1) {
+        await delay(800);
+        continue;
+      }
+
+      break;
+    } catch (err: any) {
+      lastError = err?.message || "SELL execution failed";
+      if (classifySellError(lastError) === "rate_limit" && attempt < SELL_SLIPPAGE_STEPS.length - 1) {
+        await delay(1200 * (attempt + 1));
+        continue;
+      }
+      break;
+    }
+  }
+
+  return { success: false, error: lastError };
+}
+
 // ── UNIFIED CLOSE POSITION ──
 async function closePosition(
   supabase: any, supabaseUrl: string, supabaseKey: string,
@@ -192,95 +465,126 @@ async function closePosition(
   const entryPrice = Number(pos.entry_price_usd) || 0;
   const highestPrice = Math.max(Number(pos.highest_price_usd) || 0, currentPrice);
   const pnlSol = (pnlPct / 100) * Number(pos.amount_sol);
+  const recordedTokenAmount = Number(pos.token_amount) || 0;
 
   let txSignature: string | null = null;
-  let soldTokenAmount = Number(pos.token_amount) || null;
+  let soldTokenAmount = recordedTokenAmount || null;
 
-  try {
-    const swapRes = await fetch(`${supabaseUrl}/functions/v1/execute-swap`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${supabaseKey}`,
-      },
-      body: JSON.stringify({
+  const recentSellStats = await getRecentSellStats(supabase, pos.token_mint);
+  const pauseReason = shouldPauseSell(recentSellStats);
+
+  if (pauseReason) {
+    console.warn(`[position-monitor] SELL paused for ${pos.token_symbol}: ${pauseReason}`);
+    await updatePositionSnapshot(supabase, pos, currentPrice, highestPrice, pnlPct);
+    return false;
+  }
+
+  const walletContextBefore = await fetchWalletTokenContext(pos.token_mint);
+  if (walletContextBefore && walletContextBefore.rawBalance <= 0) {
+    console.warn(`[position-monitor] No tokens in wallet for ${pos.token_symbol} before SELL — force-closing as no_tokens`);
+    closeReason = "no_tokens";
+    pnlPct = -100;
+  } else {
+    try {
+      const sellResult = await executeSellWithRetries(supabaseUrl, supabaseKey, pos);
+      if (!sellResult.success || !sellResult.txSignature) {
+        throw new Error(sellResult.error || "SELL execution failed");
+      }
+
+      txSignature = sellResult.txSignature;
+      soldTokenAmount = sellResult.soldTokenAmount ?? soldTokenAmount;
+
+      const { error: executionInsertError } = await supabase.from("trade_executions").insert({
+        signal_id: pos.signal_id || null,
         action: "SELL",
-        tokenMint: pos.token_mint,
-        amountSol: pos.token_amount || pos.amount_sol,
-        closeAll: true,
-        slippageBps: 300,
-      }),
-    });
-
-    const swapData = await swapRes.json().catch(() => null);
-    if (!swapRes.ok || !swapData?.success || !swapData?.txSignature) {
-      throw new Error(swapData?.error || `HTTP ${swapRes.status}: SELL execution failed`);
-    }
-
-    txSignature = swapData.txSignature;
-
-    if (typeof swapData?.soldRawAmount === "number" && typeof swapData?.tokenDecimals === "number") {
-      soldTokenAmount = swapData.soldRawAmount / Math.pow(10, swapData.tokenDecimals);
-    }
-
-    const { error: executionInsertError } = await supabase.from("trade_executions").insert({
-      signal_id: pos.signal_id || null,
-      action: "SELL",
-      token_mint: pos.token_mint,
-      token_symbol: pos.token_symbol,
-      amount_sol: Number(pos.amount_sol) || 0,
-      token_amount: soldTokenAmount,
-      price_usd: currentPrice,
-      tx_signature: txSignature,
-      status: "executed",
-    });
-
-    if (executionInsertError) {
-      console.error(`[position-monitor] Failed to insert SELL execution for ${pos.token_symbol}:`, executionInsertError);
-    }
-  } catch (sellErr: any) {
-    console.error(`Sell error for ${pos.token_symbol}:`, sellErr);
-    const errMsg = sellErr.message || "";
-    const noTokens = errMsg.includes("Brak tokenów") || errMsg.includes("no tokens") || errMsg.includes("insufficient");
-
-    const { error: executionInsertError } = await supabase.from("trade_executions").insert({
-      signal_id: pos.signal_id || null,
-      action: "SELL",
-      token_mint: pos.token_mint,
-      token_symbol: pos.token_symbol,
-      amount_sol: Number(pos.amount_sol) || 0,
-      token_amount: Number(pos.token_amount) || null,
-      price_usd: currentPrice,
-      tx_signature: txSignature,
-      status: "failed",
-      error_message: errMsg.slice(0, 500),
-    });
-
-    if (executionInsertError) {
-      console.error(`[position-monitor] Failed to insert failed SELL execution for ${pos.token_symbol}:`, executionInsertError);
-    }
-
-    if (noTokens) {
-      console.warn(`[position-monitor] No tokens in wallet for ${pos.token_symbol} — force-closing as no_tokens`);
-      txSignature = null;
-      closeReason = "no_tokens";
-      pnlPct = -100;
-    } else {
-      await supabase.from("open_positions").update({
-        current_price_usd: currentPrice,
-        highest_price_usd: highestPrice,
-        pnl_pct: Math.round(pnlPct * 100) / 100,
-        updated_at: new Date().toISOString(),
-      }).eq("id", pos.id);
-
-      await supabase.from("notifications").insert({
-        type: "swap_error",
-        title: `❌ Sprzedaż nieudana: ${pos.token_symbol}`,
-        message: `Pozycja NIE została zamknięta dopóki bot nie sprzeda wszystkiego. Powód: ${errMsg.slice(0, 140)}`,
-        details: { position_id: pos.id, token_mint: pos.token_mint, close_reason: closeReason, error: errMsg },
+        token_mint: pos.token_mint,
+        token_symbol: pos.token_symbol,
+        amount_sol: Number(pos.amount_sol) || 0,
+        token_amount: soldTokenAmount,
+        price_usd: currentPrice,
+        tx_signature: txSignature,
+        status: "executed",
       });
 
-      return false;
+      if (executionInsertError) {
+        console.error(`[position-monitor] Failed to insert SELL execution for ${pos.token_symbol}:`, executionInsertError);
+      }
+    } catch (sellErr: any) {
+      console.error(`Sell error for ${pos.token_symbol}:`, sellErr);
+      const errMsg = sellErr.message || "";
+      const sellErrorKind = classifySellError(errMsg);
+      const walletContextAfter = await fetchWalletTokenContext(pos.token_mint) || walletContextBefore;
+      const walletTokenBalance = walletContextAfter?.tokenBalance || 0;
+      const dustRawThreshold = walletContextAfter
+        ? Math.max(1, Math.floor(Math.pow(10, Math.max(walletContextAfter.decimals - 2, 0))))
+        : 1;
+      const walletRatio = recordedTokenAmount > 0 ? walletTokenBalance / recordedTokenAmount : 0;
+      const estimatedNotionalUsd = walletTokenBalance * currentPrice;
+      const shouldCloseAsDust = Boolean(
+        walletContextAfter &&
+        sellErrorKind === "no_route" &&
+        recentSellStats.noRouteCount + 1 >= MAX_NO_ROUTE_ATTEMPTS_BEFORE_DUST_CLOSE &&
+        (
+          walletContextAfter.rawBalance <= dustRawThreshold ||
+          estimatedNotionalUsd <= DUST_VALUE_USD_THRESHOLD ||
+          walletRatio <= DUST_TOKEN_RATIO_THRESHOLD
+        )
+      );
+
+      const enrichedError = [
+        errMsg.slice(0, 300),
+        walletContextAfter ? `wallet_balance=${walletTokenBalance}` : null,
+        Number.isFinite(estimatedNotionalUsd) ? `wallet_value_usd=${estimatedNotionalUsd}` : null,
+      ].filter(Boolean).join(" | ");
+
+      const { error: executionInsertError } = await supabase.from("trade_executions").insert({
+        signal_id: pos.signal_id || null,
+        action: "SELL",
+        token_mint: pos.token_mint,
+        token_symbol: pos.token_symbol,
+        amount_sol: Number(pos.amount_sol) || 0,
+        token_amount: walletTokenBalance || Number(pos.token_amount) || null,
+        price_usd: currentPrice,
+        tx_signature: txSignature,
+        status: "failed",
+        error_message: enrichedError.slice(0, 500),
+      });
+
+      if (executionInsertError) {
+        console.error(`[position-monitor] Failed to insert failed SELL execution for ${pos.token_symbol}:`, executionInsertError);
+      }
+
+      if (sellErrorKind === "no_tokens" || (walletContextAfter && walletContextAfter.rawBalance <= 0)) {
+        console.warn(`[position-monitor] No tokens left for ${pos.token_symbol} — force-closing as no_tokens`);
+        txSignature = null;
+        closeReason = "no_tokens";
+        pnlPct = -100;
+      } else if (shouldCloseAsDust) {
+        console.warn(`[position-monitor] Closing ${pos.token_symbol} as unsellable_dust after repeated no-route errors`);
+        txSignature = null;
+        closeReason = "unsellable_dust";
+        soldTokenAmount = walletTokenBalance;
+      } else {
+        await updatePositionSnapshot(supabase, pos, currentPrice, highestPrice, pnlPct);
+
+        if (sellErrorKind !== "rate_limit" || !recentSellStats.lastRateLimitAt) {
+          await supabase.from("notifications").insert({
+            type: "swap_error",
+            title: `❌ Sprzedaż nieudana: ${pos.token_symbol}`,
+            message: `Bot nie zamknął pozycji, bo swap SELL nie przeszedł. Powód: ${errMsg.slice(0, 140)}`,
+            details: {
+              position_id: pos.id,
+              token_mint: pos.token_mint,
+              close_reason: closeReason,
+              error: errMsg,
+              wallet_balance: walletTokenBalance,
+              wallet_value_usd: estimatedNotionalUsd,
+            },
+          });
+        }
+
+        return false;
+      }
     }
   }
 
@@ -300,20 +604,27 @@ async function closePosition(
     take_profit: "🟢 Take-Profit",
     dead_token: "💀 Dead Token",
     no_tokens: "🔻 Brak tokenów w portfelu",
+    unsellable_dust: "🧹 Unsellable Dust Cleanup",
     profit_fade: "🟠 Profit Fade Lock",
     fast_loss_cut: "⚡ Fast Loss Cut",
     time_decay: "⏰ Time Decay (45min)",
     max_hold_time: "⏳ Max Hold (3h)",
+    mini_profit_take: "💰 Mini Profit Take",
   };
   await supabase.from("notifications").insert({
     type: "position_closed",
     title: `${reasonLabels[closeReason] || closeReason} — ${pos.token_symbol || "???"}`,
     message: `PnL: ${pnlPct.toFixed(1)}% | Entry: $${entryPrice.toFixed(8)} | Exit: $${currentPrice.toFixed(8)}${txSignature ? ` | TX: ${txSignature.slice(0, 12)}...` : ""}`,
     details: {
-      position_id: pos.id, token_mint: pos.token_mint,
-      close_reason: closeReason, pnl_pct: pnlPct,
-      entry_price: entryPrice, exit_price: currentPrice,
-      highest_price: highestPrice, tx: txSignature,
+      position_id: pos.id,
+      token_mint: pos.token_mint,
+      close_reason: closeReason,
+      pnl_pct: pnlPct,
+      entry_price: entryPrice,
+      exit_price: currentPrice,
+      highest_price: highestPrice,
+      tx: txSignature,
+      sold_token_amount: soldTokenAmount,
     },
   });
 
