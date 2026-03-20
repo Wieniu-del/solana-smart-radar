@@ -479,11 +479,14 @@ async function closePosition(
     return false;
   }
 
+  const marketPnlPct = entryPrice > 0 && currentPrice > 0
+    ? ((currentPrice - entryPrice) / entryPrice) * 100
+    : pnlPct;
   const walletContextBefore = await fetchWalletTokenContext(pos.token_mint);
   if (walletContextBefore && walletContextBefore.rawBalance <= 0) {
     console.warn(`[position-monitor] No tokens in wallet for ${pos.token_symbol} before SELL — force-closing as no_tokens`);
     closeReason = "no_tokens";
-    pnlPct = -100;
+    pnlPct = marketPnlPct;
   } else {
     try {
       const sellResult = await executeSellWithRetries(supabaseUrl, supabaseKey, pos);
@@ -558,12 +561,13 @@ async function closePosition(
         console.warn(`[position-monitor] No tokens left for ${pos.token_symbol} — force-closing as no_tokens`);
         txSignature = null;
         closeReason = "no_tokens";
-        pnlPct = -100;
+        pnlPct = marketPnlPct;
       } else if (shouldCloseAsDust) {
         console.warn(`[position-monitor] Closing ${pos.token_symbol} as unsellable_dust after repeated no-route errors`);
         txSignature = null;
         closeReason = "unsellable_dust";
         soldTokenAmount = walletTokenBalance;
+        pnlPct = marketPnlPct;
       } else {
         await updatePositionSnapshot(supabase, pos, currentPrice, highestPrice, pnlPct);
 
