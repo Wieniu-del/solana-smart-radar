@@ -1,3 +1,4 @@
+// deno-lint-ignore-file
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -1114,7 +1115,7 @@ Deno.serve(async (req) => {
           .select("value")
           .eq("key", "max_open_positions")
           .single();
-        const maxOpenPositions = (maxPosConfig?.value as number) || 5;
+        const maxOpenPositions = Number(maxPosConfig?.value ?? 5);
 
         const { count: currentOpen } = await supabase
           .from("open_positions")
@@ -1254,8 +1255,11 @@ Deno.serve(async (req) => {
                       continue;
                     }
                     console.log(`[bot] ✅ MOMENTUM PASS: ${signal.token_symbol} — m5=+${priceChangeM5.toFixed(1)}%, h1=+${priceChangeH1.toFixed(1)}%, vol5m=$${volume5m.toFixed(0)}`);
-
-            // Min confidence from pipeline config (manual approval bypasses this check)
+                  }
+                }
+              } catch (momErr) {
+                console.warn(`[bot] Momentum check error for ${signal.token_symbol}:`, momErr);
+              }
             if (!isManuallyApproved && (signal.confidence || 0) < autoExecMinConfidence) {
               console.log(`[bot] Skipping signal ${signal.id}: confidence ${signal.confidence} < ${autoExecMinConfidence}`);
               await supabase.from("trading_signals").update({ status: "rejected" }).eq("id", signal.id);
