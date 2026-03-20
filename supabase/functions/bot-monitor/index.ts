@@ -1255,7 +1255,12 @@ Deno.serve(async (req) => {
                       continue;
                     }
                     console.log(`[bot] ✅ MOMENTUM PASS: ${signal.token_symbol} — m5=+${priceChangeM5.toFixed(1)}%, h1=+${priceChangeH1.toFixed(1)}%, vol5m=$${volume5m.toFixed(0)}`);
-
+                  }
+                }
+              } catch (momErr) {
+                console.warn(`[bot] Momentum check error for ${signal.token_symbol}:`, momErr);
+              }
+            }
             // Min confidence from pipeline config (manual approval bypasses this check)
             if (!isManuallyApproved && (signal.confidence || 0) < autoExecMinConfidence) {
               console.log(`[bot] Skipping signal ${signal.id}: confidence ${signal.confidence} < ${autoExecMinConfidence}`);
