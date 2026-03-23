@@ -13,13 +13,13 @@ export const config = {
 
   // Trailing Stop Table (pnlPct → trailingPct)
   trailingTable: [
-    { minPnl: 200, trailing: 8 },
-    { minPnl: 100, trailing: 6 },
-    { minPnl: 80, trailing: 4 },
-    { minPnl: 40, trailing: 3 },
-    { minPnl: 20, trailing: 3.5 },
-    { minPnl: 10, trailing: 4 },
-    { minPnl: 0, trailing: 5 },
+    { minPnl: 200, trailing: 20 },
+    { minPnl: 100, trailing: 20 },
+    { minPnl: 80, trailing: 20 },
+    { minPnl: 40, trailing: 20 },
+    { minPnl: 20, trailing: 20 },
+    { minPnl: 10, trailing: 20 },
+    { minPnl: 0, trailing: 20 },
   ],
 
   // ─── Loss Protection (DISABLED) ───
