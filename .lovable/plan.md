@@ -1,33 +1,26 @@
 
 
-# Plan: Otwarcie bota na cały rynek Solany
+# Plan: Trailing Stop jako jedyny egzekutor zysku
+
+## Obecny stan
+Nie ma klasycznego TP, ale dwa mechanizmy działają jak ukryte Take Profit:
+- **Profit Fade** (linia 123): zamyka gdy zysk spadł z >8% do <3%
+- **Mini Profit Take** (linia 132): zamyka po 60min przy zysku 5-15%
+
+Te dwa mechanizmy przedwcześnie zamykają pozycje zamiast pozwolić trailing stopowi pracować.
 
 ## Co się zmieni
+1. **Usunięcie profit_fade** — trailing stop 20% i tak zamknie pozycję jeśli cena spadnie 20% od szczytu
+2. **Usunięcie mini_profit_take** — trailing stop powinien sam zarządzać zyskiem, nie arbitralny timer
+3. **Zachowanie**: stop loss (-15%), fast loss cut (-4% w 20min), time decay (90min <8%), trailing stop 20%
 
-Bot aktualnie **nie jest ograniczony do memecoinów** — skanuje trending, new pools i volume scanner. Jednak filtr **maksymalnego wieku tokena (720 minut = 12h)** powoduje, że bot odrzuca wszystkie ustabilizowane tokeny (DeFi, infra, gaming itp.). Dodatkowo volume scanner szuka tylko par zawierających "SOL" w nazwie.
+## Logika po zmianach
+- Pozycja na minusie → stop loss / fast loss cut
+- Pozycja stagnuje → time decay po 90min
+- Pozycja rośnie → trailing stop 20% od szczytu zamyka gdy cena się cofnie
+- Mega-winner (>100%) → trailing stop bez limitu czasowego
 
-## Zmiany techniczne
-
-### 1. `supabase/functions/bot-monitor/index.ts`
-
-**A. Usunięcie limitu wieku tokena (720 min)**
-- Linia ~490: `tokenAgeMinutes > 720` → usunięcie tego filtra lub ustawienie na 999999
-- Linia ~839 (discovery): analogicznie — usunięcie `tokenAgeMinutes > 720`
-- Tokeny DeFi, infra, gaming mają miesiące/lata — ten filtr je blokuje
-
-**B. Rozszerzenie Volume Scanner**
-- Linia ~773: zamiast jednego zapytania `search?q=SOL`, dodać dodatkowe zapytania:
-  - `search?q=solana` — szersze wyniki
-  - Zwiększyć limit z 10 do 15 par z volume scannera
-
-**C. Rozszerzenie limitu discovery**
-- Linia ~806: zwiększyć `discProcessed >= 15` → `25` — więcej tokenów z rynku ogólnego
-
-### 2. `src/services/bot/config.ts`
-- `maxTokenAgeMinutes: 720` → `99999` — synchronizacja z frontendem
-
-### Pliki do edycji
-- `supabase/functions/bot-monitor/index.ts` (3-4 zmiany)
-- `src/services/bot/config.ts` (1 zmiana)
+## Plik do edycji
+- `supabase/functions/position-monitor/index.ts` — usunięcie bloków profit_fade (linie 121-128) i mini_profit_take (linie 130-137)
 - Redeploy edge function
 
