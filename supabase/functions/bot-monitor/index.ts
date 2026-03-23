@@ -804,7 +804,7 @@ Deno.serve(async (req) => {
     for (const disc of uniqueDiscovered) {
       try {
         // Rate limit: max 15 tokens from discovery per cycle + small delay
-        if (discProcessed >= 15) break;
+        if (discProcessed >= 25) break;
         discProcessed++;
         seenMints.add(disc.mint);
 
