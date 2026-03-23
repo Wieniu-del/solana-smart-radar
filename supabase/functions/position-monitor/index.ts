@@ -16,20 +16,20 @@ const DUST_TOKEN_RATIO_THRESHOLD = 0.02;
 
 // ─── TRAILING STOP TABLE ───
 const TRAILING_TABLE = [
-  { minPnl: 200, trailing: 5 },
-  { minPnl: 100, trailing: 4 },
-  { minPnl: 80, trailing: 2 },
-  { minPnl: 40, trailing: 2.5 },
-  { minPnl: 20, trailing: 3 },
-  { minPnl: 10, trailing: 3.5 },
-  { minPnl: 0, trailing: 4 },
+  { minPnl: 200, trailing: 20 },
+  { minPnl: 100, trailing: 20 },
+  { minPnl: 80, trailing: 20 },
+  { minPnl: 40, trailing: 20 },
+  { minPnl: 20, trailing: 20 },
+  { minPnl: 10, trailing: 20 },
+  { minPnl: 0, trailing: 20 },
 ];
 
 function getTrailingStopPct(pnlPct: number): number {
   for (const tier of TRAILING_TABLE) {
     if (pnlPct >= tier.minPnl) return tier.trailing;
   }
-  return 4;
+  return 20;
 }
 
 Deno.serve(async (req) => {
