@@ -118,9 +118,9 @@ Deno.serve(async (req) => {
         ? highestPrice * (1 - trailingStopPct / 100)
         : entryPrice * (1 - STOP_LOSS_PCT / 100); // hard SL before trailing activates
 
-      // ── EARLY PROFIT LOCK: profit faded from >3% to <1% → lock ──
+      // ── EARLY PROFIT LOCK: profit faded from >8% to <3% → lock ──
       const prevHighPnl = ((highestPrice - entryPrice) / entryPrice) * 100;
-      if (prevHighPnl >= 3 && pnlPct < 1 && pnlPct >= 0) {
+      if (prevHighPnl >= 8 && pnlPct < 3 && pnlPct >= 0) {
         console.warn(`[position-monitor] Profit fade: ${pos.token_symbol} was +${prevHighPnl.toFixed(1)}% now +${pnlPct.toFixed(1)}% — locking gains`);
         const closed = await closePosition(supabase, supabaseUrl, supabaseKey, pos, currentPrice, "profit_fade", pnlPct);
         if (closed) closedCount++;
