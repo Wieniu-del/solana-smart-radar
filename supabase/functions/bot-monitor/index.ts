@@ -767,21 +767,25 @@ Deno.serve(async (req) => {
     // ── Source 3: Volume Scanner — high-volume Solana pairs ──
     if (discSrc.volume_scanner !== false) {
       try {
-        const volRes = await fetch("https://api.dexscreener.com/latest/dex/search?q=SOL");
-        if (volRes.ok) {
-          const volData = await volRes.json();
-          const pairs = Array.isArray(volData?.pairs) ? volData.pairs : [];
-          const highVolPairs = pairs
-            .filter((p: any) =>
-              p.chainId === "solana" &&
-              Number(p?.volume?.h1 || 0) > 50000 &&
-              Number(p?.liquidity?.usd || 0) > 20000 &&
-              p.baseToken?.address
-            )
-            .sort((a: any, b: any) => Number(b?.volume?.h1 || 0) - Number(a?.volume?.h1 || 0))
-            .slice(0, 10);
-          for (const p of highVolPairs) discoveredMints.push({ mint: p.baseToken.address, source: "volume_scan" });
-          console.log(`[discovery] 📊 Volume scanner: found ${highVolPairs.length} high-volume pairs`);
+        // Scan multiple queries to cover whole Solana market
+        const volQueries = ["SOL", "solana"];
+        for (const q of volQueries) {
+          const volRes = await fetch(`https://api.dexscreener.com/latest/dex/search?q=${q}`);
+          if (volRes.ok) {
+            const volData = await volRes.json();
+            const pairs = Array.isArray(volData?.pairs) ? volData.pairs : [];
+            const highVolPairs = pairs
+              .filter((p: any) =>
+                p.chainId === "solana" &&
+                Number(p?.volume?.h1 || 0) > 50000 &&
+                Number(p?.liquidity?.usd || 0) > 20000 &&
+                p.baseToken?.address
+              )
+              .sort((a: any, b: any) => Number(b?.volume?.h1 || 0) - Number(a?.volume?.h1 || 0))
+              .slice(0, 15);
+            for (const p of highVolPairs) discoveredMints.push({ mint: p.baseToken.address, source: "volume_scan" });
+            console.log(`[discovery] 📊 Volume scanner (q=${q}): found ${highVolPairs.length} high-volume pairs`);
+          }
         }
       } catch (e) { console.warn("[discovery] volume scanner error:", e); }
     }
