@@ -118,18 +118,18 @@ Deno.serve(async (req) => {
         ? highestPrice * (1 - trailingStopPct / 100)
         : entryPrice * (1 - STOP_LOSS_PCT / 100); // hard SL before trailing activates
 
-      // ── EARLY PROFIT LOCK: profit faded from >3% to <1% → lock ──
+      // ── EARLY PROFIT LOCK: profit faded from >8% to <3% → lock ──
       const prevHighPnl = ((highestPrice - entryPrice) / entryPrice) * 100;
-      if (prevHighPnl >= 3 && pnlPct < 1 && pnlPct >= 0) {
+      if (prevHighPnl >= 8 && pnlPct < 3 && pnlPct >= 0) {
         console.warn(`[position-monitor] Profit fade: ${pos.token_symbol} was +${prevHighPnl.toFixed(1)}% now +${pnlPct.toFixed(1)}% — locking gains`);
         const closed = await closePosition(supabase, supabaseUrl, supabaseKey, pos, currentPrice, "profit_fade", pnlPct);
         if (closed) closedCount++;
         continue;
       }
 
-      // ── MINI PROFIT TAKE: >2% profit after 30min → take it ──
+      // ── MINI PROFIT TAKE: >5% profit after 60min → take it ──
       const minutesHeld = hoursHeld * 60;
-      if (minutesHeld >= 30 && pnlPct >= 2 && pnlPct < 8) {
+      if (minutesHeld >= 60 && pnlPct >= 5 && pnlPct < 15) {
         console.warn(`[position-monitor] 💰 MINI PROFIT TAKE: ${pos.token_symbol} +${pnlPct.toFixed(1)}% after ${minutesHeld.toFixed(0)}min — securing gains`);
         const closed = await closePosition(supabase, supabaseUrl, supabaseKey, pos, currentPrice, "mini_profit_take", pnlPct);
         if (closed) closedCount++;
@@ -153,10 +153,10 @@ Deno.serve(async (req) => {
         closeReason = "fast_loss_cut";
       }
 
-      // ── TIME DECAY: after 45min with <5% profit → close (aggressive scalper) ──
-      // Reduced from 1h to 45min — stagnant tokens drain capital via fees
+      // ── TIME DECAY: after 90min with <8% profit → close ──
+      // Stagnant tokens drain capital via fees
       // SKIP if mega-winner (PnL > 100%) — let trailing stop manage it
-      if (minutesHeld >= 45 && pnlPct < 5 && pnlPct > -STOP_LOSS_PCT) {
+      if (minutesHeld >= 90 && pnlPct < 8 && pnlPct > -STOP_LOSS_PCT) {
         closeReason = "time_decay";
       }
 
@@ -597,7 +597,7 @@ async function closePosition(
     close_reason: closeReason,
     current_price_usd: currentPrice,
     highest_price_usd: highestPrice,
-    pnl_pct: Math.round(pnlPct * 100) / 100,
+    pnl_pct: Math.round(Math.max(-100, Math.min(pnlPct, 500)) * 100) / 100,
     closed_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   }).eq("id", pos.id);
@@ -611,7 +611,7 @@ async function closePosition(
     unsellable_dust: "🧹 Unsellable Dust Cleanup",
     profit_fade: "🟠 Profit Fade Lock",
     fast_loss_cut: "⚡ Fast Loss Cut",
-    time_decay: "⏰ Time Decay (45min)",
+    time_decay: "⏰ Time Decay (90min)",
     max_hold_time: "⏳ Max Hold (3h)",
     mini_profit_take: "💰 Mini Profit Take",
   };
