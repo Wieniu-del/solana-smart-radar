@@ -32,7 +32,7 @@ function realPnlSol(pnlPct: number, amountSol: number): number {
   if (pnlPct <= 0) {
     return (Math.max(pnlPct, -100) / 100) * amountSol;
   }
-  const cappedPct = Math.min(pnlPct, 50); // max 50% — realistyczny cap dla mikro-tokenów
+  const cappedPct = Math.min(pnlPct, 100); // max 100% — realistyczny cap
   return (cappedPct / 100) * amountSol;
 }
 
