@@ -461,7 +461,6 @@ Deno.serve(async (req) => {
                   console.log(`[bot] ❌ REJECT LP RISK: ${incomingMint.slice(0,8)} — no LP lock, liq=$${realLiquidityUsd.toFixed(0)}, age=${tokenAgeMinutes}min`);
                   continue;
                 }
-                }
               }
             }
 
