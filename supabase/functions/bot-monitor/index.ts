@@ -1260,6 +1260,7 @@ Deno.serve(async (req) => {
               } catch (momErr) {
                 console.warn(`[bot] Momentum check error for ${signal.token_symbol}:`, momErr);
               }
+            }
             if (!isManuallyApproved && (signal.confidence || 0) < autoExecMinConfidence) {
               console.log(`[bot] Skipping signal ${signal.id}: confidence ${signal.confidence} < ${autoExecMinConfidence}`);
               await supabase.from("trading_signals").update({ status: "rejected" }).eq("id", signal.id);
