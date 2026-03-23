@@ -461,7 +461,6 @@ Deno.serve(async (req) => {
                   console.log(`[bot] ❌ REJECT LP RISK: ${incomingMint.slice(0,8)} — no LP lock, liq=$${realLiquidityUsd.toFixed(0)}, age=${tokenAgeMinutes}min`);
                   continue;
                 }
-                }
               }
             }
 
@@ -486,11 +485,8 @@ Deno.serve(async (req) => {
               console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: volume5m $${volume5m.toFixed(0)} < $2000`);
               continue;
             }
-            // Token age filter (max 360 minutes — expanded from 120min to catch established tokens)
-            if (tokenAgeMinutes > 0 && tokenAgeMinutes > 720) {
-              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: age ${tokenAgeMinutes}min > 720min`);
-              continue;
-            }
+            // Token age filter — DISABLED to allow whole Solana market (DeFi, infra, etc.)
+            // if (tokenAgeMinutes > 0 && tokenAgeMinutes > 99999) { continue; }
 
             // ── MOMENTUM PRE-CHECK: reject tokens with negative short-term momentum ──
             let priceChangeM5 = 0;
@@ -770,21 +766,25 @@ Deno.serve(async (req) => {
     // ── Source 3: Volume Scanner — high-volume Solana pairs ──
     if (discSrc.volume_scanner !== false) {
       try {
-        const volRes = await fetch("https://api.dexscreener.com/latest/dex/search?q=SOL");
-        if (volRes.ok) {
-          const volData = await volRes.json();
-          const pairs = Array.isArray(volData?.pairs) ? volData.pairs : [];
-          const highVolPairs = pairs
-            .filter((p: any) =>
-              p.chainId === "solana" &&
-              Number(p?.volume?.h1 || 0) > 50000 &&
-              Number(p?.liquidity?.usd || 0) > 20000 &&
-              p.baseToken?.address
-            )
-            .sort((a: any, b: any) => Number(b?.volume?.h1 || 0) - Number(a?.volume?.h1 || 0))
-            .slice(0, 10);
-          for (const p of highVolPairs) discoveredMints.push({ mint: p.baseToken.address, source: "volume_scan" });
-          console.log(`[discovery] 📊 Volume scanner: found ${highVolPairs.length} high-volume pairs`);
+        // Scan multiple queries to cover whole Solana market
+        const volQueries = ["SOL", "solana"];
+        for (const q of volQueries) {
+          const volRes = await fetch(`https://api.dexscreener.com/latest/dex/search?q=${q}`);
+          if (volRes.ok) {
+            const volData = await volRes.json();
+            const pairs = Array.isArray(volData?.pairs) ? volData.pairs : [];
+            const highVolPairs = pairs
+              .filter((p: any) =>
+                p.chainId === "solana" &&
+                Number(p?.volume?.h1 || 0) > 50000 &&
+                Number(p?.liquidity?.usd || 0) > 20000 &&
+                p.baseToken?.address
+              )
+              .sort((a: any, b: any) => Number(b?.volume?.h1 || 0) - Number(a?.volume?.h1 || 0))
+              .slice(0, 15);
+            for (const p of highVolPairs) discoveredMints.push({ mint: p.baseToken.address, source: "volume_scan" });
+            console.log(`[discovery] 📊 Volume scanner (q=${q}): found ${highVolPairs.length} high-volume pairs`);
+          }
         }
       } catch (e) { console.warn("[discovery] volume scanner error:", e); }
     }
@@ -803,7 +803,7 @@ Deno.serve(async (req) => {
     for (const disc of uniqueDiscovered) {
       try {
         // Rate limit: max 15 tokens from discovery per cycle + small delay
-        if (discProcessed >= 15) break;
+        if (discProcessed >= 25) break;
         discProcessed++;
         seenMints.add(disc.mint);
 
@@ -836,7 +836,7 @@ Deno.serve(async (req) => {
         const minLiq = Number(pLiquidity.min_value_usd || 3000);
         if (realLiquidityUsd < minLiq) { console.log(`[discovery] REJECT ${tokenSymbol}: liq $${realLiquidityUsd.toFixed(0)} < $${minLiq}`); continue; }
         if (volume5m > 0 && volume5m < 2000) continue;
-        if (tokenAgeMinutes > 720) continue;
+        // Token age filter DISABLED — whole Solana market
         if (priceChangeM5 < -10) { console.log(`[discovery] ❌ MOMENTUM REJECT ${tokenSymbol}: m5=${priceChangeM5.toFixed(1)}%`); continue; }
 
         // Pump.fun filter
@@ -1260,6 +1260,7 @@ Deno.serve(async (req) => {
               } catch (momErr) {
                 console.warn(`[bot] Momentum check error for ${signal.token_symbol}:`, momErr);
               }
+            }
             if (!isManuallyApproved && (signal.confidence || 0) < autoExecMinConfidence) {
               console.log(`[bot] Skipping signal ${signal.id}: confidence ${signal.confidence} < ${autoExecMinConfidence}`);
               await supabase.from("trading_signals").update({ status: "rejected" }).eq("id", signal.id);

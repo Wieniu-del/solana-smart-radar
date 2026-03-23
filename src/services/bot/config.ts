@@ -36,7 +36,7 @@ export const config = {
   // ─── SNIPER MARKET FILTERS (AGGRESSIVE) ───
   minLiquidityUsd: 3000,       // lowered from 10k — catch early plays
   minVolume5m: 2000,           // lowered from 10k — more signals
-  maxTokenAgeMinutes: 720,     // 12 hours — way wider window
+  maxTokenAgeMinutes: 99999,   // disabled — whole Solana market
   maxSingleHolderPct: 30,      // relaxed from 20
   mintAuthority: false,
   freezeAuthority: false,
