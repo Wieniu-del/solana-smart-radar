@@ -597,7 +597,7 @@ async function closePosition(
     close_reason: closeReason,
     current_price_usd: currentPrice,
     highest_price_usd: highestPrice,
-    pnl_pct: Math.round(pnlPct * 100) / 100,
+    pnl_pct: Math.round(Math.max(-100, Math.min(pnlPct, 500)) * 100) / 100,
     closed_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   }).eq("id", pos.id);
