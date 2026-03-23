@@ -153,10 +153,10 @@ Deno.serve(async (req) => {
         closeReason = "fast_loss_cut";
       }
 
-      // ── TIME DECAY: after 45min with <5% profit → close (aggressive scalper) ──
-      // Reduced from 1h to 45min — stagnant tokens drain capital via fees
+      // ── TIME DECAY: after 90min with <8% profit → close ──
+      // Stagnant tokens drain capital via fees
       // SKIP if mega-winner (PnL > 100%) — let trailing stop manage it
-      if (minutesHeld >= 45 && pnlPct < 5 && pnlPct > -STOP_LOSS_PCT) {
+      if (minutesHeld >= 90 && pnlPct < 8 && pnlPct > -STOP_LOSS_PCT) {
         closeReason = "time_decay";
       }
 
