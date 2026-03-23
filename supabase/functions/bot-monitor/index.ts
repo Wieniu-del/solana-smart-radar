@@ -486,11 +486,8 @@ Deno.serve(async (req) => {
               console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: volume5m $${volume5m.toFixed(0)} < $2000`);
               continue;
             }
-            // Token age filter (max 360 minutes — expanded from 120min to catch established tokens)
-            if (tokenAgeMinutes > 0 && tokenAgeMinutes > 720) {
-              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: age ${tokenAgeMinutes}min > 720min`);
-              continue;
-            }
+            // Token age filter — DISABLED to allow whole Solana market (DeFi, infra, etc.)
+            // if (tokenAgeMinutes > 0 && tokenAgeMinutes > 99999) { continue; }
 
             // ── MOMENTUM PRE-CHECK: reject tokens with negative short-term momentum ──
             let priceChangeM5 = 0;
