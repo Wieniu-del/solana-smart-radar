@@ -69,7 +69,7 @@ Deno.serve(async (req) => {
       .select("value")
       .eq("key", "trailing_start_pct")
       .maybeSingle();
-    const TRAILING_START_PCT = Number(trailingStartConfig?.value) || 8;
+    const TRAILING_START_PCT = Number(trailingStartConfig?.value) || 3;
 
     let closedCount = 0;
 
