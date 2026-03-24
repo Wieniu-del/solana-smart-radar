@@ -21,6 +21,7 @@ import NewsScanner from "./pages/NewsScanner";
 import Journal from "./pages/Journal";
 import MyWallet from "./pages/MyWallet";
 import Diagnostics from "./pages/Diagnostics";
+import Strategies from "./pages/Strategies";
 import Login from "./pages/Login";
 import { initHeliusApiKey } from "@/services/helius";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
