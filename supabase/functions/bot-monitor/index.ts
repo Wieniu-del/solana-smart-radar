@@ -1328,20 +1328,19 @@ Deno.serve(async (req) => {
               continue;
             }
 
-            // ── SNIPER SIZING: aggressive scaling for high-confidence signals ──
+            // ── QUALITY SIZING: conservative scaling for quality signals ──
             let positionSol = 0.03;
             const confidence = Number(signal.confidence || 0);
             const conditions = signal.conditions as any || {};
             const hasVelocity = Number(conditions.velocity_bonus || 0) > 0;
-            if (confidence >= 85) positionSol = 0.20;
-            else if (confidence >= 75) positionSol = 0.15;
-            else if (confidence >= 65) positionSol = 0.12;
-            else if (confidence >= 55) positionSol = 0.08;
-            else positionSol = 0.05;
+            if (confidence >= 85) positionSol = 0.15;
+            else if (confidence >= 75) positionSol = 0.10;
+            else if (confidence >= 65) positionSol = 0.06;
+            else positionSol = 0.03;
             
             // Velocity bonus: +20% position size for accelerating tokens
-            if (hasVelocity && positionSol < 0.15) {
-              positionSol = Math.min(0.15, positionSol * 1.2);
+            if (hasVelocity && positionSol < 0.10) {
+              positionSol = Math.min(0.10, positionSol * 1.2);
               console.log(`[bot] 🎯 VELOCITY SIZE BOOST: ${signal.token_symbol} → ${positionSol.toFixed(3)} SOL`);
             }
 
