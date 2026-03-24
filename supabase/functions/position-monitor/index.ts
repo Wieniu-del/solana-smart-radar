@@ -549,9 +549,12 @@ async function closePosition(
       }
 
       if (sellErrorKind === "no_tokens" || (walletContextAfter && walletContextAfter.rawBalance <= 0)) {
-        console.warn(`[position-monitor] No tokens left for ${pos.token_symbol} — force-closing as no_tokens`);
+        console.warn(`[position-monitor] No tokens left for ${pos.token_symbol} — closing as ${originalCloseReason} (tokens gone after sell attempt)`);
         txSignature = null;
-        closeReason = "no_tokens";
+        // Preserve original reason if it was a legitimate exit
+        if (!originalCloseReason || originalCloseReason === "no_tokens") {
+          closeReason = "no_tokens";
+        }
         pnlPct = marketPnlPct;
       } else if (shouldCloseAsDust) {
         console.warn(`[position-monitor] Closing ${pos.token_symbol} as unsellable_dust after repeated no-route errors`);
