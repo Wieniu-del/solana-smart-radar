@@ -1604,6 +1604,11 @@ const TA_CONFIG = {
   ema_ribbon: { ribbon: [8, 13, 21, 34, 55], volumeMultiplier: 2.5, rsiMin: 45 },
   vwap_reversion: { volumeMultiplier: 3, rsiMax: 40, minAge: 10 },
   triple_momentum: { emaShort: 9, emaLong: 21, emaTrend: 50, rsiBuy: 48, volumeMultiplier: 3, maxAgeMinutes: 30 },
+  // ── NEW STRATEGIES ──
+  breakout_volume: { lookback: 20, breakoutMultiplier: 1.5, volumeMultiplier: 2.0, rsiMin: 50 },
+  macd_cross: { fastPeriod: 12, slowPeriod: 26, signalPeriod: 9, volumeMultiplier: 1.5 },
+  bollinger_squeeze: { period: 20, stdDev: 2, squeezeThreshold: 0.02, volumeMultiplier: 1.8 },
+  momentum_burst: { rsiMin: 55, rsiMax: 75, priceChangeMin: 2, volumeMultiplier: 2.0 },
 };
 
 // Age-based phase selection
