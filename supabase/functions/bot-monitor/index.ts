@@ -1655,6 +1655,47 @@ function evaluateStrategy(s: string, p: number[], vol: number, avgVol: number, r
     return e9.at(-1)! > e21.at(-1)! && p.at(-1)! > e200.at(-1)! &&
       vol > avgVol * cfg.volumeMultiplier && r > cfg.rsiBuy &&
       md.ageMinutes < cfg.maxAgeMinutes;
+  } else if (s === "breakout_volume") {
+    // Breakout: price above recent high with volume confirmation
+    const cfg = TA_CONFIG.breakout_volume;
+    const recentHighs = p.slice(-cfg.lookback, -1);
+    const recentHigh = Math.max(...recentHighs);
+    const currentPrice = p.at(-1)!;
+    return currentPrice > recentHigh * cfg.breakoutMultiplier &&
+      vol > avgVol * cfg.volumeMultiplier && r > cfg.rsiMin;
+  } else if (s === "macd_cross") {
+    // MACD crossover: fast EMA crosses above slow EMA with signal line confirmation
+    const cfg = TA_CONFIG.macd_cross;
+    const emaFast = taEma(cfg.fastPeriod, p);
+    const emaSlow = taEma(cfg.slowPeriod, p);
+    if (emaFast.length < 2 || emaSlow.length < 2) return false;
+    const macd = emaFast.map((v, i) => v - emaSlow[i]);
+    const signalLine = taEma(cfg.signalPeriod, macd);
+    // Bullish: MACD crosses above signal line
+    return macd.length >= 2 && signalLine.length >= 2 &&
+      macd.at(-2)! < signalLine.at(-2)! && macd.at(-1)! > signalLine.at(-1)! &&
+      vol > avgVol * cfg.volumeMultiplier;
+  } else if (s === "bollinger_squeeze") {
+    // Bollinger Band squeeze: low volatility followed by expansion
+    const cfg = TA_CONFIG.bollinger_squeeze;
+    if (p.length < cfg.period) return false;
+    const slice = p.slice(-cfg.period);
+    const mean = slice.reduce((a, b) => a + b, 0) / slice.length;
+    const variance = slice.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / slice.length;
+    const stdDev = Math.sqrt(variance);
+    const bandWidth = (stdDev * 2) / mean; // Normalized band width
+    const currentPrice = p.at(-1)!;
+    // Squeeze: narrow bands + price breaking above upper band
+    return bandWidth < cfg.squeezeThreshold && currentPrice > mean + stdDev &&
+      vol > avgVol * cfg.volumeMultiplier;
+  } else if (s === "momentum_burst") {
+    // Strong momentum: RSI in bullish zone + price accelerating + volume surge
+    const cfg = TA_CONFIG.momentum_burst;
+    if (p.length < 5) return false;
+    const priceChange = ((p.at(-1)! - p.at(-3)!) / p.at(-3)!) * 100;
+    return r > cfg.rsiMin && r < cfg.rsiMax &&
+      priceChange > cfg.priceChangeMin &&
+      vol > avgVol * cfg.volumeMultiplier;
   }
   return false;
 }
