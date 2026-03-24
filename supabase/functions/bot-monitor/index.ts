@@ -941,11 +941,11 @@ Deno.serve(async (req) => {
         totalScore += 10 + lpLockScore; // holder dist + LP
         totalScore = Math.min(100, totalScore);
 
-        // Quality Gate v2 — same as wallet-sourced
+        // Quality Gate v4 — require TA or very strong defensive
         const hasTA = taTriggered.length > 0;
-        const hasDefensive = realLiquidityUsd > 20000 && priceChangeM5 > -3;
+        const hasDefensive = realLiquidityUsd > 50000 && priceChangeM5 > 0.5 && priceChangeH1 > 2;
         if (!hasTA && !hasDefensive) {
-          console.log(`[discovery] ❌ QUALITY GATE: ${tokenSymbol} — no TA, liq=$${realLiquidityUsd.toFixed(0)}`);
+          console.log(`[discovery] ❌ QUALITY GATE v4: ${tokenSymbol} — no TA, liq=$${realLiquidityUsd.toFixed(0)}`);
           continue;
         }
 
