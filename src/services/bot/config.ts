@@ -52,8 +52,8 @@ export const config = {
   smartWalletBonus: 15,        // increased from 10
 
   // ─── SNIPER SCORING (AGGRESSIVE) ───
-  buyScoreThreshold: 45,       // lowered from 65 — much more aggressive
-  minScoreForPosition: 45,
+  buyScoreThreshold: 60,       // raised from 45 — quality over quantity
+  minScoreForPosition: 60,
 
   // Dynamic sizing based on score
   dynamicSizing: [
