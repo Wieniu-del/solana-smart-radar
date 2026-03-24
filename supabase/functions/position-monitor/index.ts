@@ -466,10 +466,17 @@ async function closePosition(
   const marketPnlPct = entryPrice > 0 && currentPrice > 0
     ? ((currentPrice - entryPrice) / entryPrice) * 100
     : pnlPct;
+  // ── RACE CONDITION FIX: preserve original closeReason when tokens already sold ──
+  const originalCloseReason = closeReason;
   const walletContextBefore = await fetchWalletTokenContext(pos.token_mint);
   if (walletContextBefore && walletContextBefore.rawBalance <= 0) {
-    console.warn(`[position-monitor] No tokens in wallet for ${pos.token_symbol} before SELL — force-closing as no_tokens`);
-    closeReason = "no_tokens";
+    // Tokens already gone (sold by previous cycle or externally)
+    // Preserve the ORIGINAL close reason instead of overwriting to "no_tokens"
+    console.warn(`[position-monitor] No tokens in wallet for ${pos.token_symbol} before SELL — closing as ${originalCloseReason} (tokens already sold)`);
+    if (originalCloseReason === "no_tokens" || !originalCloseReason) {
+      closeReason = "no_tokens";
+    }
+    // else keep originalCloseReason (time_decay, stop_loss, trailing_stop etc.)
     pnlPct = marketPnlPct;
   } else {
     try {
