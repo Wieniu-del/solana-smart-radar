@@ -1288,21 +1288,21 @@ Deno.serve(async (req) => {
                     const priceChangeH1 = Number(topPair?.priceChange?.h1 || 0);
                     const volume5m = Number(topPair?.volume?.m5 || 0);
                     
-                    // Reject if price is falling fast (dumping)
-                    if (priceChangeM5 < -8) {
+                    // Reject if price is falling (stricter momentum filter)
+                    if (priceChangeM5 < -3) {
                       console.log(`[bot] ❌ MOMENTUM REJECT: ${signal.token_symbol} — price falling ${priceChangeM5.toFixed(1)}% in 5min`);
                       await supabase.from("trading_signals").update({ status: "rejected" }).eq("id", signal.id);
                       continue;
                     }
-                    // Require at least neutral momentum — m5 >= 0% OR h1 >= +2%
-                    if (priceChangeM5 < -3 && priceChangeH1 < 0) {
-                      console.log(`[bot] ❌ MOMENTUM REJECT: ${signal.token_symbol} — negative momentum: m5=${priceChangeM5.toFixed(1)}%, h1=${priceChangeH1.toFixed(1)}%`);
+                    // Require positive momentum: m5 > +0.5% OR h1 > +2%
+                    if (priceChangeM5 < 0.5 && priceChangeH1 < 2) {
+                      console.log(`[bot] ❌ MOMENTUM REJECT: ${signal.token_symbol} — weak momentum: m5=${priceChangeM5.toFixed(1)}%, h1=${priceChangeH1.toFixed(1)}%`);
                       await supabase.from("trading_signals").update({ status: "rejected" }).eq("id", signal.id);
                       continue;
                     }
-                    // Re-check volume at execution time
-                    if (volume5m > 0 && volume5m < 1500) {
-                      console.log(`[bot] ❌ VOLUME REJECT AT EXEC: ${signal.token_symbol} — vol5m=$${volume5m.toFixed(0)} < $1500`);
+                    // Re-check volume at execution time ($5k minimum)
+                    if (volume5m > 0 && volume5m < 5000) {
+                      console.log(`[bot] ❌ VOLUME REJECT AT EXEC: ${signal.token_symbol} — vol5m=$${volume5m.toFixed(0)} < $5000`);
                       await supabase.from("trading_signals").update({ status: "rejected" }).eq("id", signal.id);
                       continue;
                     }
