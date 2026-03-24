@@ -11,15 +11,13 @@ export const config = {
   takeProfitPct: 999,          // TP disabled — trailing stop manages
   trailingStartPct: 3,         // lock gains very early
 
-  // Trailing Stop Table (pnlPct → trailingPct)
+  // Tiered Trailing Stop Table (tightens as profit grows)
   trailingTable: [
-    { minPnl: 200, trailing: 20 },
-    { minPnl: 100, trailing: 20 },
-    { minPnl: 80, trailing: 20 },
-    { minPnl: 40, trailing: 20 },
+    { minPnl: 100, trailing: 15 },  // mega-winner: tight lock
+    { minPnl: 50, trailing: 18 },
     { minPnl: 20, trailing: 20 },
-    { minPnl: 10, trailing: 20 },
-    { minPnl: 0, trailing: 20 },
+    { minPnl: 10, trailing: 25 },   // moderate: some room
+    { minPnl: 0, trailing: 30 },    // early: wide — let it develop
   ],
 
   // ─── Loss Protection (DISABLED) ───
