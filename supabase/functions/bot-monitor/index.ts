@@ -169,16 +169,16 @@ Deno.serve(async (req) => {
       .select("value")
       .eq("key", "min_score_threshold")
       .single();
-    const minScoreThreshold = (thresholdConfig?.value as number) || 45;
+    const minScoreThreshold = (thresholdConfig?.value as number) || 60;
 
-    // 3b. Dynamic sizing table (score-based)
+    // 3b. Dynamic sizing table (score-based) — Quality Over Quantity
     const dynamicSizing = {
       enabled: true,
       table: [
-        { minScore: 85, sol: 0.20 },
-        { minScore: 70, sol: 0.15 },
-        { minScore: 55, sol: 0.10 },
-        { minScore: 45, sol: 0.05 },
+        { minScore: 85, sol: 0.15 },
+        { minScore: 75, sol: 0.10 },
+        { minScore: 65, sol: 0.06 },
+        { minScore: 60, sol: 0.03 },
       ],
     };
 
@@ -190,9 +190,9 @@ Deno.serve(async (req) => {
       .single();
     const pipelineConfig = (pipelineConfigData?.value as any) || {};
     const pSecurity = pipelineConfig.security_check ?? { enabled: true, min_score: 30 };
-    const pLiquidity = pipelineConfig.liquidity_check ?? { enabled: true, min_value_usd: 3000 };
+    const pLiquidity = pipelineConfig.liquidity_check ?? { enabled: true, min_value_usd: 10000 };
     const pWallet = pipelineConfig.wallet_analysis ?? { enabled: true, min_wallet_value_usd: 20 };
-    const pScoring = pipelineConfig.scoring ?? { buy_threshold: 45, watch_threshold: 25 };
+    const pScoring = pipelineConfig.scoring ?? { buy_threshold: 60, watch_threshold: 25 };
     const pCorrelation = pipelineConfig.correlation ?? { enabled: true, min_wallets: 2, bonus_per_wallet: 10, max_bonus: 20 };
     const pSentiment = pipelineConfig.sentiment ?? { enabled: true, block_on_avoid: true };
 
@@ -217,13 +217,51 @@ Deno.serve(async (req) => {
     const lookbackSinceTs = Date.now() / 1000 - lookbackHours * 3600;
 
     // Use pipeline scoring thresholds if set, otherwise fall back to global
-    const buyThreshold = pScoring.buy_threshold || 45;
+    const buyThreshold = pScoring.buy_threshold || 60;
     const watchThreshold = pScoring.watch_threshold || 25;
 
-    // ── COOLDOWN: DISABLED per user request ──
-    const cooldownActive = false;
+    // ── CIRCUIT BREAKER: pause after consecutive losses ──
+    let circuitBreakerActive = false;
+    try {
+      const { data: recentClosedPositions } = await supabase
+        .from("open_positions")
+        .select("pnl_pct, closed_at, close_reason")
+        .eq("status", "closed")
+        .order("closed_at", { ascending: false })
+        .limit(10);
+      
+      if (recentClosedPositions && recentClosedPositions.length >= 3) {
+        // Check last 3 trades for consecutive losses
+        const last3 = recentClosedPositions.slice(0, 3);
+        const consecutiveLosses = last3.every((p: any) => Number(p.pnl_pct) < 0);
+        if (consecutiveLosses) {
+          const lastCloseTime = new Date(last3[0].closed_at).getTime();
+          const cooldownMs = 30 * 60 * 1000; // 30 min pause
+          if (Date.now() - lastCloseTime < cooldownMs) {
+            circuitBreakerActive = true;
+            const remainingMin = ((cooldownMs - (Date.now() - lastCloseTime)) / 60000).toFixed(0);
+            console.warn(`[bot] 🛑 CIRCUIT BREAKER: 3 consecutive losses → paused for ${remainingMin}min`);
+          }
+        }
+        
+        // Check daily losses (max 5)
+        const today = new Date().toISOString().split("T")[0];
+        const todayLosses = recentClosedPositions.filter((p: any) => 
+          Number(p.pnl_pct) < 0 && p.closed_at?.startsWith(today)
+        ).length;
+        if (todayLosses >= 5) {
+          circuitBreakerActive = true;
+          console.warn(`[bot] 🛑 CIRCUIT BREAKER: ${todayLosses} losses today → daily limit reached`);
+        }
+      }
+    } catch (cbErr) {
+      console.warn("[bot] Circuit breaker check error:", cbErr);
+    }
 
-    // ── DAILY LOSS LIMIT: DISABLED per user request ──
+    // ── COOLDOWN: DISABLED per user request ──
+    const cooldownActive = circuitBreakerActive;
+
+    // ── DAILY LOSS LIMIT: handled by circuit breaker above ──
     const dailyLossExceeded = false;
 
     // 4. Analyze each wallet
