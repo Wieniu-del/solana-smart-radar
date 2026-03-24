@@ -187,9 +187,7 @@ export default function AutoTrading() {
 
         {/* ═══ TAB 2: Konfiguracja ═══ */}
         <TabsContent value="config" className="space-y-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <PipelineConfigPanel />
-          </div>
+          <PipelineConfigPanel />
 
           <div>
             <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
