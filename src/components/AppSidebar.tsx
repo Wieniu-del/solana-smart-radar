@@ -1,4 +1,4 @@
-import { BarChart3, Search, Trophy, Activity, Bell, Settings, Brain, ArrowLeftRight, Bot, HandCoins, Newspaper, Wallet, LogOut, BookOpen } from "lucide-react";
+import { BarChart3, Search, Trophy, Activity, Bell, Settings, Brain, ArrowLeftRight, Bot, HandCoins, Newspaper, Wallet, LogOut, BookOpen, Stethoscope } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
