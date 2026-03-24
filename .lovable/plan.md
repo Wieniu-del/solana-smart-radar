@@ -1,26 +1,34 @@
 
 
-# Plan: Trailing Stop jako jedyny egzekutor zysku
+# Plan: ✅ WDROŻONO — Quality Over Quantity Strategy
 
-## Obecny stan
-Nie ma klasycznego TP, ale dwa mechanizmy działają jak ukryte Take Profit:
-- **Profit Fade** (linia 123): zamyka gdy zysk spadł z >8% do <3%
-- **Mini Profit Take** (linia 132): zamyka po 60min przy zysku 5-15%
+## Zmiany wdrożone
 
-Te dwa mechanizmy przedwcześnie zamykają pozycje zamiast pozwolić trailing stopowi pracować.
+### 1. Ostrzejsze kryteria wejścia
+- buyThreshold: 45 → **60**
+- Min liquidity: $3k → **$10k**
+- Min volume 5m: $2k → **$5k**
+- Momentum: wymaga m5 > +0.5% LUB h1 > +2%
+- Quality Gate v4: wymaga min. 1 TA strategy (defensive bar podniesiony do $50k + pozytywny momentum)
 
-## Co się zmieni
-1. **Usunięcie profit_fade** — trailing stop 20% i tak zamknie pozycję jeśli cena spadnie 20% od szczytu
-2. **Usunięcie mini_profit_take** — trailing stop powinien sam zarządzać zyskiem, nie arbitralny timer
-3. **Zachowanie**: stop loss (-15%), fast loss cut (-4% w 20min), time decay (90min <8%), trailing stop 20%
+### 2. Tiered Trailing Stop (zamiast flat 20%)
+- PnL >100%: trailing **15%** (chroni mega-winnery)
+- PnL >50%: trailing **18%**
+- PnL >20%: trailing **20%**
+- PnL >10%: trailing **25%**
+- PnL 3-10%: trailing **30%** (szeroki — pozwól rozwinąć się)
 
-## Logika po zmianach
-- Pozycja na minusie → stop loss / fast loss cut
-- Pozycja stagnuje → time decay po 90min
-- Pozycja rośnie → trailing stop 20% od szczytu zamyka gdy cena się cofnie
-- Mega-winner (>100%) → trailing stop bez limitu czasowego
+### 3. Adaptive Position Sizing (konserwatywy)
+- Score 85+: 0.15 SOL
+- Score 75-84: 0.10 SOL
+- Score 65-74: 0.06 SOL
+- Score 60-64: 0.03 SOL (test position)
 
-## Plik do edycji
-- `supabase/functions/position-monitor/index.ts` — usunięcie bloków profit_fade (linie 121-128) i mini_profit_take (linie 130-137)
-- Redeploy edge function
+### 4. Circuit Breaker
+- 3 consecutive losses → 30 min pauza
+- 5 strat dziennie → stop na resztę dnia
 
+### 5. Anti-Dead-Token Shield
+- Dead token timeout: 3h → **30 min**
+
+### 6. Edge Functions deployed ✅
