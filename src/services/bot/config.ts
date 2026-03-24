@@ -11,15 +11,13 @@ export const config = {
   takeProfitPct: 999,          // TP disabled — trailing stop manages
   trailingStartPct: 3,         // lock gains very early
 
-  // Trailing Stop Table (pnlPct → trailingPct)
+  // Tiered Trailing Stop Table (tightens as profit grows)
   trailingTable: [
-    { minPnl: 200, trailing: 20 },
-    { minPnl: 100, trailing: 20 },
-    { minPnl: 80, trailing: 20 },
-    { minPnl: 40, trailing: 20 },
+    { minPnl: 100, trailing: 15 },  // mega-winner: tight lock
+    { minPnl: 50, trailing: 18 },
     { minPnl: 20, trailing: 20 },
-    { minPnl: 10, trailing: 20 },
-    { minPnl: 0, trailing: 20 },
+    { minPnl: 10, trailing: 25 },   // moderate: some room
+    { minPnl: 0, trailing: 30 },    // early: wide — let it develop
   ],
 
   // ─── Loss Protection (DISABLED) ───
@@ -34,8 +32,8 @@ export const config = {
   },
 
   // ─── SNIPER MARKET FILTERS (AGGRESSIVE) ───
-  minLiquidityUsd: 3000,       // lowered from 10k — catch early plays
-  minVolume5m: 2000,           // lowered from 10k — more signals
+  minLiquidityUsd: 10000,      // raised from 3k — eliminate dead tokens
+  minVolume5m: 5000,           // raised from 2k — require active market
   maxTokenAgeMinutes: 99999,   // disabled — whole Solana market
   maxSingleHolderPct: 30,      // relaxed from 20
   mintAuthority: false,
@@ -54,16 +52,15 @@ export const config = {
   smartWalletBonus: 15,        // increased from 10
 
   // ─── SNIPER SCORING (AGGRESSIVE) ───
-  buyScoreThreshold: 45,       // lowered from 65 — much more aggressive
-  minScoreForPosition: 45,
+  buyScoreThreshold: 60,       // raised from 45 — quality over quantity
+  minScoreForPosition: 60,
 
   // Dynamic sizing based on score
   dynamicSizing: [
-    { minScore: 85, sol: 0.20 },
-    { minScore: 75, sol: 0.15 },
-    { minScore: 65, sol: 0.12 },
-    { minScore: 55, sol: 0.08 },
-    { minScore: 45, sol: 0.05 },
+    { minScore: 85, sol: 0.15 },
+    { minScore: 75, sol: 0.10 },
+    { minScore: 65, sol: 0.06 },
+    { minScore: 60, sol: 0.03 },
   ],
 
   // ─── SNIPER ENTRY (AGGRESSIVE) ───

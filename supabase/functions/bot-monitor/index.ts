@@ -169,16 +169,16 @@ Deno.serve(async (req) => {
       .select("value")
       .eq("key", "min_score_threshold")
       .single();
-    const minScoreThreshold = (thresholdConfig?.value as number) || 45;
+    const minScoreThreshold = (thresholdConfig?.value as number) || 60;
 
-    // 3b. Dynamic sizing table (score-based)
+    // 3b. Dynamic sizing table (score-based) — Quality Over Quantity
     const dynamicSizing = {
       enabled: true,
       table: [
-        { minScore: 85, sol: 0.20 },
-        { minScore: 70, sol: 0.15 },
-        { minScore: 55, sol: 0.10 },
-        { minScore: 45, sol: 0.05 },
+        { minScore: 85, sol: 0.15 },
+        { minScore: 75, sol: 0.10 },
+        { minScore: 65, sol: 0.06 },
+        { minScore: 60, sol: 0.03 },
       ],
     };
 
@@ -190,9 +190,9 @@ Deno.serve(async (req) => {
       .single();
     const pipelineConfig = (pipelineConfigData?.value as any) || {};
     const pSecurity = pipelineConfig.security_check ?? { enabled: true, min_score: 30 };
-    const pLiquidity = pipelineConfig.liquidity_check ?? { enabled: true, min_value_usd: 3000 };
+    const pLiquidity = pipelineConfig.liquidity_check ?? { enabled: true, min_value_usd: 10000 };
     const pWallet = pipelineConfig.wallet_analysis ?? { enabled: true, min_wallet_value_usd: 20 };
-    const pScoring = pipelineConfig.scoring ?? { buy_threshold: 45, watch_threshold: 25 };
+    const pScoring = pipelineConfig.scoring ?? { buy_threshold: 60, watch_threshold: 25 };
     const pCorrelation = pipelineConfig.correlation ?? { enabled: true, min_wallets: 2, bonus_per_wallet: 10, max_bonus: 20 };
     const pSentiment = pipelineConfig.sentiment ?? { enabled: true, block_on_avoid: true };
 
@@ -217,13 +217,51 @@ Deno.serve(async (req) => {
     const lookbackSinceTs = Date.now() / 1000 - lookbackHours * 3600;
 
     // Use pipeline scoring thresholds if set, otherwise fall back to global
-    const buyThreshold = pScoring.buy_threshold || 45;
+    const buyThreshold = pScoring.buy_threshold || 60;
     const watchThreshold = pScoring.watch_threshold || 25;
 
-    // ── COOLDOWN: DISABLED per user request ──
-    const cooldownActive = false;
+    // ── CIRCUIT BREAKER: pause after consecutive losses ──
+    let circuitBreakerActive = false;
+    try {
+      const { data: recentClosedPositions } = await supabase
+        .from("open_positions")
+        .select("pnl_pct, closed_at, close_reason")
+        .eq("status", "closed")
+        .order("closed_at", { ascending: false })
+        .limit(10);
+      
+      if (recentClosedPositions && recentClosedPositions.length >= 3) {
+        // Check last 3 trades for consecutive losses
+        const last3 = recentClosedPositions.slice(0, 3);
+        const consecutiveLosses = last3.every((p: any) => Number(p.pnl_pct) < 0);
+        if (consecutiveLosses) {
+          const lastCloseTime = new Date(last3[0].closed_at).getTime();
+          const cooldownMs = 30 * 60 * 1000; // 30 min pause
+          if (Date.now() - lastCloseTime < cooldownMs) {
+            circuitBreakerActive = true;
+            const remainingMin = ((cooldownMs - (Date.now() - lastCloseTime)) / 60000).toFixed(0);
+            console.warn(`[bot] 🛑 CIRCUIT BREAKER: 3 consecutive losses → paused for ${remainingMin}min`);
+          }
+        }
+        
+        // Check daily losses (max 5)
+        const today = new Date().toISOString().split("T")[0];
+        const todayLosses = recentClosedPositions.filter((p: any) => 
+          Number(p.pnl_pct) < 0 && p.closed_at?.startsWith(today)
+        ).length;
+        if (todayLosses >= 5) {
+          circuitBreakerActive = true;
+          console.warn(`[bot] 🛑 CIRCUIT BREAKER: ${todayLosses} losses today → daily limit reached`);
+        }
+      }
+    } catch (cbErr) {
+      console.warn("[bot] Circuit breaker check error:", cbErr);
+    }
 
-    // ── DAILY LOSS LIMIT: DISABLED per user request ──
+    // ── COOLDOWN: DISABLED per user request ──
+    const cooldownActive = circuitBreakerActive;
+
+    // ── DAILY LOSS LIMIT: handled by circuit breaker above ──
     const dailyLossExceeded = false;
 
     // 4. Analyze each wallet
@@ -373,7 +411,7 @@ Deno.serve(async (req) => {
             const valueUsd = tokenInfo?.valueUsd || 0;
 
             // FIX #2: Real liquidity check via DexScreener API
-            const minLiquidityUsd = Number(pLiquidity.min_value_usd || 3000);
+            const minLiquidityUsd = Number(pLiquidity.min_value_usd || 10000);
             let realLiquidityUsd = 0;
             let volume5m = 0;
             let topHolderPct = 0;
@@ -480,24 +518,29 @@ Deno.serve(async (req) => {
               console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: liquidity $${effectiveLiquidity.toFixed(0)} < $${minLiquidityUsd}`);
               continue;
             }
-            // Volume 5m filter ($5k minimum — relaxed to allow more signals through)
-            if (volume5m > 0 && volume5m < 2000) {
-              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: volume5m $${volume5m.toFixed(0)} < $2000`);
+            // Volume 5m filter ($5k minimum — quality over quantity)
+            if (volume5m > 0 && volume5m < 5000) {
+              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: volume5m $${volume5m.toFixed(0)} < $5000`);
               continue;
             }
             // Token age filter — DISABLED to allow whole Solana market (DeFi, infra, etc.)
             // if (tokenAgeMinutes > 0 && tokenAgeMinutes > 99999) { continue; }
 
-            // ── MOMENTUM PRE-CHECK: reject tokens with negative short-term momentum ──
+            // ── MOMENTUM PRE-CHECK v2: require POSITIVE momentum ──
             let priceChangeM5 = 0;
             let priceChangeH1 = 0;
             if (dexPairsData.length > 0) {
               const topPair = dexPairsData.sort((a: any, b: any) => Number(b?.liquidity?.usd || 0) - Number(a?.liquidity?.usd || 0))[0];
               priceChangeM5 = Number(topPair?.priceChange?.m5 || 0);
               priceChangeH1 = Number(topPair?.priceChange?.h1 || 0);
-              // Hard reject: falling fast
-              if (priceChangeM5 < -10) {
-                console.log(`[bot] ❌ MOMENTUM PRE-REJECT: ${incomingMint.slice(0,8)} — m5=${priceChangeM5.toFixed(1)}% (dumping)`);
+              // Hard reject: falling momentum
+              if (priceChangeM5 < -3) {
+                console.log(`[bot] ❌ MOMENTUM PRE-REJECT: ${incomingMint.slice(0,8)} — m5=${priceChangeM5.toFixed(1)}% (falling)`);
+                continue;
+              }
+              // Require positive momentum: m5 > +0.5% OR h1 > +2%
+              if (priceChangeM5 < 0.5 && priceChangeH1 < 2) {
+                console.log(`[bot] ❌ MOMENTUM REJECT: ${incomingMint.slice(0,8)} — m5=${priceChangeM5.toFixed(1)}%, h1=${priceChangeH1.toFixed(1)}% (stagnant)`);
                 continue;
               }
             }
@@ -608,11 +651,11 @@ Deno.serve(async (req) => {
             // Cap at 100
             totalScore = Math.min(100, totalScore);
 
-            // ── QUALITY GATE v3 (AGGRESSIVE): accept with TA OR decent liquidity ──
+            // ── QUALITY GATE v4 (QUALITY): require at least 1 TA strategy ──
             const hasStrongQuality = taTriggered.length > 0;
-            const hasDefensiveQuality = realLiquidityUsd > 20000 && priceChangeM5 > -3;
+            const hasDefensiveQuality = realLiquidityUsd > 50000 && priceChangeM5 > 0.5 && priceChangeH1 > 2;
             if (!hasStrongQuality && !hasDefensiveQuality) {
-              console.log(`[bot] ❌ QUALITY GATE v3: ${incomingMint.slice(0,8)} — no TA, liq=$${realLiquidityUsd.toFixed(0)}, m5=${priceChangeM5.toFixed(1)}% → SKIP`);
+              console.log(`[bot] ❌ QUALITY GATE v4: ${incomingMint.slice(0,8)} — no TA, liq=$${realLiquidityUsd.toFixed(0)}, m5=${priceChangeM5.toFixed(1)}% → SKIP`);
               continue;
             }
 
@@ -840,9 +883,9 @@ Deno.serve(async (req) => {
         // Market filters (same thresholds as wallet-sourced)
         const minLiq = Number(pLiquidity.min_value_usd || 3000);
         if (realLiquidityUsd < minLiq) { console.log(`[discovery] REJECT ${tokenSymbol}: liq $${realLiquidityUsd.toFixed(0)} < $${minLiq}`); continue; }
-        if (volume5m > 0 && volume5m < 2000) continue;
+        if (volume5m > 0 && volume5m < 5000) continue;
         // Token age filter DISABLED — whole Solana market
-        if (priceChangeM5 < -10) { console.log(`[discovery] ❌ MOMENTUM REJECT ${tokenSymbol}: m5=${priceChangeM5.toFixed(1)}%`); continue; }
+        if (priceChangeM5 < -3) { console.log(`[discovery] ❌ MOMENTUM REJECT ${tokenSymbol}: m5=${priceChangeM5.toFixed(1)}%`); continue; }
 
         // Pump.fun filter
         const isPump = disc.mint.endsWith("pump") || tokenSymbol.toLowerCase().includes("pump");
@@ -898,11 +941,11 @@ Deno.serve(async (req) => {
         totalScore += 10 + lpLockScore; // holder dist + LP
         totalScore = Math.min(100, totalScore);
 
-        // Quality Gate v2 — same as wallet-sourced
+        // Quality Gate v4 — require TA or very strong defensive
         const hasTA = taTriggered.length > 0;
-        const hasDefensive = realLiquidityUsd > 20000 && priceChangeM5 > -3;
+        const hasDefensive = realLiquidityUsd > 50000 && priceChangeM5 > 0.5 && priceChangeH1 > 2;
         if (!hasTA && !hasDefensive) {
-          console.log(`[discovery] ❌ QUALITY GATE: ${tokenSymbol} — no TA, liq=$${realLiquidityUsd.toFixed(0)}`);
+          console.log(`[discovery] ❌ QUALITY GATE v4: ${tokenSymbol} — no TA, liq=$${realLiquidityUsd.toFixed(0)}`);
           continue;
         }
 
@@ -1245,21 +1288,21 @@ Deno.serve(async (req) => {
                     const priceChangeH1 = Number(topPair?.priceChange?.h1 || 0);
                     const volume5m = Number(topPair?.volume?.m5 || 0);
                     
-                    // Reject if price is falling fast (dumping)
-                    if (priceChangeM5 < -8) {
+                    // Reject if price is falling (stricter momentum filter)
+                    if (priceChangeM5 < -3) {
                       console.log(`[bot] ❌ MOMENTUM REJECT: ${signal.token_symbol} — price falling ${priceChangeM5.toFixed(1)}% in 5min`);
                       await supabase.from("trading_signals").update({ status: "rejected" }).eq("id", signal.id);
                       continue;
                     }
-                    // Require at least neutral momentum — m5 >= 0% OR h1 >= +2%
-                    if (priceChangeM5 < -3 && priceChangeH1 < 0) {
-                      console.log(`[bot] ❌ MOMENTUM REJECT: ${signal.token_symbol} — negative momentum: m5=${priceChangeM5.toFixed(1)}%, h1=${priceChangeH1.toFixed(1)}%`);
+                    // Require positive momentum: m5 > +0.5% OR h1 > +2%
+                    if (priceChangeM5 < 0.5 && priceChangeH1 < 2) {
+                      console.log(`[bot] ❌ MOMENTUM REJECT: ${signal.token_symbol} — weak momentum: m5=${priceChangeM5.toFixed(1)}%, h1=${priceChangeH1.toFixed(1)}%`);
                       await supabase.from("trading_signals").update({ status: "rejected" }).eq("id", signal.id);
                       continue;
                     }
-                    // Re-check volume at execution time
-                    if (volume5m > 0 && volume5m < 1500) {
-                      console.log(`[bot] ❌ VOLUME REJECT AT EXEC: ${signal.token_symbol} — vol5m=$${volume5m.toFixed(0)} < $1500`);
+                    // Re-check volume at execution time ($5k minimum)
+                    if (volume5m > 0 && volume5m < 5000) {
+                      console.log(`[bot] ❌ VOLUME REJECT AT EXEC: ${signal.token_symbol} — vol5m=$${volume5m.toFixed(0)} < $5000`);
                       await supabase.from("trading_signals").update({ status: "rejected" }).eq("id", signal.id);
                       continue;
                     }
@@ -1285,20 +1328,19 @@ Deno.serve(async (req) => {
               continue;
             }
 
-            // ── SNIPER SIZING: aggressive scaling for high-confidence signals ──
+            // ── QUALITY SIZING: conservative scaling for quality signals ──
             let positionSol = 0.03;
             const confidence = Number(signal.confidence || 0);
             const conditions = signal.conditions as any || {};
             const hasVelocity = Number(conditions.velocity_bonus || 0) > 0;
-            if (confidence >= 85) positionSol = 0.20;
-            else if (confidence >= 75) positionSol = 0.15;
-            else if (confidence >= 65) positionSol = 0.12;
-            else if (confidence >= 55) positionSol = 0.08;
-            else positionSol = 0.05;
+            if (confidence >= 85) positionSol = 0.15;
+            else if (confidence >= 75) positionSol = 0.10;
+            else if (confidence >= 65) positionSol = 0.06;
+            else positionSol = 0.03;
             
             // Velocity bonus: +20% position size for accelerating tokens
-            if (hasVelocity && positionSol < 0.15) {
-              positionSol = Math.min(0.15, positionSol * 1.2);
+            if (hasVelocity && positionSol < 0.10) {
+              positionSol = Math.min(0.10, positionSol * 1.2);
               console.log(`[bot] 🎯 VELOCITY SIZE BOOST: ${signal.token_symbol} → ${positionSol.toFixed(3)} SOL`);
             }
 

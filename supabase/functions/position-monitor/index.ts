@@ -14,22 +14,21 @@ const MAX_NO_ROUTE_ATTEMPTS_BEFORE_DUST_CLOSE = 3;
 const DUST_VALUE_USD_THRESHOLD = 0.25;
 const DUST_TOKEN_RATIO_THRESHOLD = 0.02;
 
-// ─── TRAILING STOP TABLE ───
+// ─── TIERED TRAILING STOP TABLE ───
+// Tightens as profit grows — protects mega-winners better
 const TRAILING_TABLE = [
-  { minPnl: 200, trailing: 20 },
-  { minPnl: 100, trailing: 20 },
-  { minPnl: 80, trailing: 20 },
-  { minPnl: 40, trailing: 20 },
+  { minPnl: 100, trailing: 15 },  // mega-winner: tight lock
+  { minPnl: 50, trailing: 18 },
   { minPnl: 20, trailing: 20 },
-  { minPnl: 10, trailing: 20 },
-  { minPnl: 0, trailing: 20 },
+  { minPnl: 10, trailing: 25 },   // moderate: some room
+  { minPnl: 0, trailing: 30 },    // early: wide — let it develop
 ];
 
 function getTrailingStopPct(pnlPct: number): number {
   for (const tier of TRAILING_TABLE) {
     if (pnlPct >= tier.minPnl) return tier.trailing;
   }
-  return 20;
+  return 30;
 }
 
 Deno.serve(async (req) => {
@@ -77,19 +76,19 @@ Deno.serve(async (req) => {
       const currentPrice = priceMap[pos.token_mint] || 0;
       console.log(`[position-monitor] ${pos.token_symbol}: entry=$${Number(pos.entry_price_usd).toFixed(6)}, current=$${currentPrice.toFixed(6)}, pnl=${currentPrice > 0 && Number(pos.entry_price_usd) > 0 ? (((currentPrice - Number(pos.entry_price_usd)) / Number(pos.entry_price_usd)) * 100).toFixed(2) : '?'}%`);
 
-      // ── DEAD TOKEN: no price for >3h → close ──
+      // ── DEAD TOKEN: no price for >30min → close (was 3h — too slow) ──
       if (currentPrice <= 0) {
         const lastUpdate = new Date(pos.updated_at).getTime();
-        const hoursSinceUpdate = (Date.now() - lastUpdate) / (1000 * 60 * 60);
+        const minutesSinceUpdate = (Date.now() - lastUpdate) / (1000 * 60);
         const entryPrice = Number(pos.entry_price_usd) || 0;
 
-        if (hoursSinceUpdate >= 3 || entryPrice <= 0) {
-          console.warn(`[position-monitor] Dead token: ${pos.token_symbol} — no price ${hoursSinceUpdate.toFixed(1)}h, force-closing as -100%`);
+        if (minutesSinceUpdate >= 30 || entryPrice <= 0) {
+          console.warn(`[position-monitor] Dead token: ${pos.token_symbol} — no price ${minutesSinceUpdate.toFixed(0)}min, force-closing as -100%`);
           const closed = await closePosition(supabase, supabaseUrl, supabaseKey, pos, 0, "dead_token", -100);
           if (closed) closedCount++;
           continue;
         }
-        console.warn(`[position-monitor] No price for ${pos.token_symbol}, waiting ${(3 - hoursSinceUpdate).toFixed(1)}h`);
+        console.warn(`[position-monitor] No price for ${pos.token_symbol}, waiting ${(30 - minutesSinceUpdate).toFixed(0)}min`);
         continue;
       }
 
