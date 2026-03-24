@@ -885,7 +885,7 @@ Deno.serve(async (req) => {
         if (realLiquidityUsd < minLiq) { console.log(`[discovery] REJECT ${tokenSymbol}: liq $${realLiquidityUsd.toFixed(0)} < $${minLiq}`); continue; }
         if (volume5m > 0 && volume5m < 5000) continue;
         // Token age filter DISABLED — whole Solana market
-        if (priceChangeM5 < -10) { console.log(`[discovery] ❌ MOMENTUM REJECT ${tokenSymbol}: m5=${priceChangeM5.toFixed(1)}%`); continue; }
+        if (priceChangeM5 < -3) { console.log(`[discovery] ❌ MOMENTUM REJECT ${tokenSymbol}: m5=${priceChangeM5.toFixed(1)}%`); continue; }
 
         // Pump.fun filter
         const isPump = disc.mint.endsWith("pump") || tokenSymbol.toLowerCase().includes("pump");
