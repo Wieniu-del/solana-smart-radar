@@ -879,6 +879,10 @@ Deno.serve(async (req) => {
               if (taTriggered.includes("triple_momentum")) totalScore += 20;
               if (taTriggered.includes("ema_ribbon")) totalScore += 20;
               if (taTriggered.includes("rsi_divergence") || taTriggered.includes("vwap_reversion")) totalScore += 15;
+              if (taTriggered.includes("breakout_volume")) totalScore += 22;
+              if (taTriggered.includes("macd_cross")) totalScore += 18;
+              if (taTriggered.includes("bollinger_squeeze")) totalScore += 20;
+              if (taTriggered.includes("momentum_burst")) totalScore += 15;
               if (taTriggered.length > 0) {
                 const rsiVal = taRsi(14, candles.map(c => c.close));
                 if (rsiVal > 48) totalScore += 15;
