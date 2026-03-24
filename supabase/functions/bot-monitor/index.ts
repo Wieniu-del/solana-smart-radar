@@ -526,16 +526,21 @@ Deno.serve(async (req) => {
             // Token age filter — DISABLED to allow whole Solana market (DeFi, infra, etc.)
             // if (tokenAgeMinutes > 0 && tokenAgeMinutes > 99999) { continue; }
 
-            // ── MOMENTUM PRE-CHECK: reject tokens with negative short-term momentum ──
+            // ── MOMENTUM PRE-CHECK v2: require POSITIVE momentum ──
             let priceChangeM5 = 0;
             let priceChangeH1 = 0;
             if (dexPairsData.length > 0) {
               const topPair = dexPairsData.sort((a: any, b: any) => Number(b?.liquidity?.usd || 0) - Number(a?.liquidity?.usd || 0))[0];
               priceChangeM5 = Number(topPair?.priceChange?.m5 || 0);
               priceChangeH1 = Number(topPair?.priceChange?.h1 || 0);
-              // Hard reject: falling fast
-              if (priceChangeM5 < -10) {
-                console.log(`[bot] ❌ MOMENTUM PRE-REJECT: ${incomingMint.slice(0,8)} — m5=${priceChangeM5.toFixed(1)}% (dumping)`);
+              // Hard reject: falling momentum
+              if (priceChangeM5 < -3) {
+                console.log(`[bot] ❌ MOMENTUM PRE-REJECT: ${incomingMint.slice(0,8)} — m5=${priceChangeM5.toFixed(1)}% (falling)`);
+                continue;
+              }
+              // Require positive momentum: m5 > +0.5% OR h1 > +2%
+              if (priceChangeM5 < 0.5 && priceChangeH1 < 2) {
+                console.log(`[bot] ❌ MOMENTUM REJECT: ${incomingMint.slice(0,8)} — m5=${priceChangeM5.toFixed(1)}%, h1=${priceChangeH1.toFixed(1)}% (stagnant)`);
                 continue;
               }
             }
