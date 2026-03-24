@@ -110,8 +110,7 @@ Deno.serve(async (req) => {
       const pnlPct = ((currentPrice - entryPrice) / entryPrice) * 100;
       const hoursHeld = (Date.now() - new Date(pos.opened_at).getTime()) / (1000 * 60 * 60);
 
-      // ── SNIPER TRAILING: activate earlier for faster profit capture ──
-      // Trailing activates at 5% profit (was 8%) — sniper locks gains faster
+      // ── TRAILING: activate at 3% profit — lock gains early ──
       const trailingActive = pnlPct >= TRAILING_START_PCT;
       const trailingStopPct = getTrailingStopPct(pnlPct);
       const stopPrice = trailingActive
@@ -125,7 +124,7 @@ Deno.serve(async (req) => {
       // ── CHECK CLOSE CONDITIONS ──
       let closeReason: string | null = null;
 
-      // Hard stop loss at -12% (sniper: tighter than before)
+      // Hard stop loss
       if (pnlPct <= -STOP_LOSS_PCT) {
         closeReason = "stop_loss";
       }
@@ -139,10 +138,9 @@ Deno.serve(async (req) => {
         closeReason = "fast_loss_cut";
       }
 
-      // ── TIME DECAY: after 90min with <8% profit → close ──
-      // Stagnant tokens drain capital via fees
+      // ── TIME DECAY: after 180min with <8% profit → close ──
       // SKIP if mega-winner (PnL > 100%) — let trailing stop manage it
-      if (minutesHeld >= 90 && pnlPct < 8 && pnlPct > -STOP_LOSS_PCT) {
+      if (minutesHeld >= 180 && pnlPct < 8 && pnlPct > -STOP_LOSS_PCT) {
         closeReason = "time_decay";
       }
 
