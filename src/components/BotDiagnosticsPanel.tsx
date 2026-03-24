@@ -145,6 +145,12 @@ export default function BotDiagnosticsPanel() {
 
   useEffect(() => { loadDiagnostics(); }, [loadDiagnostics]);
 
+  // Auto-refresh co 30 sekund
+  useEffect(() => {
+    const interval = setInterval(loadDiagnostics, 30000);
+    return () => clearInterval(interval);
+  }, [loadDiagnostics]);
+
   if (loading || !data) {
     return (
       <Card className="border-border bg-card">
