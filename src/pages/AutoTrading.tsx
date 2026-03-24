@@ -17,7 +17,7 @@ import DiscoverySourcesPanel from "@/components/DiscoverySourcesPanel";
 import SniperLiveFeed from "@/components/SniperLiveFeed";
 import {
   Bot, Zap, TrendingUp, TrendingDown, Clock, AlertTriangle,
-  CheckCircle2, XCircle, Target, Play, Filter, Loader2, BarChart3, Eye
+  CheckCircle2, XCircle, Target, Play, Filter, Loader2, BarChart3, Eye, Stethoscope
 } from "lucide-react";
 import {
   getStrategies, toggleStrategy, getRecentSignals, updateSignalStatus,
