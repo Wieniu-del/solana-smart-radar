@@ -560,6 +560,11 @@ Deno.serve(async (req) => {
                   if (taTriggered.includes("ema_ribbon")) totalScore += 20;
                   // RSI-based strategies → +15
                   if (taTriggered.includes("rsi_divergence") || taTriggered.includes("vwap_reversion")) totalScore += 15;
+                  // New strategies scoring
+                  if (taTriggered.includes("breakout_volume")) totalScore += 22;
+                  if (taTriggered.includes("macd_cross")) totalScore += 18;
+                  if (taTriggered.includes("bollinger_squeeze")) totalScore += 20;
+                  if (taTriggered.includes("momentum_burst")) totalScore += 15;
 
                   // RSI momentum bonus (if RSI > 48 on any triggered strategy) → +15
                   if (taTriggered.length > 0) {
@@ -874,6 +879,10 @@ Deno.serve(async (req) => {
               if (taTriggered.includes("triple_momentum")) totalScore += 20;
               if (taTriggered.includes("ema_ribbon")) totalScore += 20;
               if (taTriggered.includes("rsi_divergence") || taTriggered.includes("vwap_reversion")) totalScore += 15;
+              if (taTriggered.includes("breakout_volume")) totalScore += 22;
+              if (taTriggered.includes("macd_cross")) totalScore += 18;
+              if (taTriggered.includes("bollinger_squeeze")) totalScore += 20;
+              if (taTriggered.includes("momentum_burst")) totalScore += 15;
               if (taTriggered.length > 0) {
                 const rsiVal = taRsi(14, candles.map(c => c.close));
                 if (rsiVal > 48) totalScore += 15;
@@ -1604,6 +1613,11 @@ const TA_CONFIG = {
   ema_ribbon: { ribbon: [8, 13, 21, 34, 55], volumeMultiplier: 2.5, rsiMin: 45 },
   vwap_reversion: { volumeMultiplier: 3, rsiMax: 40, minAge: 10 },
   triple_momentum: { emaShort: 9, emaLong: 21, emaTrend: 50, rsiBuy: 48, volumeMultiplier: 3, maxAgeMinutes: 30 },
+  // ── NEW STRATEGIES ──
+  breakout_volume: { lookback: 20, breakoutMultiplier: 1.5, volumeMultiplier: 2.0, rsiMin: 50 },
+  macd_cross: { fastPeriod: 12, slowPeriod: 26, signalPeriod: 9, volumeMultiplier: 1.5 },
+  bollinger_squeeze: { period: 20, stdDev: 2, squeezeThreshold: 0.02, volumeMultiplier: 1.8 },
+  momentum_burst: { rsiMin: 55, rsiMax: 75, priceChangeMin: 2, volumeMultiplier: 2.0 },
 };
 
 // Age-based phase selection
@@ -1616,10 +1630,10 @@ function selectPhase(ageMinutes: number): string {
 
 function getPhaseStrategies(phase: string): string[] {
   switch (phase) {
-    case "launch": return ["volume_explosion"];
-    case "momentum": return ["volume_explosion", "triple_momentum"];
-    case "trending": return ["ema_ribbon", "triple_momentum"];
-    case "mature": return ["rsi_divergence", "vwap_reversion"];
+    case "launch": return ["volume_explosion", "momentum_burst"];
+    case "momentum": return ["volume_explosion", "triple_momentum", "breakout_volume", "momentum_burst"];
+    case "trending": return ["ema_ribbon", "triple_momentum", "macd_cross", "bollinger_squeeze"];
+    case "mature": return ["rsi_divergence", "vwap_reversion", "macd_cross", "bollinger_squeeze"];
     default: return [];
   }
 }
@@ -1650,6 +1664,47 @@ function evaluateStrategy(s: string, p: number[], vol: number, avgVol: number, r
     return e9.at(-1)! > e21.at(-1)! && p.at(-1)! > e200.at(-1)! &&
       vol > avgVol * cfg.volumeMultiplier && r > cfg.rsiBuy &&
       md.ageMinutes < cfg.maxAgeMinutes;
+  } else if (s === "breakout_volume") {
+    // Breakout: price above recent high with volume confirmation
+    const cfg = TA_CONFIG.breakout_volume;
+    const recentHighs = p.slice(-cfg.lookback, -1);
+    const recentHigh = Math.max(...recentHighs);
+    const currentPrice = p.at(-1)!;
+    return currentPrice > recentHigh * cfg.breakoutMultiplier &&
+      vol > avgVol * cfg.volumeMultiplier && r > cfg.rsiMin;
+  } else if (s === "macd_cross") {
+    // MACD crossover: fast EMA crosses above slow EMA with signal line confirmation
+    const cfg = TA_CONFIG.macd_cross;
+    const emaFast = taEma(cfg.fastPeriod, p);
+    const emaSlow = taEma(cfg.slowPeriod, p);
+    if (emaFast.length < 2 || emaSlow.length < 2) return false;
+    const macd = emaFast.map((v, i) => v - emaSlow[i]);
+    const signalLine = taEma(cfg.signalPeriod, macd);
+    // Bullish: MACD crosses above signal line
+    return macd.length >= 2 && signalLine.length >= 2 &&
+      macd.at(-2)! < signalLine.at(-2)! && macd.at(-1)! > signalLine.at(-1)! &&
+      vol > avgVol * cfg.volumeMultiplier;
+  } else if (s === "bollinger_squeeze") {
+    // Bollinger Band squeeze: low volatility followed by expansion
+    const cfg = TA_CONFIG.bollinger_squeeze;
+    if (p.length < cfg.period) return false;
+    const slice = p.slice(-cfg.period);
+    const mean = slice.reduce((a, b) => a + b, 0) / slice.length;
+    const variance = slice.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / slice.length;
+    const stdDev = Math.sqrt(variance);
+    const bandWidth = (stdDev * 2) / mean; // Normalized band width
+    const currentPrice = p.at(-1)!;
+    // Squeeze: narrow bands + price breaking above upper band
+    return bandWidth < cfg.squeezeThreshold && currentPrice > mean + stdDev &&
+      vol > avgVol * cfg.volumeMultiplier;
+  } else if (s === "momentum_burst") {
+    // Strong momentum: RSI in bullish zone + price accelerating + volume surge
+    const cfg = TA_CONFIG.momentum_burst;
+    if (p.length < 5) return false;
+    const priceChange = ((p.at(-1)! - p.at(-3)!) / p.at(-3)!) * 100;
+    return r > cfg.rsiMin && r < cfg.rsiMax &&
+      priceChange > cfg.priceChangeMin &&
+      vol > avgVol * cfg.volumeMultiplier;
   }
   return false;
 }

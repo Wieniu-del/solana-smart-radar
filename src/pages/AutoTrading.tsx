@@ -12,11 +12,12 @@ import SystemStatusPanel from "@/components/SystemStatusPanel";
 import PipelineConfigPanel from "@/components/PipelineConfigPanel";
 import TechnicalStrategiesPanel from "@/components/TechnicalStrategiesPanel";
 import SignalDiagnostics from "@/components/SignalDiagnostics";
+import BotDiagnosticsPanel from "@/components/BotDiagnosticsPanel";
 import DiscoverySourcesPanel from "@/components/DiscoverySourcesPanel";
 import SniperLiveFeed from "@/components/SniperLiveFeed";
 import {
   Bot, Zap, TrendingUp, TrendingDown, Clock, AlertTriangle,
-  CheckCircle2, XCircle, Target, Play, Filter, Loader2, BarChart3, Eye
+  CheckCircle2, XCircle, Target, Play, Filter, Loader2, BarChart3, Eye, Stethoscope
 } from "lucide-react";
 import {
   getStrategies, toggleStrategy, getRecentSignals, updateSignalStatus,
@@ -166,6 +167,9 @@ export default function AutoTrading() {
           <TabsTrigger value="live">
             <Eye className="h-3.5 w-3.5 mr-1" /> Live Feed
           </TabsTrigger>
+          <TabsTrigger value="diagnostics-full">
+            <Stethoscope className="h-3.5 w-3.5 mr-1" /> Diagnostyka
+          </TabsTrigger>
         </TabsList>
 
         {/* ═══ TAB 1: Kontrola ═══ */}
@@ -282,6 +286,11 @@ export default function AutoTrading() {
         {/* ═══ TAB 4: Live Feed ═══ */}
         <TabsContent value="live" className="space-y-4">
           <SniperLiveFeed />
+        </TabsContent>
+
+        {/* ═══ TAB 5: Diagnostyka ═══ */}
+        <TabsContent value="diagnostics-full" className="space-y-4">
+          <BotDiagnosticsPanel />
         </TabsContent>
       </Tabs>
     </div>

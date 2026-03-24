@@ -69,7 +69,7 @@ Deno.serve(async (req) => {
       .select("value")
       .eq("key", "trailing_start_pct")
       .maybeSingle();
-    const TRAILING_START_PCT = Number(trailingStartConfig?.value) || 8;
+    const TRAILING_START_PCT = Number(trailingStartConfig?.value) || 3;
 
     let closedCount = 0;
 
@@ -110,8 +110,7 @@ Deno.serve(async (req) => {
       const pnlPct = ((currentPrice - entryPrice) / entryPrice) * 100;
       const hoursHeld = (Date.now() - new Date(pos.opened_at).getTime()) / (1000 * 60 * 60);
 
-      // ── SNIPER TRAILING: activate earlier for faster profit capture ──
-      // Trailing activates at 5% profit (was 8%) — sniper locks gains faster
+      // ── TRAILING: activate at 3% profit — lock gains early ──
       const trailingActive = pnlPct >= TRAILING_START_PCT;
       const trailingStopPct = getTrailingStopPct(pnlPct);
       const stopPrice = trailingActive
@@ -125,7 +124,7 @@ Deno.serve(async (req) => {
       // ── CHECK CLOSE CONDITIONS ──
       let closeReason: string | null = null;
 
-      // Hard stop loss at -12% (sniper: tighter than before)
+      // Hard stop loss
       if (pnlPct <= -STOP_LOSS_PCT) {
         closeReason = "stop_loss";
       }
@@ -139,10 +138,9 @@ Deno.serve(async (req) => {
         closeReason = "fast_loss_cut";
       }
 
-      // ── TIME DECAY: after 90min with <8% profit → close ──
-      // Stagnant tokens drain capital via fees
+      // ── TIME DECAY: after 180min with <8% profit → close ──
       // SKIP if mega-winner (PnL > 100%) — let trailing stop manage it
-      if (minutesHeld >= 90 && pnlPct < 8 && pnlPct > -STOP_LOSS_PCT) {
+      if (minutesHeld >= 180 && pnlPct < 8 && pnlPct > -STOP_LOSS_PCT) {
         closeReason = "time_decay";
       }
 
@@ -468,10 +466,17 @@ async function closePosition(
   const marketPnlPct = entryPrice > 0 && currentPrice > 0
     ? ((currentPrice - entryPrice) / entryPrice) * 100
     : pnlPct;
+  // ── RACE CONDITION FIX: preserve original closeReason when tokens already sold ──
+  const originalCloseReason = closeReason;
   const walletContextBefore = await fetchWalletTokenContext(pos.token_mint);
   if (walletContextBefore && walletContextBefore.rawBalance <= 0) {
-    console.warn(`[position-monitor] No tokens in wallet for ${pos.token_symbol} before SELL — force-closing as no_tokens`);
-    closeReason = "no_tokens";
+    // Tokens already gone (sold by previous cycle or externally)
+    // Preserve the ORIGINAL close reason instead of overwriting to "no_tokens"
+    console.warn(`[position-monitor] No tokens in wallet for ${pos.token_symbol} before SELL — closing as ${originalCloseReason} (tokens already sold)`);
+    if (originalCloseReason === "no_tokens" || !originalCloseReason) {
+      closeReason = "no_tokens";
+    }
+    // else keep originalCloseReason (time_decay, stop_loss, trailing_stop etc.)
     pnlPct = marketPnlPct;
   } else {
     try {
@@ -544,9 +549,12 @@ async function closePosition(
       }
 
       if (sellErrorKind === "no_tokens" || (walletContextAfter && walletContextAfter.rawBalance <= 0)) {
-        console.warn(`[position-monitor] No tokens left for ${pos.token_symbol} — force-closing as no_tokens`);
+        console.warn(`[position-monitor] No tokens left for ${pos.token_symbol} — closing as ${originalCloseReason} (tokens gone after sell attempt)`);
         txSignature = null;
-        closeReason = "no_tokens";
+        // Preserve original reason if it was a legitimate exit
+        if (!originalCloseReason || originalCloseReason === "no_tokens") {
+          closeReason = "no_tokens";
+        }
         pnlPct = marketPnlPct;
       } else if (shouldCloseAsDust) {
         console.warn(`[position-monitor] Closing ${pos.token_symbol} as unsellable_dust after repeated no-route errors`);
@@ -597,7 +605,7 @@ async function closePosition(
     unsellable_dust: "🧹 Unsellable Dust Cleanup",
     profit_fade: "🟠 Profit Fade Lock",
     fast_loss_cut: "⚡ Fast Loss Cut",
-    time_decay: "⏰ Time Decay (90min)",
+    time_decay: "⏰ Time Decay (180min)",
     max_hold_time: "⏳ Max Hold (3h)",
     mini_profit_take: "💰 Mini Profit Take",
   };
