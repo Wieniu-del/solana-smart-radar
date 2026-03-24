@@ -518,9 +518,9 @@ Deno.serve(async (req) => {
               console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: liquidity $${effectiveLiquidity.toFixed(0)} < $${minLiquidityUsd}`);
               continue;
             }
-            // Volume 5m filter ($5k minimum — relaxed to allow more signals through)
-            if (volume5m > 0 && volume5m < 2000) {
-              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: volume5m $${volume5m.toFixed(0)} < $2000`);
+            // Volume 5m filter ($5k minimum — quality over quantity)
+            if (volume5m > 0 && volume5m < 5000) {
+              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: volume5m $${volume5m.toFixed(0)} < $5000`);
               continue;
             }
             // Token age filter — DISABLED to allow whole Solana market (DeFi, infra, etc.)
