@@ -287,6 +287,11 @@ export default function AutoTrading() {
         <TabsContent value="live" className="space-y-4">
           <SniperLiveFeed />
         </TabsContent>
+
+        {/* ═══ TAB 5: Diagnostyka ═══ */}
+        <TabsContent value="diagnostics-full" className="space-y-4">
+          <BotDiagnosticsPanel />
+        </TabsContent>
       </Tabs>
     </div>
   );
