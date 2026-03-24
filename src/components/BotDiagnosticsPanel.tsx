@@ -199,7 +199,7 @@ export default function BotDiagnosticsPanel() {
               <span className="text-xs text-muted-foreground">Bot Status</span>
             </div>
             <div className="flex items-center gap-2">
-              <StatusDot ok={!data.botRunning || data.lastRunStatus === "completed"} />
+              <StatusDot ok={data.botRunning || data.lastRunStatus === "completed"} />
               <span className="text-sm font-bold text-foreground">
                 {data.botRunning ? "Aktywny" : data.lastRunStatus === "completed" ? "OK" : "Błąd"}
               </span>
