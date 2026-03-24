@@ -26,6 +26,7 @@ const mainItems = [
 
 const tradingItems = [
   { title: "Auto Trading", url: "/trading", icon: Bot },
+  { title: "Strategie TA", url: "/strategies", icon: Target },
   { title: "Handel Ręczny", url: "/manual-trading", icon: HandCoins },
   { title: "Dziennik Traidera", url: "/journal", icon: BookOpen },
   { title: "Skaner Wiadomości", url: "/news", icon: Newspaper },
