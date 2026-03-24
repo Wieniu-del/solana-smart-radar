@@ -21,6 +21,7 @@ import NewsScanner from "./pages/NewsScanner";
 import Journal from "./pages/Journal";
 import MyWallet from "./pages/MyWallet";
 import Diagnostics from "./pages/Diagnostics";
+import Strategies from "./pages/Strategies";
 import Login from "./pages/Login";
 import { initHeliusApiKey } from "@/services/helius";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
@@ -66,6 +67,7 @@ function ProtectedLayout() {
                 <Route path="/news" element={<NewsScanner />} />
                 <Route path="/journal" element={<Journal />} />
                 <Route path="/diagnostics" element={<Diagnostics />} />
+                <Route path="/strategies" element={<Strategies />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
