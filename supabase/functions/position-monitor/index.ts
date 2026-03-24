@@ -605,7 +605,7 @@ async function closePosition(
     unsellable_dust: "🧹 Unsellable Dust Cleanup",
     profit_fade: "🟠 Profit Fade Lock",
     fast_loss_cut: "⚡ Fast Loss Cut",
-    time_decay: "⏰ Time Decay (90min)",
+    time_decay: "⏰ Time Decay (180min)",
     max_hold_time: "⏳ Max Hold (3h)",
     mini_profit_take: "💰 Mini Profit Take",
   };
