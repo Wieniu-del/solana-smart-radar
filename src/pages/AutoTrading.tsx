@@ -167,6 +167,9 @@ export default function AutoTrading() {
           <TabsTrigger value="live">
             <Eye className="h-3.5 w-3.5 mr-1" /> Live Feed
           </TabsTrigger>
+          <TabsTrigger value="diagnostics-full">
+            <Stethoscope className="h-3.5 w-3.5 mr-1" /> Diagnostyka
+          </TabsTrigger>
         </TabsList>
 
         {/* ═══ TAB 1: Kontrola ═══ */}
