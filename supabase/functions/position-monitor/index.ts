@@ -14,22 +14,21 @@ const MAX_NO_ROUTE_ATTEMPTS_BEFORE_DUST_CLOSE = 3;
 const DUST_VALUE_USD_THRESHOLD = 0.25;
 const DUST_TOKEN_RATIO_THRESHOLD = 0.02;
 
-// ─── TRAILING STOP TABLE ───
+// ─── TIERED TRAILING STOP TABLE ───
+// Tightens as profit grows — protects mega-winners better
 const TRAILING_TABLE = [
-  { minPnl: 200, trailing: 20 },
-  { minPnl: 100, trailing: 20 },
-  { minPnl: 80, trailing: 20 },
-  { minPnl: 40, trailing: 20 },
+  { minPnl: 100, trailing: 15 },  // mega-winner: tight lock
+  { minPnl: 50, trailing: 18 },
   { minPnl: 20, trailing: 20 },
-  { minPnl: 10, trailing: 20 },
-  { minPnl: 0, trailing: 20 },
+  { minPnl: 10, trailing: 25 },   // moderate: some room
+  { minPnl: 0, trailing: 30 },    // early: wide — let it develop
 ];
 
 function getTrailingStopPct(pnlPct: number): number {
   for (const tier of TRAILING_TABLE) {
     if (pnlPct >= tier.minPnl) return tier.trailing;
   }
-  return 20;
+  return 30;
 }
 
 Deno.serve(async (req) => {
