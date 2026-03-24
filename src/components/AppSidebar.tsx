@@ -32,6 +32,7 @@ const tradingItems = [
 ];
 
 const systemItems = [
+  { title: "Diagnostyka", url: "/diagnostics", icon: Stethoscope },
   { title: "Alerty", url: "/alerts", icon: Bell },
   { title: "Ustawienia", url: "/settings", icon: Settings },
 ];

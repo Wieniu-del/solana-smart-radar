@@ -65,6 +65,7 @@ function ProtectedLayout() {
                 <Route path="/manual-trading" element={<ManualTrading />} />
                 <Route path="/news" element={<NewsScanner />} />
                 <Route path="/journal" element={<Journal />} />
+                <Route path="/diagnostics" element={<Diagnostics />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
