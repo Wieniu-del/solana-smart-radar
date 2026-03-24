@@ -1621,10 +1621,10 @@ function selectPhase(ageMinutes: number): string {
 
 function getPhaseStrategies(phase: string): string[] {
   switch (phase) {
-    case "launch": return ["volume_explosion"];
-    case "momentum": return ["volume_explosion", "triple_momentum"];
-    case "trending": return ["ema_ribbon", "triple_momentum"];
-    case "mature": return ["rsi_divergence", "vwap_reversion"];
+    case "launch": return ["volume_explosion", "momentum_burst"];
+    case "momentum": return ["volume_explosion", "triple_momentum", "breakout_volume", "momentum_burst"];
+    case "trending": return ["ema_ribbon", "triple_momentum", "macd_cross", "bollinger_squeeze"];
+    case "mature": return ["rsi_divergence", "vwap_reversion", "macd_cross", "bollinger_squeeze"];
     default: return [];
   }
 }
