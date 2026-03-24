@@ -651,11 +651,11 @@ Deno.serve(async (req) => {
             // Cap at 100
             totalScore = Math.min(100, totalScore);
 
-            // ── QUALITY GATE v3 (AGGRESSIVE): accept with TA OR decent liquidity ──
+            // ── QUALITY GATE v4 (QUALITY): require at least 1 TA strategy ──
             const hasStrongQuality = taTriggered.length > 0;
-            const hasDefensiveQuality = realLiquidityUsd > 20000 && priceChangeM5 > -3;
+            const hasDefensiveQuality = realLiquidityUsd > 50000 && priceChangeM5 > 0.5 && priceChangeH1 > 2;
             if (!hasStrongQuality && !hasDefensiveQuality) {
-              console.log(`[bot] ❌ QUALITY GATE v3: ${incomingMint.slice(0,8)} — no TA, liq=$${realLiquidityUsd.toFixed(0)}, m5=${priceChangeM5.toFixed(1)}% → SKIP`);
+              console.log(`[bot] ❌ QUALITY GATE v4: ${incomingMint.slice(0,8)} — no TA, liq=$${realLiquidityUsd.toFixed(0)}, m5=${priceChangeM5.toFixed(1)}% → SKIP`);
               continue;
             }
 
