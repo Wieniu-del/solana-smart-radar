@@ -9,6 +9,13 @@ import {
   Target, Loader2, Wifi, WifiOff
 } from "lucide-react";
 
+interface CriticalIssue {
+  severity: "critical" | "warning" | "info";
+  title: string;
+  detail: string;
+  timestamp?: string;
+}
+
 interface DiagData {
   // Bot status
   botRunning: boolean;
@@ -28,6 +35,7 @@ interface DiagData {
   executedToday: number;
   rejectedToday: number;
   expiredToday: number;
+  totalSignalsToday: number;
 
   // PnL
   winRate: number;
@@ -47,6 +55,16 @@ interface DiagData {
 
   // Errors
   recentErrors: Array<{ time: string; message: string; type: string }>;
+
+  // Critical issues (auto-detected)
+  criticalIssues: CriticalIssue[];
+
+  // SELL failures
+  sellFailures24h: number;
+  sellSuccesses24h: number;
+
+  // Dead tokens
+  deadTokensToday: number;
 }
 
 export default function BotDiagnosticsPanel() {
