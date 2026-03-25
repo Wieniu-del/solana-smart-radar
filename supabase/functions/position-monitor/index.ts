@@ -6,7 +6,7 @@ const corsHeaders = {
 };
 
 const SOLANA_RPC_DEFAULT = "https://api.mainnet-beta.solana.com";
-const SELL_SLIPPAGE_STEPS = [300, 500, 800, 1200];
+const SELL_SLIPPAGE_STEPS = [500, 800, 1200, 1500];
 const SELL_FAILURE_LOOKBACK_MINUTES = 30;
 const SELL_RATE_LIMIT_COOLDOWN_MS = 3 * 60 * 1000;
 const SELL_NO_ROUTE_COOLDOWN_MS = 5 * 60 * 1000;

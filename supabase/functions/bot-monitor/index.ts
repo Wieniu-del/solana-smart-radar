@@ -688,12 +688,17 @@ Deno.serve(async (req) => {
             // Cap at 100
             totalScore = Math.min(100, totalScore);
 
-            // ── QUALITY GATE v4 (QUALITY): require at least 1 TA strategy ──
+            // ── QUALITY GATE v5: require TA OR defensive OR Jupiter-price bypass ──
             const hasStrongQuality = taTriggered.length > 0;
             const hasDefensiveQuality = realLiquidityUsd > 50000 && priceChangeM5 > 0.5 && priceChangeH1 > 2;
-            if (!hasStrongQuality && !hasDefensiveQuality) {
-              console.log(`[bot] ❌ QUALITY GATE v4: ${incomingMint.slice(0,8)} — no TA, liq=$${realLiquidityUsd.toFixed(0)}, m5=${priceChangeM5.toFixed(1)}% → SKIP`);
+            // NEW: Jupiter price bypass — if token has price on Jupiter + score >= 65, allow through
+            const hasJupiterBypass = realLiquidityUsd >= 15000 && totalScore >= 65 && priceChangeM5 > 0;
+            if (!hasStrongQuality && !hasDefensiveQuality && !hasJupiterBypass) {
+              console.log(`[bot] ❌ QUALITY GATE v5: ${incomingMint.slice(0,8)} — no TA, no defensive, no Jupiter bypass (score=${totalScore}, liq=$${realLiquidityUsd.toFixed(0)}) → SKIP`);
               continue;
+            }
+            if (hasJupiterBypass && !hasStrongQuality) {
+              console.log(`[bot] ✅ JUPITER BYPASS: ${incomingMint.slice(0,8)} — score=${totalScore}, liq=$${realLiquidityUsd.toFixed(0)}, m5=+${priceChangeM5.toFixed(1)}%`);
             }
 
             totalTokensFound++;
