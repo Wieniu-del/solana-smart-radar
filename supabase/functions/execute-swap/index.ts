@@ -75,8 +75,9 @@ Deno.serve(async (req) => {
       console.log(`[execute-swap] SELL amount raw=${amountLamports}, decimals=${tokenDecimals}, closeAll=${closeAll === true}`);
     }
 
-    const quoteUrl = `${JUPITER_QUOTE_API}?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountLamports}&slippageBps=${slippageBps || 300}`;
-    console.log(`[execute-swap] ${action} quote request`);
+    const effectiveSlippage = action === "SELL" ? Math.max(slippageBps || 500, 500) : (slippageBps || 300);
+    const quoteUrl = `${JUPITER_QUOTE_API}?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountLamports}&slippageBps=${effectiveSlippage}`;
+    console.log(`[execute-swap] ${action} quote request (slippage=${effectiveSlippage}bps)`);
     const quoteRes = await fetch(quoteUrl);
     if (!quoteRes.ok) {
       const err = await quoteRes.text();
@@ -134,6 +135,65 @@ Deno.serve(async (req) => {
 
     const sendResult = await sendRes.json();
     if (sendResult.error) {
+      // ── RETRY with 90% balance for SELL on insufficient funds error ──
+      if (action === "SELL" && !closeAll && amountLamports > 0) {
+        const retryAmount = Math.floor(amountLamports * 0.9);
+        if (retryAmount > 0) {
+          console.log(`[execute-swap] SELL failed, retrying with 90% balance (${retryAmount} raw units)`);
+          const retryQuoteUrl = `${JUPITER_QUOTE_API}?inputMint=${inputMint}&outputMint=${outputMint}&amount=${retryAmount}&slippageBps=${effectiveSlippage}`;
+          const retryQuoteRes = await fetch(retryQuoteUrl);
+          if (retryQuoteRes.ok) {
+            const retryQuoteData = await retryQuoteRes.json();
+            const retrySwapRes = await fetch(JUPITER_SWAP_API, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                quoteResponse: retryQuoteData,
+                userPublicKey,
+                wrapAndUnwrapSol: true,
+                dynamicComputeUnitLimit: true,
+                prioritizationFeeLamports: "auto",
+              }),
+            });
+            if (retrySwapRes.ok) {
+              const retrySwapData = await retrySwapRes.json();
+              if (retrySwapData.swapTransaction) {
+                const retryTxBytes = Uint8Array.from(atob(retrySwapData.swapTransaction), (c) => c.charCodeAt(0));
+                const retryNumSigs = retryTxBytes[0];
+                const retrySigsEnd = 1 + retryNumSigs * 64;
+                const retryMessageBytes = retryTxBytes.slice(retrySigsEnd);
+                const retrySignature = nacl.sign.detached(retryMessageBytes, keypair.secretKey);
+                const retrySignedTx = new Uint8Array(retryTxBytes.length);
+                retrySignedTx.set(retryTxBytes);
+                retrySignedTx.set(retrySignature, 1);
+                let retryB64 = "";
+                for (let i = 0; i < retrySignedTx.length; i += chunk) {
+                  retryB64 += String.fromCharCode(...retrySignedTx.slice(i, i + chunk));
+                }
+                retryB64 = btoa(retryB64);
+                const retrySendRes = await fetch(rpcUrl, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    jsonrpc: "2.0", id: 1, method: "sendTransaction",
+                    params: [retryB64, { encoding: "base64", skipPreflight: false, preflightCommitment: "confirmed" }],
+                  }),
+                });
+                const retrySendResult = await retrySendRes.json();
+                if (!retrySendResult.error) {
+                  console.log(`[execute-swap] ✅ SELL retry with 90% succeeded`);
+                  // Continue with retry tx confirmation below
+                  const retryTxSig = retrySendResult.result as string;
+                  const retryConfirm = await confirmTransaction(rpcUrl, retryTxSig);
+                  if (retryConfirm.success) {
+                    return jsonRes({ success: true, txSignature: retryTxSig, retried: true });
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
       return jsonRes({ success: false, error: `RPC error: ${sendResult.error.message}` }, 502);
     }
 

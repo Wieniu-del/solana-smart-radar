@@ -455,7 +455,44 @@ Deno.serve(async (req) => {
                 }
               }
 
-              // Fallback: estimate from Jupiter price if still no liquidity data
+            // Fallback 2: Birdeye API for liquidity data
+              if (realLiquidityUsd <= 0) {
+                try {
+                  const birdeyeRes = await fetch(`https://public-api.birdeye.so/defi/token_overview?address=${incomingMint}`, {
+                    headers: { "accept": "application/json", "x-chain": "solana" },
+                  });
+                  if (birdeyeRes.ok) {
+                    const birdeyeData = await birdeyeRes.json();
+                    const birdeyeLiq = Number(birdeyeData?.data?.liquidity || 0);
+                    if (birdeyeLiq > 0) {
+                      realLiquidityUsd = birdeyeLiq;
+                      volume5m = Number(birdeyeData?.data?.v5m || 0) || volume5m;
+                      console.log(`[bot] ${incomingMint.slice(0,8)}: Birdeye liq=$${birdeyeLiq.toFixed(0)}`);
+                    }
+                  }
+                } catch (_) {}
+              }
+
+              // Fallback 3: DexScreener retry with 1s delay (rate limit protection)
+              if (realLiquidityUsd <= 0) {
+                try {
+                  await new Promise(r => setTimeout(r, 1000));
+                  const dexRetry = await fetch(`https://api.dexscreener.com/tokens/v1/solana/${incomingMint}`);
+                  if (dexRetry.ok) {
+                    const retryPairs = await dexRetry.json();
+                    const pairs = Array.isArray(retryPairs) ? retryPairs : [];
+                    if (pairs.length > 0) {
+                      realLiquidityUsd = pairs.reduce((max: number, p: any) => Math.max(max, Number(p?.liquidity?.usd || 0)), 0);
+                      volume5m = Number(pairs[0]?.volume?.m5 || 0) || volume5m;
+                      if (realLiquidityUsd > 0) {
+                        console.log(`[bot] ${incomingMint.slice(0,8)}: DexScreener RETRY success liq=$${realLiquidityUsd.toFixed(0)}`);
+                      }
+                    }
+                  }
+                } catch (_) {}
+              }
+
+              // Fallback 4: estimate from Jupiter price if still no liquidity data
               if (realLiquidityUsd <= 0) {
                 try {
                   const jupRes = await fetch(`https://lite-api.jup.ag/price/v2?ids=${encodeURIComponent(incomingMint)}`);
@@ -584,7 +621,7 @@ Deno.serve(async (req) => {
             // Volume explosion → +25, EMA crossover → +20, RSI momentum → +15
             let taTriggered: string[] = [];
             let velocityBonus = 0;
-            if (enabledTAStrategies.length > 0 && realLiquidityUsd > 0) {
+            if (enabledTAStrategies.length > 0) {
               try {
                 const candles = await fetchCandleData(incomingMint);
                 if (candles.length >= 3) {
@@ -651,12 +688,17 @@ Deno.serve(async (req) => {
             // Cap at 100
             totalScore = Math.min(100, totalScore);
 
-            // ── QUALITY GATE v4 (QUALITY): require at least 1 TA strategy ──
+            // ── QUALITY GATE v5: require TA OR defensive OR Jupiter-price bypass ──
             const hasStrongQuality = taTriggered.length > 0;
             const hasDefensiveQuality = realLiquidityUsd > 50000 && priceChangeM5 > 0.5 && priceChangeH1 > 2;
-            if (!hasStrongQuality && !hasDefensiveQuality) {
-              console.log(`[bot] ❌ QUALITY GATE v4: ${incomingMint.slice(0,8)} — no TA, liq=$${realLiquidityUsd.toFixed(0)}, m5=${priceChangeM5.toFixed(1)}% → SKIP`);
+            // NEW: Jupiter price bypass — if token has price on Jupiter + score >= 65, allow through
+            const hasJupiterBypass = realLiquidityUsd >= 15000 && totalScore >= 65 && priceChangeM5 > 0;
+            if (!hasStrongQuality && !hasDefensiveQuality && !hasJupiterBypass) {
+              console.log(`[bot] ❌ QUALITY GATE v5: ${incomingMint.slice(0,8)} — no TA, no defensive, no Jupiter bypass (score=${totalScore}, liq=$${realLiquidityUsd.toFixed(0)}) → SKIP`);
               continue;
+            }
+            if (hasJupiterBypass && !hasStrongQuality) {
+              console.log(`[bot] ✅ JUPITER BYPASS: ${incomingMint.slice(0,8)} — score=${totalScore}, liq=$${realLiquidityUsd.toFixed(0)}, m5=+${priceChangeM5.toFixed(1)}%`);
             }
 
             totalTokensFound++;
