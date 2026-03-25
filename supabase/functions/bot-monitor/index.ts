@@ -455,7 +455,44 @@ Deno.serve(async (req) => {
                 }
               }
 
-              // Fallback: estimate from Jupiter price if still no liquidity data
+            // Fallback 2: Birdeye API for liquidity data
+              if (realLiquidityUsd <= 0) {
+                try {
+                  const birdeyeRes = await fetch(`https://public-api.birdeye.so/defi/token_overview?address=${incomingMint}`, {
+                    headers: { "accept": "application/json", "x-chain": "solana" },
+                  });
+                  if (birdeyeRes.ok) {
+                    const birdeyeData = await birdeyeRes.json();
+                    const birdeyeLiq = Number(birdeyeData?.data?.liquidity || 0);
+                    if (birdeyeLiq > 0) {
+                      realLiquidityUsd = birdeyeLiq;
+                      volume5m = Number(birdeyeData?.data?.v5m || 0) || volume5m;
+                      console.log(`[bot] ${incomingMint.slice(0,8)}: Birdeye liq=$${birdeyeLiq.toFixed(0)}`);
+                    }
+                  }
+                } catch (_) {}
+              }
+
+              // Fallback 3: DexScreener retry with 1s delay (rate limit protection)
+              if (realLiquidityUsd <= 0) {
+                try {
+                  await new Promise(r => setTimeout(r, 1000));
+                  const dexRetry = await fetch(`https://api.dexscreener.com/tokens/v1/solana/${incomingMint}`);
+                  if (dexRetry.ok) {
+                    const retryPairs = await dexRetry.json();
+                    const pairs = Array.isArray(retryPairs) ? retryPairs : [];
+                    if (pairs.length > 0) {
+                      realLiquidityUsd = pairs.reduce((max: number, p: any) => Math.max(max, Number(p?.liquidity?.usd || 0)), 0);
+                      volume5m = Number(pairs[0]?.volume?.m5 || 0) || volume5m;
+                      if (realLiquidityUsd > 0) {
+                        console.log(`[bot] ${incomingMint.slice(0,8)}: DexScreener RETRY success liq=$${realLiquidityUsd.toFixed(0)}`);
+                      }
+                    }
+                  }
+                } catch (_) {}
+              }
+
+              // Fallback 4: estimate from Jupiter price if still no liquidity data
               if (realLiquidityUsd <= 0) {
                 try {
                   const jupRes = await fetch(`https://lite-api.jup.ag/price/v2?ids=${encodeURIComponent(incomingMint)}`);
