@@ -621,7 +621,7 @@ Deno.serve(async (req) => {
             // Volume explosion → +25, EMA crossover → +20, RSI momentum → +15
             let taTriggered: string[] = [];
             let velocityBonus = 0;
-            if (enabledTAStrategies.length > 0 && realLiquidityUsd > 0) {
+            if (enabledTAStrategies.length > 0) {
               try {
                 const candles = await fetchCandleData(incomingMint);
                 if (candles.length >= 3) {
