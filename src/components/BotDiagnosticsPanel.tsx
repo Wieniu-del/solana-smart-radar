@@ -9,6 +9,13 @@ import {
   Target, Loader2, Wifi, WifiOff
 } from "lucide-react";
 
+interface CriticalIssue {
+  severity: "critical" | "warning" | "info";
+  title: string;
+  detail: string;
+  timestamp?: string;
+}
+
 interface DiagData {
   // Bot status
   botRunning: boolean;
@@ -28,6 +35,7 @@ interface DiagData {
   executedToday: number;
   rejectedToday: number;
   expiredToday: number;
+  totalSignalsToday: number;
 
   // PnL
   winRate: number;
@@ -47,6 +55,16 @@ interface DiagData {
 
   // Errors
   recentErrors: Array<{ time: string; message: string; type: string }>;
+
+  // Critical issues (auto-detected)
+  criticalIssues: CriticalIssue[];
+
+  // SELL failures
+  sellFailures24h: number;
+  sellSuccesses24h: number;
+
+  // Dead tokens
+  deadTokensToday: number;
 }
 
 export default function BotDiagnosticsPanel() {
@@ -62,7 +80,7 @@ export default function BotDiagnosticsPanel() {
 
       const [
         runsRes, openPosRes, closedTodayRes, signalsRes,
-        configRes, notifRes, strategiesRes
+        configRes, notifRes, strategiesRes, sellExecRes
       ] = await Promise.all([
         supabase.from("bot_runs").select("*").gte("started_at", oneHourAgo).order("started_at", { ascending: false }).limit(20),
         supabase.from("open_positions").select("*").eq("status", "open"),
@@ -71,6 +89,7 @@ export default function BotDiagnosticsPanel() {
         supabase.from("bot_config").select("*"),
         supabase.from("notifications").select("*").in("type", ["swap_error", "balance_guard"]).gte("created_at", oneHourAgo).order("created_at", { ascending: false }).limit(10),
         supabase.from("trading_strategies").select("*"),
+        supabase.from("trade_executions").select("*").eq("action", "SELL").gte("created_at", todayStart),
       ]);
 
       const runs = runsRes.data || [];
@@ -78,6 +97,7 @@ export default function BotDiagnosticsPanel() {
       const signals = signalsRes.data || [];
       const configs = configRes.data || [];
       const notifications = notifRes.data || [];
+      const sellExecs = sellExecRes.data || [];
 
       const getConfig = (key: string, def: any = null) => {
         const c = configs.find((c: any) => c.key === key);
@@ -106,20 +126,123 @@ export default function BotDiagnosticsPanel() {
 
       const lastRun = runs[0] || null;
 
+      // SELL stats
+      const sellFailures24h = sellExecs.filter((e: any) => e.status === "failed").length;
+      const sellSuccesses24h = sellExecs.filter((e: any) => e.status === "executed").length;
+      const deadTokensToday = closedReasons["dead_token"] || 0;
+
+      // Signal stats
+      const executedToday = signals.filter((s: any) => s.status === "executed").length;
+      const rejectedToday = signals.filter((s: any) => s.status === "rejected").length;
+      const expiredToday = signals.filter((s: any) => s.status === "expired").length;
+      const totalSignalsToday = signals.length;
+
+      // ── AUTO-DETECT CRITICAL ISSUES ──
+      const criticalIssues: CriticalIssue[] = [];
+
+      // 1. Bot nie handluje — 0 executed w 24h + sygnały rejected/expired
+      if (executedToday === 0 && (rejectedToday + expiredToday) > 5) {
+        criticalIssues.push({
+          severity: "critical",
+          title: "Bot nie handluje",
+          detail: `0 wykonanych transakcji przy ${rejectedToday} odrzuconych i ${expiredToday} wygasłych sygnałach. Prawdopodobny problem z filtrami wejścia lub danymi rynkowymi.`,
+        });
+      }
+
+      // 2. Liquidity deadlock — >80% sygnałów odrzuconych
+      const rejectionRate = totalSignalsToday > 0 ? (rejectedToday / totalSignalsToday) * 100 : 0;
+      if (rejectionRate > 80 && totalSignalsToday > 10) {
+        criticalIssues.push({
+          severity: "critical",
+          title: "Liquidity Deadlock",
+          detail: `${rejectionRate.toFixed(0)}% sygnałów odrzuconych (${rejectedToday}/${totalSignalsToday}). DexScreener może zwracać $0 liquidity (rate limiting) lub filtry są zbyt restrykcyjne.`,
+        });
+      }
+
+      // 3. SELL failures — więcej niż 3 failowe SELL w 24h
+      if (sellFailures24h >= 3) {
+        const sellFailRate = sellFailures24h + sellSuccesses24h > 0 
+          ? ((sellFailures24h / (sellFailures24h + sellSuccesses24h)) * 100).toFixed(0) 
+          : "100";
+        criticalIssues.push({
+          severity: sellFailures24h >= 5 ? "critical" : "warning",
+          title: `SELL Failures: ${sellFailures24h}x`,
+          detail: `${sellFailRate}% SELL-i kończy się błędem. Sprawdź slippage, balance tokena lub Jupiter routing.`,
+        });
+      }
+
+      // 4. Dead tokens — katastrofalne straty
+      if (deadTokensToday >= 2) {
+        criticalIssues.push({
+          severity: "warning",
+          title: `Dead Tokens: ${deadTokensToday}x`,
+          detail: `${deadTokensToday} tokenów okazało się martwych (-100% PnL). Filtry bezpieczeństwa mogą być zbyt słabe.`,
+        });
+      }
+
+      // 5. Bot errors — więcej niż 3 błędy w ostatniej godzinie
+      const errorsLast1h = runs.filter((r: any) => r.status === "error").length;
+      if (errorsLast1h >= 3) {
+        criticalIssues.push({
+          severity: "critical",
+          title: `Błędy bota: ${errorsLast1h}x/h`,
+          detail: `${errorsLast1h} błędów w ostatniej godzinie. Bot może nie działać poprawnie. Sprawdź logi Edge Functions.`,
+        });
+      }
+
+      // 6. Bot nie odpowiada — brak runów w ostatniej godzinie
+      if (runs.length === 0) {
+        criticalIssues.push({
+          severity: "critical",
+          title: "Bot nie odpowiada",
+          detail: "Brak cykli bota w ostatniej godzinie. pg_cron może być wyłączony lub Edge Function nie deployuje się poprawnie.",
+        });
+      }
+
+      // 7. Wysoki wskaźnik strat
+      if (pnls.length >= 5 && winRate < 30) {
+        criticalIssues.push({
+          severity: "warning",
+          title: `Niski Win Rate: ${winRate.toFixed(0)}%`,
+          detail: `Tylko ${wins}/${pnls.length} zyskownych tradów dziś. Rozważ zaostrzenie kryteriów wejścia.`,
+        });
+      }
+
+      // 8. Sell-only mode aktywny (info)
+      if (getConfig("sell_only_mode", false) === true) {
+        criticalIssues.push({
+          severity: "info",
+          title: "Tryb SELL ONLY",
+          detail: "Bot nie otwiera nowych pozycji. Tylko zamyka istniejące.",
+        });
+      }
+
+      // 9. Recent swap errors from notifications
+      const swapErrors = notifications.filter((n: any) => n.type === "swap_error");
+      if (swapErrors.length >= 3) {
+        criticalIssues.push({
+          severity: "warning",
+          title: `Swap Errors: ${swapErrors.length}x/h`,
+          detail: swapErrors[0]?.message?.slice(0, 150) || "Wielokrotne błędy swap w ostatniej godzinie.",
+          timestamp: swapErrors[0]?.created_at ? new Date(swapErrors[0].created_at).toLocaleTimeString("pl-PL") : undefined,
+        });
+      }
+
       setData({
         botRunning: runs.some((r: any) => r.status === "running"),
         lastRunAt: lastRun?.started_at || null,
         lastRunStatus: lastRun?.status || null,
         lastRunDuration: lastRun?.duration_ms || null,
         runsLast1h: runs.length,
-        errorsLast1h: runs.filter((r: any) => r.status === "error").length,
+        errorsLast1h,
         openPositions: (openPosRes.data || []).length,
         closedToday: closedToday.length,
         closedReasons,
         pendingSignals: signals.filter((s: any) => s.status === "pending").length,
-        executedToday: signals.filter((s: any) => s.status === "executed").length,
-        rejectedToday: signals.filter((s: any) => s.status === "rejected").length,
-        expiredToday: signals.filter((s: any) => s.status === "expired").length,
+        executedToday,
+        rejectedToday,
+        expiredToday,
+        totalSignalsToday,
         winRate,
         totalPnlToday: totalPnl,
         avgPnl,
@@ -135,6 +258,10 @@ export default function BotDiagnosticsPanel() {
           message: n.message?.slice(0, 120) || "",
           type: n.type,
         })),
+        criticalIssues,
+        sellFailures24h,
+        sellSuccesses24h,
+        deadTokensToday,
       });
     } catch (err) {
       console.error("Diagnostics load error:", err);
@@ -189,6 +316,64 @@ export default function BotDiagnosticsPanel() {
           Odśwież
         </Button>
       </div>
+
+      {/* ── CRITICAL ISSUES BANNER ── */}
+      {data.criticalIssues.length > 0 && (
+        <Card className="border-destructive/50 bg-destructive/5">
+          <CardContent className="p-4">
+            <h3 className="text-sm font-semibold text-destructive mb-3 flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4" />
+              Wykryte Awarie & Problemy ({data.criticalIssues.length})
+            </h3>
+            <div className="space-y-2">
+              {data.criticalIssues.map((issue, i) => (
+                <div
+                  key={i}
+                  className={`p-3 rounded-lg border text-xs ${
+                    issue.severity === "critical"
+                      ? "border-destructive/40 bg-destructive/10"
+                      : issue.severity === "warning"
+                      ? "border-neon-amber/40 bg-neon-amber/5"
+                      : "border-border bg-muted/30"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    {issue.severity === "critical" ? (
+                      <XCircle className="h-4 w-4 text-destructive shrink-0" />
+                    ) : issue.severity === "warning" ? (
+                      <AlertTriangle className="h-4 w-4 text-neon-amber shrink-0" />
+                    ) : (
+                      <CheckCircle2 className="h-4 w-4 text-muted-foreground shrink-0" />
+                    )}
+                    <span className={`font-semibold ${
+                      issue.severity === "critical" ? "text-destructive" : 
+                      issue.severity === "warning" ? "text-neon-amber" : "text-muted-foreground"
+                    }`}>
+                      {issue.title}
+                    </span>
+                    {issue.timestamp && (
+                      <span className="text-[10px] text-muted-foreground ml-auto font-mono">{issue.timestamp}</span>
+                    )}
+                  </div>
+                  <p className="text-muted-foreground pl-6">{issue.detail}</p>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {data.criticalIssues.length === 0 && (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardContent className="p-3 flex items-center gap-3">
+            <CheckCircle2 className="h-5 w-5 text-primary" />
+            <div>
+              <span className="text-sm font-semibold text-foreground">System działa poprawnie</span>
+              <p className="text-[10px] text-muted-foreground">Brak wykrytych awarii ani problemów</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Status Overview */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
