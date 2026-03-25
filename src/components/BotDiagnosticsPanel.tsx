@@ -80,7 +80,7 @@ export default function BotDiagnosticsPanel() {
 
       const [
         runsRes, openPosRes, closedTodayRes, signalsRes,
-        configRes, notifRes, strategiesRes
+        configRes, notifRes, strategiesRes, sellExecRes
       ] = await Promise.all([
         supabase.from("bot_runs").select("*").gte("started_at", oneHourAgo).order("started_at", { ascending: false }).limit(20),
         supabase.from("open_positions").select("*").eq("status", "open"),
@@ -89,6 +89,7 @@ export default function BotDiagnosticsPanel() {
         supabase.from("bot_config").select("*"),
         supabase.from("notifications").select("*").in("type", ["swap_error", "balance_guard"]).gte("created_at", oneHourAgo).order("created_at", { ascending: false }).limit(10),
         supabase.from("trading_strategies").select("*"),
+        supabase.from("trade_executions").select("*").eq("action", "SELL").gte("created_at", todayStart),
       ]);
 
       const runs = runsRes.data || [];
