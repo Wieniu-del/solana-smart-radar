@@ -317,6 +317,64 @@ export default function BotDiagnosticsPanel() {
         </Button>
       </div>
 
+      {/* ── CRITICAL ISSUES BANNER ── */}
+      {data.criticalIssues.length > 0 && (
+        <Card className="border-destructive/50 bg-destructive/5">
+          <CardContent className="p-4">
+            <h3 className="text-sm font-semibold text-destructive mb-3 flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4" />
+              Wykryte Awarie & Problemy ({data.criticalIssues.length})
+            </h3>
+            <div className="space-y-2">
+              {data.criticalIssues.map((issue, i) => (
+                <div
+                  key={i}
+                  className={`p-3 rounded-lg border text-xs ${
+                    issue.severity === "critical"
+                      ? "border-destructive/40 bg-destructive/10"
+                      : issue.severity === "warning"
+                      ? "border-neon-amber/40 bg-neon-amber/5"
+                      : "border-border bg-muted/30"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    {issue.severity === "critical" ? (
+                      <XCircle className="h-4 w-4 text-destructive shrink-0" />
+                    ) : issue.severity === "warning" ? (
+                      <AlertTriangle className="h-4 w-4 text-neon-amber shrink-0" />
+                    ) : (
+                      <CheckCircle2 className="h-4 w-4 text-muted-foreground shrink-0" />
+                    )}
+                    <span className={`font-semibold ${
+                      issue.severity === "critical" ? "text-destructive" : 
+                      issue.severity === "warning" ? "text-neon-amber" : "text-muted-foreground"
+                    }`}>
+                      {issue.title}
+                    </span>
+                    {issue.timestamp && (
+                      <span className="text-[10px] text-muted-foreground ml-auto font-mono">{issue.timestamp}</span>
+                    )}
+                  </div>
+                  <p className="text-muted-foreground pl-6">{issue.detail}</p>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {data.criticalIssues.length === 0 && (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardContent className="p-3 flex items-center gap-3">
+            <CheckCircle2 className="h-5 w-5 text-primary" />
+            <div>
+              <span className="text-sm font-semibold text-foreground">System działa poprawnie</span>
+              <p className="text-[10px] text-muted-foreground">Brak wykrytych awarii ani problemów</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Status Overview */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card className="border-border bg-card">
