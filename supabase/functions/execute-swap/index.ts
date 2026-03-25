@@ -75,8 +75,9 @@ Deno.serve(async (req) => {
       console.log(`[execute-swap] SELL amount raw=${amountLamports}, decimals=${tokenDecimals}, closeAll=${closeAll === true}`);
     }
 
-    const quoteUrl = `${JUPITER_QUOTE_API}?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountLamports}&slippageBps=${slippageBps || 300}`;
-    console.log(`[execute-swap] ${action} quote request`);
+    const effectiveSlippage = action === "SELL" ? Math.max(slippageBps || 500, 500) : (slippageBps || 300);
+    const quoteUrl = `${JUPITER_QUOTE_API}?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountLamports}&slippageBps=${effectiveSlippage}`;
+    console.log(`[execute-swap] ${action} quote request (slippage=${effectiveSlippage}bps)`);
     const quoteRes = await fetch(quoteUrl);
     if (!quoteRes.ok) {
       const err = await quoteRes.text();
