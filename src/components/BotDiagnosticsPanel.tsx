@@ -18,6 +18,7 @@ interface CriticalIssue {
 
 interface DiagData {
   // Bot status
+  botEnabled: boolean;
   botRunning: boolean;
   lastRunAt: string | null;
   lastRunStatus: string | null;
@@ -125,6 +126,7 @@ export default function BotDiagnosticsPanel() {
         .map(([k]: any) => k);
 
       const lastRun = runs[0] || null;
+      const botEnabled = getConfig("bot_enabled", false) === true;
 
       // SELL stats
       const sellFailures24h = sellExecs.filter((e: any) => e.status === "failed").length;
@@ -140,8 +142,17 @@ export default function BotDiagnosticsPanel() {
       // ── AUTO-DETECT CRITICAL ISSUES ──
       const criticalIssues: CriticalIssue[] = [];
 
+      // 0. Bot disabled — główna blokada handlu
+      if (!botEnabled) {
+        criticalIssues.push({
+          severity: "critical",
+          title: "Bot jest wyłączony",
+          detail: "Auto-trading jest wyłączony w konfiguracji, więc każdy cykl kończy się jako skipped i bot nie otwiera pozycji.",
+        });
+      }
+
       // 1. Bot nie handluje — 0 executed w 24h + sygnały rejected/expired
-      if (executedToday === 0 && (rejectedToday + expiredToday) > 5) {
+      if (botEnabled && executedToday === 0 && (rejectedToday + expiredToday) > 5) {
         criticalIssues.push({
           severity: "critical",
           title: "Bot nie handluje",
@@ -229,6 +240,7 @@ export default function BotDiagnosticsPanel() {
       }
 
       setData({
+        botEnabled,
         botRunning: runs.some((r: any) => r.status === "running"),
         lastRunAt: lastRun?.started_at || null,
         lastRunStatus: lastRun?.status || null,
@@ -386,7 +398,7 @@ export default function BotDiagnosticsPanel() {
             <div className="flex items-center gap-2">
               <StatusDot ok={data.botRunning || data.lastRunStatus === "completed"} />
               <span className="text-sm font-bold text-foreground">
-                {data.botRunning ? "Aktywny" : data.lastRunStatus === "completed" ? "OK" : "Błąd"}
+                {!data.botEnabled ? "Wyłączony" : data.botRunning ? "Aktywny" : data.lastRunStatus === "completed" ? "OK" : "Błąd"}
               </span>
             </div>
             <p className="text-[10px] text-muted-foreground mt-1">
