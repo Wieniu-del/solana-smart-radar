@@ -54,8 +54,8 @@ export default function SystemStatusPanel() {
         name: "Bot 24/7",
         description: "Automatyczne skanowanie portfeli",
         icon: Bot,
-        status: enabled ? "active" : "inactive",
-        details: enabled ? "Działa — skan co 1 min" : "Wyłączony",
+        status: enabled ? "active" : "error",
+        details: enabled ? "Działa — skan co 1 min" : "Wyłączony — auto-trading nie uruchamia żadnych BUY",
         category: "trading",
       });
     } catch {
@@ -148,9 +148,9 @@ export default function SystemStatusPanel() {
         name: "Historia skanów",
         description: "Ostatnie uruchomienia bota",
         icon: Activity,
-        status: errors > 0 ? "warning" : total > 0 ? "active" : "inactive",
+        status: lastRun?.status === "skipped" ? "warning" : errors > 0 ? "warning" : total > 0 ? "active" : "inactive",
         details: total > 0
-          ? `${total} skanów, ${errors} błędów, śr. ${avgDuration}ms`
+          ? `${total} skanów, ${errors} błędów, śr. ${avgDuration}ms${lastRun?.status === "skipped" ? " — ostatni cykl pominięty" : ""}`
           : "Brak skanów",
         category: "trading",
       });
