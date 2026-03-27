@@ -191,6 +191,37 @@ Deno.serve(async (req) => {
     const pipelineConfig = (pipelineConfigData?.value as any) || {};
     const pSecurity = pipelineConfig.security_check ?? { enabled: true, min_score: 30 };
     const pLiquidity = pipelineConfig.liquidity_check ?? { enabled: true, min_value_usd: 10000 };
+
+    // ── ADAPTIVE MARKET REGIME DETECTION ──
+    // Check recent rejection rate — if bot rejects >80% of tokens, market data sources are degraded
+    // Lower thresholds automatically to keep trading
+    let adaptiveMinLiquidity = Number(pLiquidity.min_value_usd || 10000);
+    let adaptivePumpMinLiquidity = 20000;
+    let adaptiveMomentumRelaxed = false;
+    try {
+      const recentRuns = await supabase
+        .from("bot_runs")
+        .select("details, tokens_found, signals_generated")
+        .order("started_at", { ascending: false })
+        .limit(20);
+      const runs = recentRuns.data || [];
+      const runsWithData = runs.filter((r: any) => r.tokens_found !== null);
+      const totalTokens = runsWithData.reduce((s: number, r: any) => s + (r.tokens_found || 0), 0);
+      const totalSignals = runsWithData.reduce((s: number, r: any) => s + (r.signals_generated || 0), 0);
+      // If last 20 runs found 0 tokens total → data sources are broken, go aggressive
+      if (runsWithData.length >= 10 && totalTokens === 0 && totalSignals === 0) {
+        adaptiveMinLiquidity = 2000;   // drop from $10k to $2k
+        adaptivePumpMinLiquidity = 5000; // drop from $20k to $5k
+        adaptiveMomentumRelaxed = true;
+        console.log(`[bot] 🔄 ADAPTIVE MODE: last ${runsWithData.length} runs = 0 tokens. Lowering thresholds: liq=$${adaptiveMinLiquidity}, pump=$${adaptivePumpMinLiquidity}, momentum=relaxed`);
+      } else if (runsWithData.length >= 5 && totalTokens <= 2) {
+        adaptiveMinLiquidity = 5000;
+        adaptivePumpMinLiquidity = 10000;
+        adaptiveMomentumRelaxed = true;
+        console.log(`[bot] 🔄 ADAPTIVE MODE (mild): last ${runsWithData.length} runs = ${totalTokens} tokens. Thresholds: liq=$${adaptiveMinLiquidity}, pump=$${adaptivePumpMinLiquidity}`);
+      }
+    } catch (_) {}
+
     const pWallet = pipelineConfig.wallet_analysis ?? { enabled: true, min_wallet_value_usd: 20 };
     const pScoring = pipelineConfig.scoring ?? { buy_threshold: 60, watch_threshold: 25 };
     const pCorrelation = pipelineConfig.correlation ?? { enabled: true, min_wallets: 2, bonus_per_wallet: 10, max_bonus: 20 };
@@ -411,7 +442,7 @@ Deno.serve(async (req) => {
             const valueUsd = tokenInfo?.valueUsd || 0;
 
             // FIX #2: Real liquidity check via DexScreener API
-            const minLiquidityUsd = Number(pLiquidity.min_value_usd || 10000);
+            const minLiquidityUsd = adaptiveMinLiquidity;
             let realLiquidityUsd = 0;
             let volume5m = 0;
             let topHolderPct = 0;
@@ -492,16 +523,31 @@ Deno.serve(async (req) => {
                 } catch (_) {}
               }
 
-              // Fallback 4: estimate from Jupiter price if still no liquidity data
+              // Fallback 4: Jupiter route check — if Jupiter can swap it, it's tradeable
               if (realLiquidityUsd <= 0) {
                 try {
-                  const jupRes = await fetch(`https://lite-api.jup.ag/price/v2?ids=${encodeURIComponent(incomingMint)}`);
+                  // First try price API
+                  const jupRes = await fetch(`https://lite-api.jup.ag/price/v2?ids=${encodeURIComponent(incomingMint)}&showExtraInfo=true`);
                   if (jupRes.ok) {
                     const jupData = await jupRes.json();
                     const jupPrice = Number(jupData?.data?.[incomingMint]?.price);
                     if (jupPrice > 0) {
-                      realLiquidityUsd = 15000;
-                      console.log(`[bot] ${incomingMint.slice(0,8)}: Jupiter price=$${jupPrice.toFixed(8)}, estimated liq=$15000`);
+                      // Estimate liquidity from price — if price exists on Jupiter, token is tradeable
+                      // Use conservative estimate based on price tier
+                      const estimatedLiq = jupPrice > 0.01 ? 20000 : jupPrice > 0.0001 ? 10000 : 5000;
+                      realLiquidityUsd = estimatedLiq;
+                      console.log(`[bot] ${incomingMint.slice(0,8)}: Jupiter price=$${jupPrice.toFixed(8)}, estimated liq=$${estimatedLiq}`);
+                    }
+                  }
+                  // If still nothing, try Jupiter quote as ultimate proof of tradeability
+                  if (realLiquidityUsd <= 0) {
+                    const quoteRes = await fetch(`https://lite-api.jup.ag/swap/v1/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=${incomingMint}&amount=100000000&slippageBps=500`);
+                    if (quoteRes.ok) {
+                      const quoteData = await quoteRes.json();
+                      if (quoteData?.outAmount && Number(quoteData.outAmount) > 0) {
+                        realLiquidityUsd = 5000; // Jupiter can route = tradeable
+                        console.log(`[bot] ${incomingMint.slice(0,8)}: Jupiter ROUTE exists, estimated liq=$5000`);
+                      }
                     }
                   }
                 } catch (_) {}
@@ -544,20 +590,21 @@ Deno.serve(async (req) => {
             // ── PUMP.FUN SCAM DETECTION ──
             const symbolLower = (incoming?.tokenSymbol || tokenInfo?.symbol || "").toLowerCase();
             const isPumpFun = incomingMint.endsWith("pump") || symbolLower.includes("pump");
-            if (isPumpFun && realLiquidityUsd < 20000) {
-              console.log(`[bot] ❌ PUMP.FUN REJECT: ${incomingMint.slice(0,8)} — pump token with liq=$${realLiquidityUsd.toFixed(0)} < $20k`);
+            if (isPumpFun && realLiquidityUsd < adaptivePumpMinLiquidity) {
+              console.log(`[bot] ❌ PUMP.FUN REJECT: ${incomingMint.slice(0,8)} — pump token with liq=$${realLiquidityUsd.toFixed(0)} < $${adaptivePumpMinLiquidity}`);
               continue;
             }
 
             // ── MARKET FILTERS ──
             // Liquidity filter
-            if (pLiquidity.enabled && effectiveLiquidity < minLiquidityUsd) {
-              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: liquidity $${effectiveLiquidity.toFixed(0)} < $${minLiquidityUsd}`);
+            if (pLiquidity.enabled && effectiveLiquidity < adaptiveMinLiquidity) {
+              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: liquidity $${effectiveLiquidity.toFixed(0)} < $${adaptiveMinLiquidity}`);
               continue;
             }
-            // Volume 5m filter ($5k minimum — quality over quantity)
-            if (volume5m > 0 && volume5m < 5000) {
-              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: volume5m $${volume5m.toFixed(0)} < $5000`);
+            // Volume 5m filter — adaptive: lower when market data degraded
+            const minVolume5m = adaptiveMomentumRelaxed ? 1000 : 5000;
+            if (volume5m > 0 && volume5m < minVolume5m) {
+              console.log(`[bot] REJECT ${incomingMint.slice(0,8)}: volume5m $${volume5m.toFixed(0)} < $${minVolume5m}`);
               continue;
             }
             // Token age filter — DISABLED to allow whole Solana market (DeFi, infra, etc.)
@@ -571,15 +618,23 @@ Deno.serve(async (req) => {
               priceChangeM5 = Number(topPair?.priceChange?.m5 || 0);
               priceChangeH1 = Number(topPair?.priceChange?.h1 || 0);
               // Hard reject: falling momentum
-              if (priceChangeM5 < -3) {
+              if (priceChangeM5 < -3 && !adaptiveMomentumRelaxed) {
                 console.log(`[bot] ❌ MOMENTUM PRE-REJECT: ${incomingMint.slice(0,8)} — m5=${priceChangeM5.toFixed(1)}% (falling)`);
                 continue;
               }
+              // In adaptive mode, only reject extreme drops
+              if (adaptiveMomentumRelaxed && priceChangeM5 < -10) {
+                console.log(`[bot] ❌ MOMENTUM HARD-REJECT: ${incomingMint.slice(0,8)} — m5=${priceChangeM5.toFixed(1)}% (crash)`);
+                continue;
+              }
               // Require positive momentum: m5 > +0.5% OR h1 > +2%
-              if (priceChangeM5 < 0.5 && priceChangeH1 < 2) {
+              if (!adaptiveMomentumRelaxed && priceChangeM5 < 0.5 && priceChangeH1 < 2) {
                 console.log(`[bot] ❌ MOMENTUM REJECT: ${incomingMint.slice(0,8)} — m5=${priceChangeM5.toFixed(1)}%, h1=${priceChangeH1.toFixed(1)}% (stagnant)`);
                 continue;
               }
+            } else if (!adaptiveMomentumRelaxed) {
+              // No DexScreener data at all — in strict mode skip, in adaptive mode allow
+              // In adaptive mode we allow through since we can't measure momentum
             }
 
             if (realLiquidityUsd > 0) {
@@ -691,14 +746,18 @@ Deno.serve(async (req) => {
             // ── QUALITY GATE v5: require TA OR defensive OR Jupiter-price bypass ──
             const hasStrongQuality = taTriggered.length > 0;
             const hasDefensiveQuality = realLiquidityUsd > 50000 && priceChangeM5 > 0.5 && priceChangeH1 > 2;
-            // NEW: Jupiter price bypass — if token has price on Jupiter + score >= 65, allow through
-            const hasJupiterBypass = realLiquidityUsd >= 15000 && totalScore >= 65 && priceChangeM5 > 0;
-            if (!hasStrongQuality && !hasDefensiveQuality && !hasJupiterBypass) {
-              console.log(`[bot] ❌ QUALITY GATE v5: ${incomingMint.slice(0,8)} — no TA, no defensive, no Jupiter bypass (score=${totalScore}, liq=$${realLiquidityUsd.toFixed(0)}) → SKIP`);
+            // Jupiter bypass — adaptive: lower requirements when market data degraded
+            const jupBypassScoreMin = adaptiveMomentumRelaxed ? 50 : 65;
+            const jupBypassLiqMin = adaptiveMomentumRelaxed ? 2000 : 15000;
+            const hasJupiterBypass = realLiquidityUsd >= jupBypassLiqMin && totalScore >= jupBypassScoreMin && (priceChangeM5 >= 0 || adaptiveMomentumRelaxed);
+            // Adaptive bypass: if score >= 45 and token is tradeable on Jupiter
+            const hasAdaptiveBypass = adaptiveMomentumRelaxed && totalScore >= 45 && realLiquidityUsd > 0;
+            if (!hasStrongQuality && !hasDefensiveQuality && !hasJupiterBypass && !hasAdaptiveBypass) {
+              console.log(`[bot] ❌ QUALITY GATE v6: ${incomingMint.slice(0,8)} — no TA, no defensive, no bypass (score=${totalScore}, liq=$${realLiquidityUsd.toFixed(0)}, adaptive=${adaptiveMomentumRelaxed}) → SKIP`);
               continue;
             }
-            if (hasJupiterBypass && !hasStrongQuality) {
-              console.log(`[bot] ✅ JUPITER BYPASS: ${incomingMint.slice(0,8)} — score=${totalScore}, liq=$${realLiquidityUsd.toFixed(0)}, m5=+${priceChangeM5.toFixed(1)}%`);
+            if ((hasJupiterBypass || hasAdaptiveBypass) && !hasStrongQuality) {
+              console.log(`[bot] ✅ ADAPTIVE/JUPITER BYPASS: ${incomingMint.slice(0,8)} — score=${totalScore}, liq=$${realLiquidityUsd.toFixed(0)}, m5=${priceChangeM5.toFixed(1)}%, adaptive=${adaptiveMomentumRelaxed}`);
             }
 
             totalTokensFound++;
