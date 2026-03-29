@@ -743,21 +743,31 @@ Deno.serve(async (req) => {
             // Cap at 100
             totalScore = Math.min(100, totalScore);
 
-            // ── QUALITY GATE v5: require TA OR defensive OR Jupiter-price bypass ──
+            // ── QUALITY GATE v7: adaptive-aware with Jupiter tradeability bonus ──
+            // In adaptive mode, Jupiter-confirmed tokens get a score boost
+            // since we can't rely on DexScreener/Birdeye data
+            if (adaptiveMomentumRelaxed && realLiquidityUsd >= 5000 && taTriggered.length === 0) {
+              // Jupiter tradeability bonus: token is confirmed tradeable but no TA data available
+              const jupBonus = 15;
+              totalScore += jupBonus;
+              totalScore = Math.min(100, totalScore);
+              console.log(`[bot] 🟢 JUPITER TRADEABILITY BONUS: ${incomingMint.slice(0,8)} — +${jupBonus} (total=${totalScore})`);
+            }
+
             const hasStrongQuality = taTriggered.length > 0;
             const hasDefensiveQuality = realLiquidityUsd > 50000 && priceChangeM5 > 0.5 && priceChangeH1 > 2;
             // Jupiter bypass — adaptive: lower requirements when market data degraded
-            const jupBypassScoreMin = adaptiveMomentumRelaxed ? 50 : 65;
+            const jupBypassScoreMin = adaptiveMomentumRelaxed ? 35 : 65;
             const jupBypassLiqMin = adaptiveMomentumRelaxed ? 2000 : 15000;
             const hasJupiterBypass = realLiquidityUsd >= jupBypassLiqMin && totalScore >= jupBypassScoreMin && (priceChangeM5 >= 0 || adaptiveMomentumRelaxed);
-            // Adaptive bypass: if score >= 45 and token is tradeable on Jupiter
-            const hasAdaptiveBypass = adaptiveMomentumRelaxed && totalScore >= 45 && realLiquidityUsd > 0;
+            // Adaptive bypass: if score >= 30 and token is tradeable on Jupiter (lowered from 45)
+            const hasAdaptiveBypass = adaptiveMomentumRelaxed && totalScore >= 30 && realLiquidityUsd > 0;
             if (!hasStrongQuality && !hasDefensiveQuality && !hasJupiterBypass && !hasAdaptiveBypass) {
-              console.log(`[bot] ❌ QUALITY GATE v6: ${incomingMint.slice(0,8)} — no TA, no defensive, no bypass (score=${totalScore}, liq=$${realLiquidityUsd.toFixed(0)}, adaptive=${adaptiveMomentumRelaxed}) → SKIP`);
+              console.log(`[bot] ❌ QUALITY GATE v7: ${incomingMint.slice(0,8)} — no TA, no defensive, no bypass (score=${totalScore}, liq=$${realLiquidityUsd.toFixed(0)}, adaptive=${adaptiveMomentumRelaxed}) → SKIP`);
               continue;
             }
             if ((hasJupiterBypass || hasAdaptiveBypass) && !hasStrongQuality) {
-              console.log(`[bot] ✅ ADAPTIVE/JUPITER BYPASS: ${incomingMint.slice(0,8)} — score=${totalScore}, liq=$${realLiquidityUsd.toFixed(0)}, m5=${priceChangeM5.toFixed(1)}%, adaptive=${adaptiveMomentumRelaxed}`);
+              console.log(`[bot] ✅ ADAPTIVE BYPASS v7: ${incomingMint.slice(0,8)} — score=${totalScore}, liq=$${realLiquidityUsd.toFixed(0)}, m5=${priceChangeM5.toFixed(1)}%, adaptive=${adaptiveMomentumRelaxed}`);
             }
 
             totalTokensFound++;
