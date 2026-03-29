@@ -248,8 +248,13 @@ Deno.serve(async (req) => {
     const lookbackSinceTs = Date.now() / 1000 - lookbackHours * 3600;
 
     // Use pipeline scoring thresholds if set, otherwise fall back to global
-    const buyThreshold = pScoring.buy_threshold || 60;
+    // In adaptive mode, lower buy threshold to allow Jupiter-confirmed tokens through
+    const baseBuyThreshold = pScoring.buy_threshold || 60;
+    const buyThreshold = adaptiveMomentumRelaxed ? Math.min(baseBuyThreshold, 35) : baseBuyThreshold;
     const watchThreshold = pScoring.watch_threshold || 25;
+    if (adaptiveMomentumRelaxed && buyThreshold < baseBuyThreshold) {
+      console.log(`[bot] 🔄 ADAPTIVE: buy threshold lowered from ${baseBuyThreshold} to ${buyThreshold}`);
+    }
 
     // ── CIRCUIT BREAKER: pause after consecutive losses ──
     let circuitBreakerActive = false;
